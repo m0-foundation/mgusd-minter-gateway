@@ -130,7 +130,6 @@ fn test_authorize_and_transfer_insufficient_balance() {
 }
 
 #[test]
-#[should_panic(expected = "negative amount is not allowed")]
 fn test_authorize_and_transfer_negative_amount() {
     let s = setup();
     let treasury = Address::generate(&s.env);
@@ -139,7 +138,10 @@ fn test_authorize_and_transfer_negative_amount() {
     s.contract.unfreeze_account(&treasury);
     s.contract.mint(&s.minter, &treasury, &1_000_0000000);
 
-    s.contract.authorize_and_transfer(&s.forced_transfer_manager, &treasury, &recipient, &-100);
+    let result =
+        s.contract
+            .try_authorize_and_transfer(&s.forced_transfer_manager, &treasury, &recipient, &-100);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::NegativeAmountError)));
 }
 
 #[test]
@@ -219,6 +221,83 @@ fn test_authorize_and_transfer_refreezes_recipient() {
     s.contract.unfreeze_account(&other);
     let result = s.sac_token.try_transfer(&recipient, &other, &100_0000000);
     assert!(result.is_err());
+}
+
+// =============================================================================
+// AUTHORIZE AND TRANSFER — ACCESS CONTROL TESTS
+// =============================================================================
+// Verify that only admin and forced_transfer_manager can call
+// authorize_and_transfer. Other roles and random addresses must be rejected.
+
+#[test]
+fn test_minter_cannot_authorize_and_transfer() {
+    let s = setup();
+    let treasury = Address::generate(&s.env);
+    let recipient = Address::generate(&s.env);
+
+    s.contract.unfreeze_account(&treasury);
+    s.contract.mint(&s.minter, &treasury, &1_000_0000000);
+
+    // Minter role cannot call authorize_and_transfer
+    let result =
+        s.contract
+            .try_authorize_and_transfer(&s.minter, &treasury, &recipient, &500_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_yield_recipient_manager_cannot_authorize_and_transfer() {
+    let s = setup();
+    let treasury = Address::generate(&s.env);
+    let recipient = Address::generate(&s.env);
+
+    s.contract.unfreeze_account(&treasury);
+    s.contract.mint(&s.minter, &treasury, &1_000_0000000);
+
+    // YRM role cannot call authorize_and_transfer
+    let result = s.contract.try_authorize_and_transfer(
+        &s.yield_recipient_manager,
+        &treasury,
+        &recipient,
+        &500_0000000,
+    );
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_yield_recipient_cannot_authorize_and_transfer() {
+    let s = setup();
+    let treasury = Address::generate(&s.env);
+    let recipient = Address::generate(&s.env);
+
+    s.contract.unfreeze_account(&treasury);
+    s.contract.mint(&s.minter, &treasury, &1_000_0000000);
+
+    // YR role cannot call authorize_and_transfer
+    let result = s.contract.try_authorize_and_transfer(
+        &s.yield_recipient,
+        &treasury,
+        &recipient,
+        &500_0000000,
+    );
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_random_address_cannot_authorize_and_transfer() {
+    let s = setup();
+    let treasury = Address::generate(&s.env);
+    let recipient = Address::generate(&s.env);
+    let random = Address::generate(&s.env);
+
+    s.contract.unfreeze_account(&treasury);
+    s.contract.mint(&s.minter, &treasury, &1_000_0000000);
+
+    // Random address cannot call authorize_and_transfer
+    let result =
+        s.contract
+            .try_authorize_and_transfer(&random, &treasury, &recipient, &500_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 // =============================================================================

@@ -12,5 +12,8 @@ dist/
 # Compiled contracts
 *.wasm
 
+# Test snapshots
+test_snapshots/
+
 # macOS
 .DS_Store

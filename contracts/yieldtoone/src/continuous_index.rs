@@ -3,16 +3,13 @@
 //! Implements continuous compounding using the formula:
 //!   currentIndex = latestIndex × e^(rate × time)
 //!
-//! Uses Padé R(4,4) approximation for e^x, matching M0 Protocol's EVM implementation.
+//! Uses Taylor series approximation for e^x.
+//! Fixed-point mul/div via `soroban-fixed-point-math` (audited, used by Blend v2).
 
-/// Scaling factor for index values (1.0 = 1e12)
-pub const INDEX_SCALE: u128 = 1_000_000_000_000;
+use soroban_fixed_point_math::FixedPoint;
 
-/// Scaling factor for rate values (1.0 = 1e12, so 5% = 0.05e12 = 50_000_000_000)
-pub const RATE_SCALE: u128 = 1_000_000_000_000;
-
-/// Seconds in a year (365 days)
-pub const SECONDS_PER_YEAR: u128 = 31_536_000;
+// Re-export constants for backward compatibility
+pub use crate::constants::{INDEX_SCALE, RATE_SCALE, SECONDS_PER_YEAR};
 
 /// Converts basis points to scaled rate.
 ///
@@ -116,14 +113,9 @@ pub fn get_continuous_index(yearly_rate: u128, time_elapsed: u64) -> u128 {
 /// # Returns
 /// Compounded index scaled by INDEX_SCALE
 pub fn multiply_indices_up(index: u128, delta_index: u128) -> u128 {
-    // Round up: (a * b + scale - 1) / scale
-    index
-        .checked_mul(delta_index)
-        .unwrap()
-        .checked_add(INDEX_SCALE - 1)
-        .unwrap()
-        .checked_div(INDEX_SCALE)
-        .unwrap()
+    (index as i128)
+        .fixed_mul_ceil(delta_index as i128, INDEX_SCALE as i128)
+        .unwrap() as u128
 }
 
 /// Multiplies two indices together (compounds them).
@@ -139,11 +131,9 @@ pub fn multiply_indices_up(index: u128, delta_index: u128) -> u128 {
 /// # Returns
 /// Compounded index scaled by INDEX_SCALE
 pub fn multiply_indices_down(index: u128, delta_index: u128) -> u128 {
-    index
-        .checked_mul(delta_index)
-        .unwrap()
-        .checked_div(INDEX_SCALE)
-        .unwrap()
+    (index as i128)
+        .fixed_mul_floor(delta_index as i128, INDEX_SCALE as i128)
+        .unwrap() as u128
 }
 
 /// Calculates the current index given the last stored index, rate, and time elapsed.

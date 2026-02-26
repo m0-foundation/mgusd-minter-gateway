@@ -13,6 +13,7 @@
 use soroban_sdk::Env;
 
 use crate::continuous_index::{self, INDEX_SCALE};
+use crate::errors::YieldTokenError;
 use crate::storage_types::{DataKey, YieldStateValue};
 
 // =============================================================================
@@ -94,15 +95,16 @@ pub fn increase_both_accumulators(env: &Env, amount: i128) {
 /// Decreases both total_principal and total_supply by the same amount.
 /// Used by burn and clawback.
 /// Must call update_index first to finalize yield at current principal.
-/// Panics if amount exceeds total_principal — you cannot burn more than was minted.
-pub fn decrease_both_accumulators(env: &Env, amount: i128) {
+/// Returns error if amount exceeds total_principal — you cannot burn more than was minted.
+pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), YieldTokenError> {
     let mut state = read_yield_state(env);
     if amount > state.total_principal {
-        panic!("burn amount exceeds principal");
+        return Err(YieldTokenError::BurnExceedsPrincipal);
     }
     state.total_principal = state.total_principal.checked_sub(amount).unwrap();
     state.total_supply = state.total_supply.checked_sub(amount).unwrap();
     write_yield_state(env, &state);
+    Ok(())
 }
 
 // =============================================================================
@@ -191,9 +193,9 @@ pub fn get_accrued_yield(env: &Env) -> i128 {
 // =============================================================================
 
 /// Sets the interest rate. Updates index first to finalize yield at old rate.
-pub fn set_interest_rate(env: &Env, rate_bps: u32) {
+pub fn set_interest_rate(env: &Env, rate_bps: u32) -> Result<(), YieldTokenError> {
     if rate_bps > 10_000 {
-        panic!("interest rate cannot exceed 100% (10000 bps)");
+        return Err(YieldTokenError::RateExceedsMax);
     }
 
     // First update index at the old rate
@@ -203,6 +205,7 @@ pub fn set_interest_rate(env: &Env, rate_bps: u32) {
     let mut state = read_yield_state(env);
     state.rate_bps = rate_bps;
     write_yield_state(env, &state);
+    Ok(())
 }
 
 /// Returns the current interest rate in basis points.
