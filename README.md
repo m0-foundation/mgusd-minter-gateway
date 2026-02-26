@@ -183,8 +183,15 @@ The `soroban-sctoken-fireblocks-sdk/` directory contains a TypeScript SDK that w
 
 ---
 
+## Engineering
+
+Patterns adopted from [blend-capital/blend-contracts-v2](https://github.com/blend-capital/blend-contracts-v2) (Code4rena audited):
+
+- **Typed errors** — `#[contracterror]` enum (`YieldTokenError`) replaces all `panic!` calls with on-chain u32 error codes
+- **Fixed-point math** — [`soroban-fixed-point-math`](https://crates.io/crates/soroban-fixed-point-math) for audited `fixed_mul_ceil` / `fixed_mul_floor` rounding
+- **Constants module** — `INDEX_SCALE`, `RATE_SCALE`, `SECONDS_PER_YEAR` extracted to `constants.rs`
+
 ## TODO
 
-- [ ] Implement industry standard math library (replace Taylor series with Pade approximation to match EVM precision)
 - [ ] Double check rounding math (verify rounding directions are consistent and protocol-favorable across all operations)
 - [ ] Add remaining SDK methods (freeze, unfreeze, clawback, authorize_and_transfer, claim_yield, view functions)
