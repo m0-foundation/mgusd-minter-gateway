@@ -1,6 +1,7 @@
 use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
+use crate::errors::YieldTokenError;
 use crate::events::{
     emit_account_frozen, emit_account_unfrozen, emit_authorize_and_transfer, emit_clawback,
     emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set,
@@ -21,10 +22,11 @@ use crate::yield_state::{
     update_index,
 };
 
-pub(crate) fn check_nonnegative_amount(amount: i128) {
+pub(crate) fn check_nonnegative_amount(amount: i128) -> Result<(), YieldTokenError> {
     if amount < 0 {
-        panic!("negative amount is not allowed: {}", amount);
+        return Err(YieldTokenError::NegativeAmountError);
     }
+    Ok(())
 }
 
 fn extend_instance_ttl(e: &Env) {
@@ -55,9 +57,9 @@ impl YieldToken {
         yield_recipient_manager: Address,
         yield_recipient: Address,
         forced_transfer_manager: Address,
-    ) {
+    ) -> Result<(), YieldTokenError> {
         if has_admin(&e) {
-            panic!("already initialized");
+            return Err(YieldTokenError::AlreadyInitializedError);
         }
 
         // Store SAC token address
@@ -69,6 +71,7 @@ impl YieldToken {
         write_yield_recipient_manager(&e, &yield_recipient_manager);
         write_yield_recipient(&e, &yield_recipient);
         write_forced_transfer_manager(&e, &forced_transfer_manager);
+        Ok(())
     }
 
     // =========================================================================
@@ -149,8 +152,8 @@ impl YieldToken {
     /// Claws back tokens from an account, reducing both SAC balance and accumulators.
     /// Admin only.
     /// Does NOT require `from.require_auth()` — this is an admin-forced operation.
-    pub fn clawback(e: Env, from: Address, amount: i128) {
-        check_nonnegative_amount(amount);
+    pub fn clawback(e: Env, from: Address, amount: i128) -> Result<(), YieldTokenError> {
+        check_nonnegative_amount(amount)?;
         require_admin(&e);
         extend_instance_ttl(&e);
 
@@ -158,13 +161,14 @@ impl YieldToken {
         update_index(&e);
 
         // Decrease both accumulators (capped at total_principal)
-        decrease_both_accumulators(&e, amount);
+        decrease_both_accumulators(&e, amount)?;
 
         // Cross-contract call: clawback SAC tokens
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).clawback(&from, &amount);
 
         emit_clawback(&e, from, amount);
+        Ok(())
     }
 
     // =========================================================================
@@ -193,10 +197,16 @@ impl YieldToken {
     ///
     /// `from` must authorize the transfer (required by SAC's transfer).
     /// Does NOT update accumulators — this is a balance redistribution, not a mint/burn.
-    pub fn authorize_and_transfer(e: Env, caller: Address, from: Address, to: Address, amount: i128) {
+    pub fn authorize_and_transfer(
+        e: Env,
+        caller: Address,
+        from: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), YieldTokenError> {
         from.require_auth();
-        check_nonnegative_amount(amount);
-        require_admin_or(&e, &caller, &read_forced_transfer_manager(&e));
+        check_nonnegative_amount(amount)?;
+        require_admin_or(&e, &caller, &read_forced_transfer_manager(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -209,6 +219,7 @@ impl YieldToken {
         sac.set_authorized(&to, &false);
 
         emit_authorize_and_transfer(&e, from, to, amount);
+        Ok(())
     }
 
     // =========================================================================
@@ -217,9 +228,9 @@ impl YieldToken {
 
     /// Mints SAC tokens directly to the recipient and updates accumulators.
     /// Minter or admin only.
-    pub fn mint(e: Env, caller: Address, to: Address, amount: i128) {
-        check_nonnegative_amount(amount);
-        require_admin_or(&e, &caller, &read_minter(&e));
+    pub fn mint(e: Env, caller: Address, to: Address, amount: i128) -> Result<(), YieldTokenError> {
+        check_nonnegative_amount(amount)?;
+        require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -234,20 +245,21 @@ impl YieldToken {
 
         let state = read_yield_state(&e);
         emit_supply_synced(&e, amount, state.total_principal, state.total_supply);
+        Ok(())
     }
 
     /// Burns (clawbacks) SAC tokens from an account and updates accumulators.
     /// Minter or admin only.
-    pub fn burn(e: Env, caller: Address, from: Address, amount: i128) {
-        check_nonnegative_amount(amount);
-        require_admin_or(&e, &caller, &read_minter(&e));
+    pub fn burn(e: Env, caller: Address, from: Address, amount: i128) -> Result<(), YieldTokenError> {
+        check_nonnegative_amount(amount)?;
+        require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
         // Update index before changing principal
         update_index(&e);
 
         // Decrease both accumulators
-        decrease_both_accumulators(&e, amount);
+        decrease_both_accumulators(&e, amount)?;
 
         // Clawback SAC tokens from account
         let sac_addr = read_sac_token(&e);
@@ -255,22 +267,24 @@ impl YieldToken {
 
         let state = read_yield_state(&e);
         emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        Ok(())
     }
 
     /// Sets the interest rate in basis points (max 10000 = 100%). Minter or admin only.
     /// No-op if the new rate equals the current rate.
-    pub fn set_rate(e: Env, caller: Address, rate_bps: u32) {
-        require_admin_or(&e, &caller, &read_minter(&e));
+    pub fn set_rate(e: Env, caller: Address, rate_bps: u32) -> Result<(), YieldTokenError> {
+        require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
         // Early return if rate unchanged
         if get_interest_rate(&e) == rate_bps {
-            return;
+            return Ok(());
         }
 
-        set_interest_rate(&e, rate_bps);
+        set_interest_rate(&e, rate_bps)?;
 
         emit_interest_rate_set(&e, rate_bps);
+        Ok(())
     }
 
     // =========================================================================
@@ -278,14 +292,19 @@ impl YieldToken {
     // =========================================================================
 
     /// Sets a new yield recipient address. Yield recipient manager or admin only.
-    pub fn set_yield_recipient(e: Env, caller: Address, new_yield_recipient: Address) {
-        require_admin_or(&e, &caller, &read_yield_recipient_manager(&e));
+    pub fn set_yield_recipient(
+        e: Env,
+        caller: Address,
+        new_yield_recipient: Address,
+    ) -> Result<(), YieldTokenError> {
+        require_admin_or(&e, &caller, &read_yield_recipient_manager(&e))?;
         extend_instance_ttl(&e);
 
         let old = read_yield_recipient(&e);
         write_yield_recipient(&e, &new_yield_recipient);
 
         emit_yield_recipient_set(&e, old, new_yield_recipient);
+        Ok(())
     }
 
     // =========================================================================
@@ -297,9 +316,9 @@ impl YieldToken {
     ///
     /// Note: Claimed yield is NOT added to principal — it does not earn more yield.
     /// Tokens are always minted to the yield recipient, regardless of who calls.
-    pub fn claim_yield(e: Env, caller: Address) -> i128 {
+    pub fn claim_yield(e: Env, caller: Address) -> Result<i128, YieldTokenError> {
         let recipient = read_yield_recipient(&e);
-        require_admin_or(&e, &caller, &recipient);
+        require_admin_or(&e, &caller, &recipient)?;
         extend_instance_ttl(&e);
 
         let claimed = claim_accrued_yield(&e);
@@ -315,7 +334,7 @@ impl YieldToken {
             emit_yield_claimed(&e, recipient, claimed);
         }
 
-        claimed
+        Ok(claimed)
     }
 
     // =========================================================================

@@ -7,11 +7,43 @@ Monorepo for the **SAC Admin Yield Token** contract and the **Fireblocks signing
 | `contracts/yieldtoone/` | Soroban yield contract — SAC admin that mints, burns, tracks yield, and enforces an allowlist |
 | `soroban-sctoken-fireblocks-sdk/` | TypeScript SDK for invoking the contract via Fireblocks raw signing (Ed25519) |
 
+## Building
+
+### Contract
+
+```bash
+stellar contract build
+```
+
+### SDK
+
+```bash
+cd soroban-sctoken-fireblocks-sdk
+npm install
+npm run build
+```
+
+## Testing
+
+### Contract
+
+```bash
+cargo test
+```
+
+### SDK
+
+```bash
+cd soroban-sctoken-fireblocks-sdk
+npm test                # unit tests
+npm run test:integration # integration tests (requires Fireblocks credentials + testnet)
+```
+
 ---
 
 ## Contract — SAC Admin Yield Token
 
-A Soroban yield contract that acts as the **SAC admin** for a Stellar asset. It directly mints and burns tokens via the SAC interface, tracks yield accrual on total principal, and enforces an allowlist via AUTH_REQUIRED.
+A Soroban contract that acts as the **SAC admin** for a Stellar asset. It directly mints and burns tokens via the SAC interface, tracks yield accrual on total principal, and enforces an allowlist via AUTH_REQUIRED.
 
 ## Overview
 
@@ -42,53 +74,9 @@ The contract never holds user funds. Users hold tokens directly in their account
 2. Contract updates accumulators (decreases both)
 3. Contract clawbacks SAC tokens from the account via `StellarAssetClient::clawback`
 
-### Yield Claim
-
-1. Yield recipient calls `claim_yield()` — new SAC tokens are minted to the yield recipient
-2. `total_supply` increases but `total_principal` does not — yield does not compound
-
 ### Token Distribution
 
 The forced transfer manager calls `authorize_and_transfer(from, to, amount)` to move tokens between accounts. This temporarily authorizes the recipient, transfers tokens, then **re-freezes** the recipient to lock tokens at the destination. Accumulators are not affected — it is a balance redistribution, not a mint/burn.
-
-## Accumulators
-
-The contract tracks two counters:
-
-| Accumulator | Increases when | Decreases when | Purpose |
-|---|---|---|---|
-| `total_principal` | `mint` | `burn`, `clawback` | Yield-earning base |
-| `total_supply` | `mint` AND `claim_yield` | `burn`, `clawback` | Total outstanding tokens |
-
-Relationship: `total_supply = total_principal + cumulative_claimed_yield`
-
-Only `total_principal` earns yield. When yield is claimed and minted, `total_supply` grows but `total_principal` stays the same — preventing compounding.
-
-## Yield Mechanism
-
-### Continuous Compounding Index
-
-The contract tracks a cumulative growth index using the continuous compounding formula:
-
-```
-currentIndex = latestIndex * e^(rate * elapsed_time / SECONDS_PER_YEAR)
-```
-
-The index is stored as a `u128` scaled by `1e12` (so `1.0 = 1_000_000_000_000`). The exponential is approximated via a 4th-order Taylor series. The index is updated before any operation that changes principal (mint, burn, rate change).
-
-### Yield Accrual
-
-Yield is computed on **`total_principal`** only, not on `total_supply`:
-
-```
-yield = total_principal * (newIndex - oldIndex) / INDEX_SCALE
-```
-
-This means **claimed yield does not compound**. When the yield recipient claims, new tokens are minted and `total_supply` increases, but `total_principal` stays the same.
-
-### Interest Rate
-
-The rate is set in basis points (100 = 1%, 10000 = 100%) and can be changed by the minter. When the rate changes, the index is finalized at the old rate before applying the new one.
 
 ## Authorization & Allowlist
 
@@ -134,6 +122,24 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 - `clawback` finalizes yield at current rates before decreasing accumulators, then calls the SAC's `clawback`
 - `clawback` does **not** require the target account's authorization — it is an admin-forced operation
 
+## Roles
+
+| Role | Permissions | Intended Actor |
+|------|------------|----------------|
+| **Admin** | All contract functions (super-role) | M0 |
+| **Minter** | `mint`, `burn`, `set_rate` | Bridge |
+| **Yield Recipient Manager** | `set_yield_recipient` | M0 |
+| **Yield Recipient** | `claim_yield` | MoneyGram |
+| **Forced Transfer Manager** | `authorize_and_transfer` | Crossmint |
+
+**Design properties:**
+
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `freeze_account`, `unfreeze_account`, `clawback`, `upgrade`)
+- All roles are **single-address** — exactly one holder per role at any time
+- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager)
+- Every role-gated function calls `require_auth()` on the role holder — no implicit trust
+- Roles are stored in **Instance** storage
+
 ## Role Hierarchy
 
 ```
@@ -155,90 +161,6 @@ Yield Recipient
 
 Forced Transfer Manager
 └── Can authorize a recipient and transfer tokens atomically (authorize_and_transfer)
-```
-
-## Authorization Matrix
-
-| Function | Admin | Minter | Yield Recipient Manager | Yield Recipient | Forced Transfer Manager |
-|----------|:-----:|:------:|:-----------------------:|:---------------:|:-----------------------:|
-| `set_admin` | ✓ | | | | |
-| `set_minter` | ✓ | | | | |
-| `set_yield_recipient_manager` | ✓ | | | | |
-| `set_forced_transfer_manager` | ✓ | | | | |
-| `freeze_account` | ✓ | | | | |
-| `unfreeze_account` | ✓ | | | | |
-| `clawback` | ✓ | | | | |
-| `is_authorized` | (view) | | | | |
-| `mint` | | ✓ | | | |
-| `burn` | | ✓ | | | |
-| `set_rate` | | ✓ | | | |
-| `set_yield_recipient` | | | ✓ | | |
-| `claim_yield` | | | | ✓ | |
-| `authorize_and_transfer` | | | | | ✓ |
-
-## Project Structure
-
-```
-.
-├── contracts/yieldtoone/src/
-│   ├── lib.rs               # Module declarations and re-exports
-│   ├── contract.rs          # Main contract (YieldToken) and public API
-│   ├── continuous_index.rs  # e^x approximation and index math
-│   ├── yield_state.rs       # Yield accrual, principal tracking, rate management
-│   ├── storage_types.rs     # Storage keys, structs, TTL constants
-│   ├── sac_token.rs         # SAC token address storage
-│   ├── roles.rs             # Role management (minter, yield recipient manager, yield recipient, forced transfer manager)
-│   ├── admin.rs             # Admin management
-│   ├── events.rs            # Event definitions
-│   └── test/                # Tests (103 tests)
-├── soroban-sctoken-fireblocks-sdk/
-│   ├── src/
-│   │   ├── client.ts          # SorobanFireblocksClient (base — invoke, deploy, trustline)
-│   │   ├── sctoken-client.ts  # SctokenFireblocksClient (mint, burn, setRate, setMinter, deploy)
-│   │   ├── soroban-tx-builder.ts  # Transaction builders (Soroban + classic)
-│   │   ├── fireblocks-signer.ts   # Fireblocks RAW Ed25519 signing
-│   │   ├── scval-helpers.ts   # XDR serialization helpers
-│   │   ├── config.ts          # Config loaders (issuer / minter)
-│   │   ├── errors.ts          # Typed error classes
-│   │   ├── types.ts           # Base SDK types
-│   │   └── sctoken-types.ts   # Contract-specific param/result types
-│   ├── scripts/               # CLI scripts (deploy, mint, burn, query, trustline)
-│   ├── tests/                 # Unit and integration tests
-│   └── package.json
-├── Cargo.toml
-└── README.md
-```
-
-## Building
-
-### Contract
-
-```bash
-stellar contract build
-```
-
-### SDK
-
-```bash
-cd soroban-sctoken-fireblocks-sdk
-npm install
-npm run build
-```
-
-## Testing
-
-### Contract
-
-```bash
-cargo test
-```
-
-### SDK
-
-```bash
-cd soroban-sctoken-fireblocks-sdk
-npm test                # unit tests
-npm run test:integration # integration tests (requires Fireblocks credentials + testnet)
 ```
 
 ---
@@ -265,6 +187,4 @@ The `soroban-sctoken-fireblocks-sdk/` directory contains a TypeScript SDK that w
 
 - [ ] Implement industry standard math library (replace Taylor series with Pade approximation to match EVM precision)
 - [ ] Double check rounding math (verify rounding directions are consistent and protocol-favorable across all operations)
-- [ ] Investigate contract upgrade strategy
-- [ ] Update SDK `deployFull` constructor args to match 6-param contract constructor
 - [ ] Add remaining SDK methods (freeze, unfreeze, clawback, authorize_and_transfer, claim_yield, view functions)

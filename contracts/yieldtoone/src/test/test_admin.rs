@@ -145,13 +145,13 @@ fn test_admin_can_authorize_and_transfer() {
 }
 
 #[test]
-#[should_panic(expected = "unauthorized: caller is neither admin nor role holder")]
 fn test_unauthorized_caller_rejected() {
     let s = setup();
     let random = Address::generate(&s.env);
 
-    // Random address tries to mint — should panic
-    s.contract.mint(&random, &s.yield_recipient, &1_000_0000000);
+    // Random address tries to mint — should return UnauthorizedError
+    let result = s.contract.try_mint(&random, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 // =============================================================================
