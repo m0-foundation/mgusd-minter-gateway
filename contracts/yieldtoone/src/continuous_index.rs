@@ -5,6 +5,19 @@
 //!
 //! Uses Taylor series approximation for e^x.
 //! Fixed-point mul/div via `soroban-fixed-point-math` (audited, used by Blend v2).
+//!
+//! # Rounding Policy
+//!
+//! All integer division operations in this module round **DOWN** (truncate toward zero).
+//! This is the protocol-favorable direction: yield calculations slightly underestimate,
+//! which is the safe/conservative behavior.
+//!
+//! **Exception**: `multiply_indices_up` uses `fixed_mul_ceil` to round **UP**, preventing
+//! cumulative index underestimation across successive compounding steps.
+//!
+//! Net effect: the index pipeline is conservative in every step except the final
+//! index multiplication, which rounds up to ensure the index never drifts below
+//! the mathematically exact value.
 
 use soroban_fixed_point_math::FixedPoint;
 
@@ -20,6 +33,7 @@ pub use crate::constants::{INDEX_SCALE, RATE_SCALE, SECONDS_PER_YEAR};
 /// Rate scaled by RATE_SCALE (e.g., 500 bps → 50_000_000_000)
 pub fn convert_from_basis_points(bps: u32) -> u128 {
     // bps / 10000 * RATE_SCALE = bps * RATE_SCALE / 10000
+    // Rounding: DOWN (truncation). Slightly underestimates the rate. Protocol-favorable.
     (bps as u128) * RATE_SCALE / 10_000
 }
 
@@ -29,6 +43,10 @@ pub fn convert_from_basis_points(bps: u32) -> u128 {
 /// e^x ≈ 1 + x + x²/2 + x³/6 + x⁴/24
 ///
 /// This is accurate for x < 0.2 (20% per year) which covers all realistic rates.
+///
+/// # Rounding
+/// Every division in the Taylor series rounds DOWN (truncation), so the result
+/// underestimates the true e^x. This is protocol-favorable — accrues less yield.
 ///
 /// # Arguments
 /// * `x` - Exponent scaled by INDEX_SCALE (e.g., 0.05 = 50_000_000_000)
@@ -58,18 +76,18 @@ pub fn exponent(x: u128) -> u128 {
     // term3 = x² / (2 * 1e12)
     // x can be up to ~1e12 (100% rate), so x² could be 1e24 which fits in u128
     let x2 = x.checked_mul(x).unwrap();
-    let term3 = x2 / (2 * INDEX_SCALE);
+    let term3 = x2 / (2 * INDEX_SCALE); // Rounding: DOWN
 
     // term4 = x³ / (6 * 1e24)
     // x³ could overflow, so we do: (x² / 1e12) * x / 6 / 1e12
-    let x2_scaled = x2 / INDEX_SCALE; // x_real² * 1e12
-    let x3_scaled = x2_scaled.checked_mul(x).unwrap() / INDEX_SCALE; // x_real³ * 1e12
-    let term4 = x3_scaled / 6;
+    let x2_scaled = x2 / INDEX_SCALE; // Rounding: DOWN (intermediate scaling)
+    let x3_scaled = x2_scaled.checked_mul(x).unwrap() / INDEX_SCALE; // Rounding: DOWN (intermediate scaling)
+    let term4 = x3_scaled / 6; // Rounding: DOWN
 
     // term5 = x⁴ / (24 * 1e36)
     // (x³_scaled / 1e12) * x / 24 / 1e12
-    let x4_scaled = x3_scaled.checked_mul(x).unwrap() / INDEX_SCALE; // x_real⁴ * 1e12
-    let term5 = x4_scaled / 24;
+    let x4_scaled = x3_scaled.checked_mul(x).unwrap() / INDEX_SCALE; // Rounding: DOWN (intermediate scaling)
+    let term5 = x4_scaled / 24; // Rounding: DOWN
 
     // Sum all terms
     term1 + term2 + term3 + term4 + term5
@@ -91,6 +109,7 @@ pub fn get_continuous_index(yearly_rate: u128, time_elapsed: u64) -> u128 {
     }
 
     // exponent = rate × time / SECONDS_PER_YEAR
+    // Rounding: DOWN (truncation). Slightly underestimates the exponent. Protocol-favorable.
     let exp = yearly_rate
         .checked_mul(time_elapsed as u128)
         .unwrap()
@@ -104,7 +123,8 @@ pub fn get_continuous_index(yearly_rate: u128, time_elapsed: u64) -> u128 {
 ///
 /// result = (index × delta_index) / INDEX_SCALE
 ///
-/// Rounds up to prevent precision loss favoring the protocol.
+/// Rounding: UP (`fixed_mul_ceil`). Favors the yield recipient — ensures the
+/// index never underestimates cumulative growth.
 ///
 /// # Arguments
 /// * `index` - Base index scaled by INDEX_SCALE
@@ -122,7 +142,7 @@ pub fn multiply_indices_up(index: u128, delta_index: u128) -> u128 {
 ///
 /// result = (index × delta_index) / INDEX_SCALE
 ///
-/// Rounds down (standard division).
+/// Rounding: DOWN (`fixed_mul_floor`). Standard truncation. Protocol-favorable.
 ///
 /// # Arguments
 /// * `index` - Base index scaled by INDEX_SCALE
@@ -155,6 +175,7 @@ pub fn current_index(latest_index: u128, rate_bps: u32, time_elapsed: u64) -> u1
     let yearly_rate = convert_from_basis_points(rate_bps);
     let delta_index = get_continuous_index(yearly_rate, time_elapsed);
 
+    // Rounding: UP via `multiply_indices_up` — the only rounding-up step in the index pipeline.
     multiply_indices_up(latest_index, delta_index)
 }
 

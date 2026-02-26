@@ -9,6 +9,12 @@
 //!
 //! Yield accrues on `total_principal` only, not on `total_supply`.
 //! This prevents compounding of claimed yield.
+//!
+//! # Rounding Policy
+//!
+//! Yield computation (`principal * index_delta / INDEX_SCALE`) rounds **DOWN** (truncation).
+//! This is protocol-favorable — pays slightly less yield than mathematically exact.
+//! See `continuous_index` module for the full rounding policy of the index pipeline.
 
 use soroban_sdk::Env;
 
@@ -136,6 +142,7 @@ pub fn update_index(env: &Env) {
             let index_delta = new_index - state.latest_index;
 
             // yield = principal × index_delta / INDEX_SCALE
+            // Rounding: DOWN (truncation). Protocol-favorable — pays slightly less yield.
             let yield_amount = (state.total_principal as u128)
                 .checked_mul(index_delta)
                 .unwrap()
@@ -175,6 +182,7 @@ pub fn get_accrued_yield(env: &Env) -> i128 {
 
         if new_index > state.latest_index {
             let index_delta = new_index - state.latest_index;
+            // Rounding: DOWN (truncation). Protocol-favorable — same as update_index.
             let pending_yield = (state.total_principal as u128)
                 .checked_mul(index_delta)
                 .unwrap()
