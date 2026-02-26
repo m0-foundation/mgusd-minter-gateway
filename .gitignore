@@ -1,0 +1,16 @@
+# Rust build artifacts
+target/
+
+# Node.js
+node_modules/
+dist/
+
+# Secrets
+.env
+*.key
+
+# Compiled contracts
+*.wasm
+
+# macOS
+.DS_Store

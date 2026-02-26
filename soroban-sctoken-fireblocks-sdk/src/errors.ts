@@ -1,0 +1,30 @@
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigError";
+  }
+}
+
+export class SimulationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SimulationError";
+  }
+}
+
+export class FireblocksSigningError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FireblocksSigningError";
+  }
+}
+
+export class SubmissionError extends Error {
+  constructor(
+    message: string,
+    public readonly txHash?: string,
+  ) {
+    super(message);
+    this.name = "SubmissionError";
+  }
+}

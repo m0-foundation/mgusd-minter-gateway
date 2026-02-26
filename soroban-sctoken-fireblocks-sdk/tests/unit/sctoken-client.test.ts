@@ -1,0 +1,345 @@
+import { Address, Keypair, Networks, rpc, xdr } from "@stellar/stellar-sdk";
+import { SctokenFireblocksClient } from "../../src/sctoken-client";
+import { SorobanFireblocksConfig } from "../../src/types";
+
+// Mock all dependencies
+jest.mock("../../src/soroban-tx-builder");
+jest.mock("../../src/fireblocks-signer");
+
+import * as txBuilder from "../../src/soroban-tx-builder";
+import * as fbSigner from "../../src/fireblocks-signer";
+
+const mockedTxBuilder = txBuilder as jest.Mocked<typeof txBuilder>;
+const mockedFbSigner = fbSigner as jest.Mocked<typeof fbSigner>;
+
+const CONTRACT_ID = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
+
+function makeConfig(): SorobanFireblocksConfig {
+  return {
+    sorobanRpcUrl: "https://soroban-testnet.stellar.org",
+    networkPassphrase: Networks.TESTNET,
+    fireblocksApiKey: "key",
+    fireblocksSecretKey: "secret",
+    fireblocksVaultAccountId: "0",
+    fireblocksAssetId: "XLM_TEST",
+    sourcePublicKey: Keypair.random().publicKey(),
+  };
+}
+
+function setupMocks(returnValue?: xdr.ScVal): void {
+  const fakeHash = Buffer.from("a".repeat(64), "hex");
+  const mockTx = {
+    hash: jest.fn().mockReturnValue(fakeHash),
+    source: "GABC",
+    operations: [],
+    signatures: [],
+    addSignature: jest.fn(),
+  };
+
+  mockedTxBuilder.createRpcServer.mockReturnValue({} as rpc.Server);
+  mockedFbSigner.createFireblocksClient.mockReturnValue({} as never);
+
+  mockedTxBuilder.buildInvokeTransaction.mockResolvedValue(mockTx as never);
+  mockedTxBuilder.simulateAndPrepare.mockResolvedValue(mockTx as never);
+  mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+  mockedTxBuilder.submitAndPoll.mockResolvedValue({
+    status: rpc.Api.GetTransactionStatus.SUCCESS,
+    ledger: 100,
+    returnValue,
+  } as unknown as rpc.Api.GetSuccessfulTransactionResponse);
+
+  mockedFbSigner.signHash.mockResolvedValue({
+    signatureHex: "b".repeat(128),
+    fireblocksTransactionId: "fb-tx-001",
+  });
+}
+
+describe("SctokenFireblocksClient", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe("mint", () => {
+    it("calls invokeContract with method 'mint' and correct args", async () => {
+      setupMocks();
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+      const mintTo = Keypair.random().publicKey();
+
+      const result = await client.mint({
+        contractId: CONTRACT_ID,
+        to: mintTo,
+        amount: 1_000_000_000n,
+      });
+
+      expect(result.status).toBe("SUCCESS");
+      expect(result.ledger).toBe(100);
+
+      // Verify buildInvokeTransaction was called with correct method and args
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      const params = buildCall[2];
+      expect(params.method).toBe("mint");
+      expect(params.args).toHaveLength(2);
+
+      // Verify first arg is an Address ScVal
+      const addrScVal = params.args![0];
+      const decodedAddr = Address.fromScVal(addrScVal).toString();
+      expect(decodedAddr).toBe(mintTo);
+
+      // Verify second arg is an i128 ScVal
+      const amountScVal = params.args![1];
+      expect(amountScVal.switch().name).toBe("scvI128");
+    });
+  });
+
+  describe("burn", () => {
+    it("calls invokeContract with method 'burn' and correct args", async () => {
+      setupMocks();
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      const result = await client.burn({
+        contractId: CONTRACT_ID,
+        from: config.sourcePublicKey,
+        amount: 500_000_000n,
+      });
+
+      expect(result.status).toBe("SUCCESS");
+
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      const params = buildCall[2];
+      expect(params.method).toBe("burn");
+      expect(params.args).toHaveLength(2);
+
+      // Verify first arg is the source public key
+      const addrScVal = params.args![0];
+      const decodedAddr = Address.fromScVal(addrScVal).toString();
+      expect(decodedAddr).toBe(config.sourcePublicKey);
+
+      // Verify second arg is an i128 ScVal
+      const amountScVal = params.args![1];
+      expect(amountScVal.switch().name).toBe("scvI128");
+    });
+  });
+
+  describe("queryAdmin", () => {
+    it("decodes returned Address from returnValue", async () => {
+      const adminKp = Keypair.random();
+      const adminScVal = new Address(adminKp.publicKey()).toScVal();
+      setupMocks(adminScVal);
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      const result = await client.queryAdmin({ contractId: CONTRACT_ID });
+
+      expect(result.address).toBe(adminKp.publicKey());
+      expect(result.txHash).toBeDefined();
+      expect(result.ledger).toBe(100);
+
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      const params = buildCall[2];
+      expect(params.method).toBe("admin");
+      expect(params.args).toBeUndefined();
+    });
+
+    it("throws when returnValue is undefined", async () => {
+      setupMocks(undefined);
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      await expect(client.queryAdmin({ contractId: CONTRACT_ID })).rejects.toThrow(
+        "queryAdmin returned no value",
+      );
+    });
+  });
+
+  describe("querySacToken", () => {
+    it("decodes returned Address from returnValue", async () => {
+      const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
+      const sacScVal = new Address(sacContractId).toScVal();
+      setupMocks(sacScVal);
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      const result = await client.querySacToken({ contractId: CONTRACT_ID });
+
+      expect(result.address).toBe(sacContractId);
+      expect(result.txHash).toBeDefined();
+      expect(result.ledger).toBe(100);
+
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      const params = buildCall[2];
+      expect(params.method).toBe("sac_token");
+      expect(params.args).toBeUndefined();
+    });
+
+    it("throws when returnValue is undefined", async () => {
+      setupMocks(undefined);
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      await expect(client.querySacToken({ contractId: CONTRACT_ID })).rejects.toThrow(
+        "querySacToken returned no value",
+      );
+    });
+  });
+
+  describe("deployFull", () => {
+    it("orchestrates the full 5-step deploy pipeline", async () => {
+      const fakeHash = Buffer.from("a".repeat(64), "hex");
+      const mockTx = {
+        hash: jest.fn().mockReturnValue(fakeHash),
+        source: "GABC",
+        operations: [],
+        signatures: [],
+        addSignature: jest.fn(),
+      };
+
+      const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
+      const sacScVal = new Address(sacContractId).toScVal();
+      const wasmHashBytes = Buffer.alloc(32, 0xab);
+      const wasmReturnValue = xdr.ScVal.scvBytes(wasmHashBytes);
+      const wrapperContractId = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+      const wrapperScVal = new Address(wrapperContractId).toScVal();
+
+      mockedTxBuilder.createRpcServer.mockReturnValue({} as rpc.Server);
+      mockedFbSigner.createFireblocksClient.mockReturnValue({} as never);
+
+      // Step 1: configureIssuer (classic — no simulate)
+      mockedTxBuilder.buildConfigureIssuerTransaction.mockResolvedValue(mockTx as never);
+      // Step 2: deploySac (soroban — simulate)
+      mockedTxBuilder.buildDeploySacTransaction.mockResolvedValue(mockTx as never);
+      // Step 3: uploadWasm (soroban — simulate)
+      mockedTxBuilder.buildUploadWasmTransaction.mockResolvedValue(mockTx as never);
+      // Step 4: deployContract (soroban — simulate)
+      mockedTxBuilder.buildDeployContractTransaction.mockResolvedValue(mockTx as never);
+      // Step 5: invokeContract → set_admin (soroban — simulate)
+      mockedTxBuilder.buildInvokeTransaction.mockResolvedValue(mockTx as never);
+
+      mockedTxBuilder.simulateAndPrepare.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+
+      // Submit returns different results for each step
+      mockedTxBuilder.submitAndPoll
+        .mockResolvedValueOnce({
+          // Step 1: configureIssuer SUCCESS
+          status: rpc.Api.GetTransactionStatus.SUCCESS,
+          ledger: 10,
+        } as unknown as rpc.Api.GetSuccessfulTransactionResponse)
+        .mockResolvedValueOnce({
+          // Step 2: deploySac SUCCESS with SAC contract ID
+          status: rpc.Api.GetTransactionStatus.SUCCESS,
+          ledger: 11,
+          returnValue: sacScVal,
+        } as unknown as rpc.Api.GetSuccessfulTransactionResponse)
+        .mockResolvedValueOnce({
+          // Step 3: uploadWasm SUCCESS with wasm hash
+          status: rpc.Api.GetTransactionStatus.SUCCESS,
+          ledger: 12,
+          returnValue: wasmReturnValue,
+        } as unknown as rpc.Api.GetSuccessfulTransactionResponse)
+        .mockResolvedValueOnce({
+          // Step 4: deployContract SUCCESS with contract ID
+          status: rpc.Api.GetTransactionStatus.SUCCESS,
+          ledger: 13,
+          returnValue: wrapperScVal,
+        } as unknown as rpc.Api.GetSuccessfulTransactionResponse)
+        .mockResolvedValueOnce({
+          // Step 5: set_admin SUCCESS
+          status: rpc.Api.GetTransactionStatus.SUCCESS,
+          ledger: 14,
+          returnValue: undefined,
+        } as unknown as rpc.Api.GetSuccessfulTransactionResponse);
+
+      mockedFbSigner.signHash.mockResolvedValue({
+        signatureHex: "b".repeat(128),
+        fireblocksTransactionId: "fb-tx-100",
+      });
+
+      // Suppress console.log during test
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      const customIssuer = Keypair.random().publicKey();
+      const result = await client.deployFull({
+        assetCode: "TMGUSD",
+        assetIssuer: customIssuer,
+        wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+        admin: config.sourcePublicKey,
+      });
+
+      expect(result.sacContractId).toBe(sacContractId);
+      expect(result.wasmHash).toBe(wasmHashBytes.toString("hex"));
+      expect(result.wrapperContractId).toBe(wrapperContractId);
+
+      // Verify all 5 steps were called
+      expect(mockedTxBuilder.buildConfigureIssuerTransaction).toHaveBeenCalledTimes(1);
+      expect(mockedTxBuilder.buildDeploySacTransaction).toHaveBeenCalledTimes(1);
+      expect(mockedTxBuilder.buildUploadWasmTransaction).toHaveBeenCalledTimes(1);
+      expect(mockedTxBuilder.buildDeployContractTransaction).toHaveBeenCalledTimes(1);
+      expect(mockedTxBuilder.buildInvokeTransaction).toHaveBeenCalledTimes(1);
+
+      // Verify deploySac received the explicit issuer (not config.sourcePublicKey)
+      const deploySacCall = mockedTxBuilder.buildDeploySacTransaction.mock.calls[0];
+      expect(deploySacCall[2]).toEqual({
+        assetCode: "TMGUSD",
+        assetIssuer: customIssuer,
+      });
+
+      // 5 total sign + submit calls
+      expect(mockedFbSigner.signHash).toHaveBeenCalledTimes(5);
+      expect(mockedTxBuilder.submitAndPoll).toHaveBeenCalledTimes(5);
+
+      consoleSpy.mockRestore();
+    });
+
+    it("throws when configureIssuer fails", async () => {
+      const fakeHash = Buffer.from("a".repeat(64), "hex");
+      const mockTx = {
+        hash: jest.fn().mockReturnValue(fakeHash),
+        source: "GABC",
+        operations: [],
+        signatures: [],
+        addSignature: jest.fn(),
+      };
+
+      mockedTxBuilder.createRpcServer.mockReturnValue({} as rpc.Server);
+      mockedFbSigner.createFireblocksClient.mockReturnValue({} as never);
+      mockedTxBuilder.buildConfigureIssuerTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+      mockedTxBuilder.submitAndPoll.mockResolvedValue({
+        status: rpc.Api.GetTransactionStatus.FAILED,
+        ledger: 10,
+      } as unknown as rpc.Api.GetFailedTransactionResponse);
+
+      mockedFbSigner.signHash.mockResolvedValue({
+        signatureHex: "b".repeat(128),
+        fireblocksTransactionId: "fb-tx-101",
+      });
+
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      await expect(
+        client.deployFull({
+          assetCode: "TMGUSD",
+          assetIssuer: config.sourcePublicKey,
+          wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+          admin: config.sourcePublicKey,
+        }),
+      ).rejects.toThrow("configureIssuer failed");
+
+      consoleSpy.mockRestore();
+    });
+  });
+});
