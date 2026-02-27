@@ -28,15 +28,17 @@ async function main(): Promise<void> {
 
   const amount = BigInt(amountStr);
 
+  const caller = config.sourcePublicKey;
+
   console.log("=== Mint Parameters ===");
   console.log(`  Contract: ${contractId}`);
+  console.log(`  Caller:   ${caller}`);
   console.log(`  To:       ${to}`);
   console.log(`  Amount:   ${amount}`);
-  console.log(`  Admin:    ${config.sourcePublicKey}`);
   console.log(`  RPC:      ${config.sorobanRpcUrl}`);
   console.log();
 
-  const result = await client.mint({ contractId, to, amount });
+  const result = await client.mint({ contractId, caller, to, amount });
 
   console.log(`Transaction ${result.status}:`);
   console.log(`  Hash:   ${result.txHash}`);
