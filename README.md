@@ -1,5 +1,7 @@
 # Stellar Minter Gateway
 
+A Soroban smart contract system for issuing yield-bearing tokens on the Stellar network. The contract acts as a SAC (Stellar Asset Contract) admin, enabling controlled minting, burning, yield accrual via continuous compounding, and compliance enforcement through an on-chain allowlist. It is paired with a TypeScript SDK that handles transaction signing through Fireblocks MPC infrastructure.
+
 Monorepo for the **SAC Admin Yield Token** contract and the **Fireblocks signing SDK** that invokes it.
 
 | Directory | Description |
