@@ -69,6 +69,7 @@ describe("SctokenFireblocksClient", () => {
 
       const result = await client.mint({
         contractId: CONTRACT_ID,
+        caller: config.sourcePublicKey,
         to: mintTo,
         amount: 1_000_000_000n,
       });
@@ -80,15 +81,20 @@ describe("SctokenFireblocksClient", () => {
       const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
       const params = buildCall[2];
       expect(params.method).toBe("mint");
-      expect(params.args).toHaveLength(2);
+      expect(params.args).toHaveLength(3);
 
-      // Verify first arg is an Address ScVal
-      const addrScVal = params.args![0];
+      // Verify first arg is the caller Address ScVal
+      const callerScVal = params.args![0];
+      const decodedCaller = Address.fromScVal(callerScVal).toString();
+      expect(decodedCaller).toBe(config.sourcePublicKey);
+
+      // Verify second arg is the destination Address ScVal
+      const addrScVal = params.args![1];
       const decodedAddr = Address.fromScVal(addrScVal).toString();
       expect(decodedAddr).toBe(mintTo);
 
-      // Verify second arg is an i128 ScVal
-      const amountScVal = params.args![1];
+      // Verify third arg is an i128 ScVal
+      const amountScVal = params.args![2];
       expect(amountScVal.switch().name).toBe("scvI128");
     });
   });
@@ -102,6 +108,7 @@ describe("SctokenFireblocksClient", () => {
 
       const result = await client.burn({
         contractId: CONTRACT_ID,
+        caller: config.sourcePublicKey,
         from: config.sourcePublicKey,
         amount: 500_000_000n,
       });
@@ -111,15 +118,20 @@ describe("SctokenFireblocksClient", () => {
       const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
       const params = buildCall[2];
       expect(params.method).toBe("burn");
-      expect(params.args).toHaveLength(2);
+      expect(params.args).toHaveLength(3);
 
-      // Verify first arg is the source public key
-      const addrScVal = params.args![0];
+      // Verify first arg is the caller Address ScVal
+      const callerScVal = params.args![0];
+      const decodedCaller = Address.fromScVal(callerScVal).toString();
+      expect(decodedCaller).toBe(config.sourcePublicKey);
+
+      // Verify second arg is the from Address ScVal
+      const addrScVal = params.args![1];
       const decodedAddr = Address.fromScVal(addrScVal).toString();
       expect(decodedAddr).toBe(config.sourcePublicKey);
 
-      // Verify second arg is an i128 ScVal
-      const amountScVal = params.args![1];
+      // Verify third arg is an i128 ScVal
+      const amountScVal = params.args![2];
       expect(amountScVal.switch().name).toBe("scvI128");
     });
   });
@@ -274,6 +286,10 @@ describe("SctokenFireblocksClient", () => {
         assetIssuer: customIssuer,
         wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
         admin: config.sourcePublicKey,
+        minter: config.sourcePublicKey,
+        yieldRecipientManager: config.sourcePublicKey,
+        yieldRecipient: config.sourcePublicKey,
+        forcedTransferManager: config.sourcePublicKey,
       });
 
       expect(result.sacContractId).toBe(sacContractId);
@@ -336,6 +352,10 @@ describe("SctokenFireblocksClient", () => {
           assetIssuer: config.sourcePublicKey,
           wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
           admin: config.sourcePublicKey,
+          minter: config.sourcePublicKey,
+          yieldRecipientManager: config.sourcePublicKey,
+          yieldRecipient: config.sourcePublicKey,
+          forcedTransferManager: config.sourcePublicKey,
         }),
       ).rejects.toThrow("configureIssuer failed");
 

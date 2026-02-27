@@ -2,15 +2,12 @@
 
 Soroban SCToken contract deployment and invocation SDK with Fireblocks raw signing (Ed25519).
 
-Extends the generic `SorobanFireblocksClient` with typed convenience methods for the `soroban-sctoken-example-contract` — specifically its `mint(to, amount)`, `burn(from, amount)`, `admin()`, and `sac_token()` methods, plus a full Fireblocks-signed deployment pipeline.
+Extends the generic `SorobanFireblocksClient` with typed convenience methods for the `contracts/yieldtoone` (YieldToken) contract — specifically its `mint(caller, to, amount)`, `burn(caller, from, amount)`, `set_rate(caller, rateBps)`, `set_minter(newMinter)`, `admin()`, and `sac_token()` methods, plus a full Fireblocks-signed deployment pipeline.
 
 ## Project Structure
 
 ```
 soroban-sctoken-fireblocks-sdk/
-├── contract/              # SCToken Soroban contract (Rust)
-│   ├── Cargo.toml
-│   └── src/
 ├── src/                   # TypeScript SDK
 │   ├── client.ts          # SorobanFireblocksClient (base)
 │   ├── sctoken-client.ts  # SctokenFireblocksClient (mint/burn/deploy)
@@ -28,6 +25,8 @@ soroban-sctoken-fireblocks-sdk/
 │   └── integration/
 └── package.json
 ```
+
+> The Soroban contract (YieldToken) lives at `contracts/yieldtoone/` in the repo root and is built via the root Cargo workspace.
 
 ## Prerequisites
 
@@ -99,13 +98,13 @@ Runs the full 5-step Fireblocks-signed deployment pipeline. The **issuer** Fireb
 | 1 | **Configure issuer** — sets `AUTH_REVOCABLE` + `AUTH_CLAWBACK_ENABLED` flags on the issuer account | Classic `setOptions` |
 | 2 | **Deploy SAC** — creates the Stellar Asset Contract for the asset | Soroban `createStellarAssetContract` |
 | 3 | **Upload WASM** — uploads the compiled contract bytecode to the ledger | Soroban `uploadContractWasm` |
-| 4 | **Deploy wrapper** — instantiates the wrapper contract with `(sac, admin)` constructor args | Soroban `createCustomContract` |
+| 4 | **Deploy wrapper** — instantiates the wrapper contract with 6 constructor args: `(sac_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager)` | Soroban `createCustomContract` |
 | 5 | **Transfer SAC admin** — calls `set_admin` on the SAC to hand control to the wrapper | Soroban `invokeContract` |
 
 Build the contract WASM first (requires Rust + Soroban CLI):
 
 ```bash
-cd contract && cargo build --release --target wasm32v1-none && cd ..
+stellar contract build   # from repo root — builds contracts/yieldtoone via workspace
 ```
 
 Uses `.env` variables: `ASSET_CODE`, `WASM_PATH`, `MINTER_PUBLIC_KEY`
@@ -118,13 +117,13 @@ Uses `.env` variables: `TRUSTLINE_ASSET_CODE`, `ISSUER_PUBLIC_KEY`
 
 ### `npm run mint`
 
-Calls `mint(to, amount)` on the wrapper contract. Signed by the **minter** (who is the contract admin — `admin.require_auth()`).
+Calls `mint(caller, to, amount)` on the wrapper contract. `caller` must be the minter or admin.
 
 Uses `.env` variables: `CONTRACT_ID`, `MINT_TO`, `MINT_AMOUNT`
 
 ### `npm run burn`
 
-Calls `burn(from, amount)` on the wrapper contract. `from` is the **minter's** key (`MINTER_PUBLIC_KEY`), since `burn` requires `from.require_auth()`.
+Calls `burn(caller, from, amount)` on the wrapper contract. `caller` must be the minter or admin.
 
 Uses `.env` variables: `CONTRACT_ID`, `BURN_AMOUNT`
 
@@ -149,10 +148,10 @@ Runs both unit and integration tests.
 ## Typical End-to-End Flow
 
 ```bash
-# 1. Build the contract WASM
-cd contract && cargo build --release --target wasm32v1-none && cd ..
+# 1. Build the contract WASM (from repo root)
+stellar contract build
 
-# 2. Deploy (signed by issuer, admin = minter)
+# 2. Deploy (signed by issuer, sets all 6 roles)
 npm run deploy
 
 # 3. Set up trustline on the minter's account
@@ -177,7 +176,7 @@ import {
   loadMinterConfigFromEnv,
 } from "soroban-sctoken-fireblocks-sdk";
 
-// Deploy pipeline (issuer signs, minter becomes admin)
+// Deploy pipeline (issuer signs, sets all 6 roles)
 const issuerConfig = loadIssuerConfigFromEnv();
 const issuerClient = new SctokenFireblocksClient(issuerConfig);
 const minterPublicKey = process.env.MINTER_PUBLIC_KEY!;
@@ -185,26 +184,32 @@ const minterPublicKey = process.env.MINTER_PUBLIC_KEY!;
 const deploy = await issuerClient.deployFull({
   assetCode: "TMGUSD",
   assetIssuer: issuerConfig.sourcePublicKey,
-  wasm: fs.readFileSync("./contract/target/.../contract.wasm"),
+  wasm: fs.readFileSync("./target/wasm32v1-none/release/yieldtoone.wasm"),
   admin: minterPublicKey,
+  minter: minterPublicKey,
+  yieldRecipientManager: minterPublicKey,
+  yieldRecipient: minterPublicKey,
+  forcedTransferManager: minterPublicKey,
 });
 console.log(deploy.sacContractId);      // C...
 console.log(deploy.wasmHash);           // hex
 console.log(deploy.wrapperContractId);  // C...
 
-// Mint (minter is the admin)
+// Mint (caller must be minter or admin)
 const minterConfig = loadMinterConfigFromEnv();
 const minterClient = new SctokenFireblocksClient(minterConfig);
 
 const mintResult = await minterClient.mint({
   contractId: "C...",
+  caller: minterConfig.sourcePublicKey,
   to: minterConfig.sourcePublicKey,
   amount: 1_000_000_000n,
 });
 
-// Burn (minter burns from itself)
+// Burn (caller must be minter or admin)
 const burnResult = await minterClient.burn({
   contractId: "C...",
+  caller: minterConfig.sourcePublicKey,
   from: minterConfig.sourcePublicKey,
   amount: 500_000_000n,
 });
@@ -252,13 +257,13 @@ Every operation uses one of two signing pipelines depending on the transaction t
 
 #### 2. Mint (`npm run mint`)
 
-`mint()` → `invokeContract("mint", [to, amount])` → Soroban pipeline
+`mint()` → `invokeContract("mint", [caller, to, amount])` → Soroban pipeline
 
 **Env:** Core config + `CONTRACT_ID` + `MINT_TO` + `MINT_AMOUNT`
 
 #### 3. Burn (`npm run burn`)
 
-`burn()` → `invokeContract("burn", [from, amount])` → Soroban pipeline
+`burn()` → `invokeContract("burn", [caller, from, amount])` → Soroban pipeline
 
 **Env:** Core config + `CONTRACT_ID` + `BURN_AMOUNT`
 

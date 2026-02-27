@@ -11,13 +11,13 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 
-import { SctokenFireblocksClient, loadConfigFromEnv } from "../../src";
+import { SctokenFireblocksClient, loadMinterConfigFromEnv } from "../../src";
 
-describe.skip("Integration: SCToken contract", () => {
+describe("Integration: SCToken contract", () => {
   let client: SctokenFireblocksClient;
 
   beforeAll(() => {
-    const config = loadConfigFromEnv();
+    const config = loadMinterConfigFromEnv();
     client = new SctokenFireblocksClient(config);
   });
 
@@ -58,8 +58,11 @@ describe.skip("Integration: SCToken contract", () => {
       throw new Error("CONTRACT_ID, MINT_TO, MINT_AMOUNT env vars required");
     }
 
+    const config = loadMinterConfigFromEnv();
+
     const result = await client.mint({
       contractId,
+      caller: config.sourcePublicKey,
       to: mintTo,
       amount: BigInt(mintAmount),
     });
@@ -78,10 +81,11 @@ describe.skip("Integration: SCToken contract", () => {
       throw new Error("CONTRACT_ID, BURN_AMOUNT env vars required");
     }
 
-    const config = loadConfigFromEnv();
+    const config = loadMinterConfigFromEnv();
 
     const result = await client.burn({
       contractId,
+      caller: config.sourcePublicKey,
       from: config.sourcePublicKey,
       amount: BigInt(burnAmount),
     });

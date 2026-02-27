@@ -27,16 +27,18 @@ async function main(): Promise<void> {
   if (!amountStr) throw new Error("Missing BURN_AMOUNT in .env");
 
   const amount = BigInt(amountStr);
+  const caller = config.sourcePublicKey;
   const from = config.sourcePublicKey;
 
   console.log("=== Burn Parameters ===");
   console.log(`  Contract: ${contractId}`);
+  console.log(`  Caller:   ${caller}`);
   console.log(`  From:     ${from}`);
   console.log(`  Amount:   ${amount}`);
   console.log(`  RPC:      ${config.sorobanRpcUrl}`);
   console.log();
 
-  const result = await client.burn({ contractId, from, amount });
+  const result = await client.burn({ contractId, caller, from, amount });
 
   console.log(`Transaction ${result.status}:`);
   console.log(`  Hash:   ${result.txHash}`);
