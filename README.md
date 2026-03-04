@@ -9,6 +9,49 @@ Monorepo for the **SAC Admin Yield Token** contract and the **Fireblocks signing
 | `contracts/yieldtoone/` | Soroban yield contract — SAC admin that mints, burns, tracks yield, and enforces an allowlist |
 | `soroban-sctoken-fireblocks-sdk/` | TypeScript SDK for invoking the contract via Fireblocks raw signing (Ed25519) |
 
+## Prerequisites
+
+- [Rust](https://rustup.rs/) (stable toolchain)
+- [Soroban CLI / Stellar CLI](https://soroban.stellar.org/docs/getting-started/setup) — includes the `stellar` command and the `wasm32` target
+- [Node.js](https://nodejs.org/) >= 20
+- A [Fireblocks](https://www.fireblocks.com/) account (for the SDK — not needed for contract-only development)
+
+### Install Rust + Soroban target
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup target add wasm32v1-none
+cargo install stellar-cli --locked
+```
+
+### Install SDK dependencies
+
+```bash
+cd soroban-sctoken-fireblocks-sdk
+npm install
+```
+
+### Configure environment
+
+```bash
+cd soroban-sctoken-fireblocks-sdk
+cp .env.example .env
+# Edit .env with your Fireblocks credentials, vault IDs, and public keys
+```
+
+Key variables in `.env`:
+
+| Variable | Description |
+|----------|-------------|
+| `FIREBLOCKS_API_KEY` | Your Fireblocks API key |
+| `FIREBLOCKS_SECRET_PATH` | Path to your Fireblocks private key file |
+| `FIREBLOCKS_ASSET_ID` | `XLM_TEST` (testnet) or `XLM` (mainnet) |
+| `ISSUER_PUBLIC_KEY` | Stellar public key of the issuer account |
+| `MINTER_PUBLIC_KEY` | Stellar public key of the minter account |
+| `CONTRACT_ID` | Deployed contract ID (after deployment) |
+
+---
+
 ## Building
 
 ### Contract
@@ -62,7 +105,7 @@ The contract never holds user funds. Users hold tokens directly in their account
 
 ## Token Flows
 
-![Token Flows](images/brige-soroban-stellar-mgram.png)
+![Architecture](images/architecture.png)
 
 ### Mint Flow
 
