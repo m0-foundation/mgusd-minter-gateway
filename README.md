@@ -13,7 +13,7 @@ Monorepo for the **SAC Admin Yield Token** contract and the **Fireblocks signing
 
 - [Rust](https://rustup.rs/) (stable toolchain)
 - [Soroban CLI / Stellar CLI](https://soroban.stellar.org/docs/getting-started/setup) — includes the `stellar` command and the `wasm32` target
-- [Node.js](https://nodejs.org/) >= 18
+- [Node.js](https://nodejs.org/) >= 20
 - A [Fireblocks](https://www.fireblocks.com/) account (for the SDK — not needed for contract-only development)
 
 ### Install Rust + Soroban target
