@@ -73,7 +73,18 @@ npm run build
 ### Contract
 
 ```bash
-cargo test
+make test               # run all 155 contract tests
+make coverage           # generate HTML coverage report (requires cargo-llvm-cov)
+```
+
+### Fuzzing
+
+Requires Rust nightly and `cargo-fuzz`:
+
+```bash
+cargo install cargo-fuzz
+make fuzz               # state-machine fuzzer — random operation sequences (5 min)
+make fuzz-math          # pure math fuzzer — continuous index properties (2 min)
 ```
 
 ### SDK
