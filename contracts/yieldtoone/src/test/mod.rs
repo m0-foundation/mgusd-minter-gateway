@@ -9,4 +9,5 @@ mod test_issuer;
 mod test_mint_burn;
 mod test_rate_boundaries;
 mod test_yield;
+mod test_overflow;
 mod test_yield_snapshots;

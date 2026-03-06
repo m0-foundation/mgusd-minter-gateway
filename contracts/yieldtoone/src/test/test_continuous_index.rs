@@ -134,15 +134,10 @@ fn test_current_index_compounds_over_two_periods() {
     let idx_1y_two_step = current_index(idx_6m, 500, half_year);
     let idx_1y_one_step = current_index(INDEX_SCALE, 500, one_year);
 
-    let diff = if idx_1y_two_step > idx_1y_one_step {
-        idx_1y_two_step - idx_1y_one_step
-    } else {
-        idx_1y_one_step - idx_1y_two_step
-    };
-    assert!(
-        diff < 10_000,
-        "Two-step vs one-step diff too large: {}",
-        diff
+    assert_approx_eq_abs(
+        idx_1y_two_step as i128,
+        idx_1y_one_step as i128,
+        10_000,
     );
 }
 

@@ -195,19 +195,10 @@ fn test_multiple_claims_accumulate_correctly() {
         * (current_index(INDEX_SCALE, 1000, SECONDS_PER_YEAR as u64) - INDEX_SCALE) as u128
         / INDEX_SCALE;
 
-    let diff = if total_claimed as u128 > expected_one_shot_yield {
-        total_claimed as u128 - expected_one_shot_yield
-    } else {
-        expected_one_shot_yield - total_claimed as u128
-    };
-    let tolerance = expected_one_shot_yield / 10_000;
-    assert!(
-        diff < tolerance,
-        "Multi-claim total {} vs one-shot {} diff {} exceeds tolerance {}",
+    assert_approx_eq_rel(
         total_claimed,
-        expected_one_shot_yield,
-        diff,
-        tolerance
+        expected_one_shot_yield as i128,
+        100, // 100 ppm = 0.01%
     );
 }
 

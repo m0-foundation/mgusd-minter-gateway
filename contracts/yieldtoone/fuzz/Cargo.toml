@@ -1,0 +1,25 @@
+[package]
+name = "yieldtoone-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+soroban-sdk = { version = "25", features = ["testutils"] }
+soroban-fixed-point-math = "=1.5.0"
+yieldtoone = { path = ".." }
+
+[[bin]]
+name = "fuzz_yield_operations"
+path = "fuzz_targets/fuzz_yield_operations.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_continuous_index"
+path = "fuzz_targets/fuzz_continuous_index.rs"
+doc = false

@@ -87,6 +87,27 @@ pub fn advance_time(env: &Env, seconds: u64) {
     env.ledger().set_timestamp(current + seconds);
 }
 
+/// Assert values are within `tolerance` of each other (absolute difference).
+pub fn assert_approx_eq_abs(actual: i128, expected: i128, tolerance: i128) {
+    let diff = (actual - expected).abs();
+    assert!(
+        diff <= tolerance,
+        "abs diff {} > tolerance {}: actual={}, expected={}",
+        diff, tolerance, actual, expected
+    );
+}
+
+/// Assert values are within `ppm` parts-per-million of each other (relative difference).
+pub fn assert_approx_eq_rel(actual: i128, expected: i128, ppm: i128) {
+    let max_diff = expected.abs() * ppm / 1_000_000;
+    let diff = (actual - expected).abs();
+    assert!(
+        diff <= max_diff,
+        "rel diff exceeds {}ppm: actual={}, expected={}, diff={}, max_diff={}",
+        ppm, actual, expected, diff, max_diff
+    );
+}
+
 pub mod dummy_issuer {
     use soroban_sdk::{contract, contractimpl, Env};
 

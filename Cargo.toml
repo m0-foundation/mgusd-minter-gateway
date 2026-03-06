@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "contracts/*",
 ]
+exclude = ["contracts/yieldtoone/fuzz"]
 
 [workspace.dependencies]
 soroban-sdk = "25"
