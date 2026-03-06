@@ -1,4 +1,4 @@
-# soroban-sctoken-fireblocks-sdk
+# soroban-fireblocks-sdk
 
 Soroban SCToken contract deployment and invocation SDK with Fireblocks raw signing (Ed25519).
 
@@ -7,7 +7,7 @@ Extends the generic `SorobanFireblocksClient` with typed convenience methods for
 ## Project Structure
 
 ```
-soroban-sctoken-fireblocks-sdk/
+soroban-fireblocks-sdk/
 ├── src/                   # TypeScript SDK
 │   ├── client.ts          # SorobanFireblocksClient (base)
 │   ├── sctoken-client.ts  # SctokenFireblocksClient (mint/burn/deploy)
@@ -174,7 +174,7 @@ import {
   SctokenFireblocksClient,
   loadIssuerConfigFromEnv,
   loadMinterConfigFromEnv,
-} from "soroban-sctoken-fireblocks-sdk";
+} from "soroban-fireblocks-sdk";
 
 // Deploy pipeline (issuer signs, sets all 6 roles)
 const issuerConfig = loadIssuerConfigFromEnv();

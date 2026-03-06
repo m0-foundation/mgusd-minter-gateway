@@ -1,5 +1,5 @@
 {
-  "name": "soroban-sctoken-fireblocks-sdk",
+  "name": "soroban-fireblocks-sdk",
   "version": "1.0.0",
   "description": "Soroban SCToken contract (mint/burn) invocation with Fireblocks raw signing (Ed25519)",
   "main": "dist/index.js",

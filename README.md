@@ -7,7 +7,7 @@ Monorepo for the **SAC Admin Yield Token** contract and the **Fireblocks signing
 | Directory | Description |
 |-----------|-------------|
 | `contracts/yieldtoone/` | Soroban yield contract — SAC admin that mints, burns, tracks yield, and enforces an allowlist |
-| `soroban-sctoken-fireblocks-sdk/` | TypeScript SDK for invoking the contract via Fireblocks raw signing (Ed25519) |
+| `soroban-fireblocks-sdk/` | TypeScript SDK for invoking the contract via Fireblocks raw signing (Ed25519) |
 
 ## Prerequisites
 
@@ -27,14 +27,14 @@ cargo install stellar-cli --locked
 ### Install SDK dependencies
 
 ```bash
-cd soroban-sctoken-fireblocks-sdk
+cd soroban-fireblocks-sdk
 npm install
 ```
 
 ### Configure environment
 
 ```bash
-cd soroban-sctoken-fireblocks-sdk
+cd soroban-fireblocks-sdk
 cp .env.example .env
 # Edit .env with your Fireblocks credentials, vault IDs, and public keys
 ```
@@ -63,7 +63,7 @@ stellar contract build
 ### SDK
 
 ```bash
-cd soroban-sctoken-fireblocks-sdk
+cd soroban-fireblocks-sdk
 npm install
 npm run build
 ```
@@ -79,7 +79,7 @@ cargo test
 ### SDK
 
 ```bash
-cd soroban-sctoken-fireblocks-sdk
+cd soroban-fireblocks-sdk
 npm test                # unit tests
 npm run test:integration # integration tests (requires Fireblocks credentials + testnet)
 ```
@@ -109,13 +109,13 @@ The contract never holds user funds. Users hold tokens directly in their account
 
 ### Mint Flow
 
-1. Minter (bridge) calls `mint(to, amount)` on the yield contract
+1. Minter (bridge) calls `mint(caller, to, amount)` on the yield contract
 2. Contract updates accumulators (`total_principal` and `total_supply`)
 3. Contract mints SAC tokens directly to the recipient via `StellarAssetClient::mint`
 
 ### Burn Flow
 
-1. Minter (bridge) calls `burn(from, amount)` on the yield contract
+1. Minter (bridge) calls `burn(caller, from, amount)` on the yield contract
 2. Contract updates accumulators (decreases both)
 3. Contract clawbacks SAC tokens from the account via `StellarAssetClient::clawback`
 
@@ -212,7 +212,7 @@ Forced Transfer Manager
 
 ## SDK — Fireblocks Signing Client
 
-The `soroban-sctoken-fireblocks-sdk/` directory contains a TypeScript SDK that wraps the yield contract with Fireblocks MPC signing. See [`soroban-sctoken-fireblocks-sdk/README.md`](soroban-sctoken-fireblocks-sdk/README.md) for full setup, environment variables, and usage details.
+The `soroban-fireblocks-sdk/` directory contains a TypeScript SDK that wraps the yield contract with Fireblocks MPC signing. See [`soroban-fireblocks-sdk/README.md`](soroban-fireblocks-sdk/README.md) for full setup, environment variables, and usage details.
 
 ### SDK Methods
 
