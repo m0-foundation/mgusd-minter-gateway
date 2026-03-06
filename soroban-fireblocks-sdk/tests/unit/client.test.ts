@@ -111,6 +111,79 @@ describe("SorobanFireblocksClient", () => {
     });
   });
 
+  describe("setupTrustline", () => {
+    it("orchestrates classic changeTrust pipeline and returns SUCCESS", async () => {
+      const fakeHash = Buffer.from("a".repeat(64), "hex");
+      const mockTx = {
+        hash: jest.fn().mockReturnValue(fakeHash),
+        source: "GABC",
+        operations: [],
+        signatures: [],
+        addSignature: jest.fn(),
+      };
+
+      mockedTxBuilder.buildChangeTrustTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+      mockedTxBuilder.submitAndPoll.mockResolvedValue({
+        status: rpc.Api.GetTransactionStatus.SUCCESS,
+        ledger: 45,
+      } as unknown as rpc.Api.GetSuccessfulTransactionResponse);
+
+      mockedFbSigner.signHash.mockResolvedValue({
+        signatureHex: "b".repeat(128),
+        fireblocksTransactionId: "fb-tx-005",
+      });
+
+      const config = makeConfig();
+      const client = new SorobanFireblocksClient(config);
+
+      const result = await client.setupTrustline({
+        assetCode: "TMGUSD",
+        assetIssuer: Keypair.random().publicKey(),
+      });
+
+      expect(result.status).toBe("SUCCESS");
+      expect(result.ledger).toBe(45);
+      expect(mockedTxBuilder.buildChangeTrustTransaction).toHaveBeenCalledTimes(1);
+      // No simulation for classic ops
+      expect(mockedTxBuilder.simulateAndPrepare).not.toHaveBeenCalled();
+    });
+
+    it("returns FAILED status on failure", async () => {
+      const fakeHash = Buffer.from("a".repeat(64), "hex");
+      const mockTx = {
+        hash: jest.fn().mockReturnValue(fakeHash),
+        source: "GABC",
+        operations: [],
+        signatures: [],
+        addSignature: jest.fn(),
+      };
+
+      mockedTxBuilder.buildChangeTrustTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+      mockedTxBuilder.submitAndPoll.mockResolvedValue({
+        status: rpc.Api.GetTransactionStatus.FAILED,
+        ledger: 46,
+      } as unknown as rpc.Api.GetFailedTransactionResponse);
+
+      mockedFbSigner.signHash.mockResolvedValue({
+        signatureHex: "c".repeat(128),
+        fireblocksTransactionId: "fb-tx-006",
+      });
+
+      const config = makeConfig();
+      const client = new SorobanFireblocksClient(config);
+
+      const result = await client.setupTrustline({
+        assetCode: "TMGUSD",
+        assetIssuer: Keypair.random().publicKey(),
+      });
+
+      expect(result.status).toBe("FAILED");
+      expect(result.ledger).toBe(46);
+    });
+  });
+
   describe("configureIssuer", () => {
     it("orchestrates classic setOptions pipeline and returns SUCCESS", async () => {
       const fakeHash = Buffer.from("a".repeat(64), "hex");
@@ -220,6 +293,43 @@ describe("SorobanFireblocksClient", () => {
     });
   });
 
+  describe("deploySac - FAILED", () => {
+    it("returns FAILED status when transaction fails", async () => {
+      const fakeHash = Buffer.from("a".repeat(64), "hex");
+      const mockTx = {
+        hash: jest.fn().mockReturnValue(fakeHash),
+        source: "GABC",
+        operations: [],
+        signatures: [],
+        addSignature: jest.fn(),
+      };
+
+      mockedTxBuilder.buildDeploySacTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.simulateAndPrepare.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+      mockedTxBuilder.submitAndPoll.mockResolvedValue({
+        status: rpc.Api.GetTransactionStatus.FAILED,
+        ledger: 61,
+      } as unknown as rpc.Api.GetFailedTransactionResponse);
+
+      mockedFbSigner.signHash.mockResolvedValue({
+        signatureHex: "c".repeat(128),
+        fireblocksTransactionId: "fb-tx-021",
+      });
+
+      const config = makeConfig();
+      const client = new SorobanFireblocksClient(config);
+
+      const result = await client.deploySac({
+        assetCode: "TMGUSD",
+        assetIssuer: config.sourcePublicKey,
+      });
+
+      expect(result.status).toBe("FAILED");
+      expect(result.sacContractId).toBeUndefined();
+    });
+  });
+
   describe("uploadWasm", () => {
     it("orchestrates Soroban upload WASM pipeline and extracts wasm hash", async () => {
       const fakeHash = Buffer.from("a".repeat(64), "hex");
@@ -262,6 +372,42 @@ describe("SorobanFireblocksClient", () => {
     });
   });
 
+  describe("uploadWasm - FAILED", () => {
+    it("returns FAILED status when transaction fails", async () => {
+      const fakeHash = Buffer.from("a".repeat(64), "hex");
+      const mockTx = {
+        hash: jest.fn().mockReturnValue(fakeHash),
+        source: "GABC",
+        operations: [],
+        signatures: [],
+        addSignature: jest.fn(),
+      };
+
+      mockedTxBuilder.buildUploadWasmTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.simulateAndPrepare.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+      mockedTxBuilder.submitAndPoll.mockResolvedValue({
+        status: rpc.Api.GetTransactionStatus.FAILED,
+        ledger: 71,
+      } as unknown as rpc.Api.GetFailedTransactionResponse);
+
+      mockedFbSigner.signHash.mockResolvedValue({
+        signatureHex: "c".repeat(128),
+        fireblocksTransactionId: "fb-tx-031",
+      });
+
+      const config = makeConfig();
+      const client = new SorobanFireblocksClient(config);
+
+      const result = await client.uploadWasm({
+        wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+      });
+
+      expect(result.status).toBe("FAILED");
+      expect(result.wasmHash).toBeUndefined();
+    });
+  });
+
   describe("deployContract", () => {
     it("orchestrates Soroban deploy contract pipeline and extracts contract ID", async () => {
       const fakeHash = Buffer.from("a".repeat(64), "hex");
@@ -301,6 +447,40 @@ describe("SorobanFireblocksClient", () => {
       expect(result.contractId).toBe(contractId);
       expect(result.ledger).toBe(80);
       expect(mockedTxBuilder.simulateAndPrepare).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns FAILED status when transaction fails", async () => {
+      const fakeHash = Buffer.from("a".repeat(64), "hex");
+      const mockTx = {
+        hash: jest.fn().mockReturnValue(fakeHash),
+        source: "GABC",
+        operations: [],
+        signatures: [],
+        addSignature: jest.fn(),
+      };
+
+      mockedTxBuilder.buildDeployContractTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.simulateAndPrepare.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+      mockedTxBuilder.submitAndPoll.mockResolvedValue({
+        status: rpc.Api.GetTransactionStatus.FAILED,
+        ledger: 81,
+      } as unknown as rpc.Api.GetFailedTransactionResponse);
+
+      mockedFbSigner.signHash.mockResolvedValue({
+        signatureHex: "c".repeat(128),
+        fireblocksTransactionId: "fb-tx-041",
+      });
+
+      const config = makeConfig();
+      const client = new SorobanFireblocksClient(config);
+
+      const result = await client.deployContract({
+        wasmHash: Buffer.alloc(32, 0xab),
+      });
+
+      expect(result.status).toBe("FAILED");
+      expect(result.contractId).toBeUndefined();
     });
   });
 });

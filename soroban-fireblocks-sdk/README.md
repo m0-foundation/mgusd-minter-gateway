@@ -1,4 +1,4 @@
-# soroban-sctoken-fireblocks-sdk
+# soroban-fireblocks-sdk
 
 Soroban SCToken contract deployment and invocation SDK with Fireblocks raw signing (Ed25519).
 
@@ -7,7 +7,7 @@ Extends the generic `SorobanFireblocksClient` with typed convenience methods for
 ## Project Structure
 
 ```
-soroban-sctoken-fireblocks-sdk/
+soroban-fireblocks-sdk/
 ├── src/                   # TypeScript SDK
 │   ├── client.ts          # SorobanFireblocksClient (base)
 │   ├── sctoken-client.ts  # SctokenFireblocksClient (mint/burn/deploy)
@@ -174,7 +174,7 @@ import {
   SctokenFireblocksClient,
   loadIssuerConfigFromEnv,
   loadMinterConfigFromEnv,
-} from "soroban-sctoken-fireblocks-sdk";
+} from "soroban-fireblocks-sdk";
 
 // Deploy pipeline (issuer signs, sets all 6 roles)
 const issuerConfig = loadIssuerConfigFromEnv();
@@ -221,6 +221,46 @@ console.log(admin.address); // G... (MINTER_PUBLIC_KEY)
 const sacToken = await minterClient.querySacToken({ contractId: "C..." });
 console.log(sacToken.address); // C...
 ```
+
+## Verification (Testnet)
+
+With valid Fireblocks sandbox credentials in `.env`, the full pipeline has been verified end-to-end on Stellar testnet:
+
+```bash
+# 1. Build
+npm run build        # TypeScript compiles cleanly
+
+# 2. Unit tests
+npm test             # 71 unit tests pass
+
+# 3. Build the contract WASM (from repo root)
+stellar contract build
+
+# 4. Deploy — full 5-step pipeline (issuer signs)
+npm run deploy
+#   Step 1/5: Configuring issuer flags... ✓
+#   Step 2/5: Deploying SAC...            ✓  → SAC Contract ID
+#   Step 3/5: Uploading WASM...           ✓  → WASM Hash
+#   Step 4/5: Deploying wrapper contract...✓  → Wrapper Contract ID
+#   Step 5/5: Transferring SAC admin...   ✓
+
+# 5. Set up trustline on the minter's account
+npm run trustline    # Transaction SUCCESS
+
+# 6. Query contract state
+npm run query        # Returns admin + SAC token addresses
+
+# 7. Mint tokens
+npm run mint         # Transaction SUCCESS
+
+# 8. Burn tokens
+npm run burn         # Transaction SUCCESS
+
+# 9. Integration tests (Fireblocks sandbox + testnet)
+npm run test:integration   # 4/4 pass (queryAdmin, querySacToken, mint, burn)
+```
+
+> **Note:** `npm run deploy` will fail at Step 2 if the SAC for the same asset+issuer already exists on the network (`Error(Storage, ExistingValue)`). This is expected — each asset+issuer pair can only have one SAC. Use a different `ASSET_CODE` or issuer to deploy again.
 
 ## Architecture
 
