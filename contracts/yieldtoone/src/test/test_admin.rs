@@ -139,6 +139,38 @@ fn test_unauthorized_caller_rejected() {
 }
 
 // =============================================================================
+// DOUBLE INITIALIZATION TEST
+// =============================================================================
+
+#[test]
+fn test_double_initialization_returns_error() {
+    let s = setup();
+
+    let sac_addr = s.sac_token.address.clone();
+    let admin = s.admin.clone();
+    let minter = s.minter.clone();
+    let yrm = s.yield_recipient_manager.clone();
+    let yr = s.yield_recipient.clone();
+    let ftm = s.forced_transfer_manager.clone();
+
+    // Re-invoke __constructor inside the contract's storage context
+    // The admin already exists, so this should return AlreadyInitializedError
+    let result = s.env.as_contract(&s.contract.address, || {
+        YieldToken::__constructor(
+            s.env.clone(),
+            sac_addr,
+            admin,
+            minter,
+            yrm,
+            yr,
+            ftm,
+        )
+    });
+
+    assert_eq!(result, Err(crate::YieldTokenError::AlreadyInitializedError));
+}
+
+// =============================================================================
 // UPGRADE TESTS
 // =============================================================================
 

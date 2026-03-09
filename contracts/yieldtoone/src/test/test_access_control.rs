@@ -48,6 +48,7 @@ fn test_forced_transfer_manager_cannot_mint() {
     let result = s
         .contract
         .try_mint(&s.forced_transfer_manager, &s.yield_recipient, &1_000_0000000);
+    
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
