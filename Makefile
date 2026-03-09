@@ -1,4 +1,4 @@
-.PHONY: build test coverage fuzz fuzz-math clean
+.PHONY: build test coverage clean
 
 build:
 	stellar contract build
@@ -8,12 +8,6 @@ test:
 
 coverage:
 	cargo llvm-cov --package yieldtoone --ignore-filename-regex 'test'
-
-fuzz:
-	cd contracts/yieldtoone && cargo +nightly fuzz run fuzz_yield_operations -- -max_total_time=300
-
-fuzz-math:
-	cd contracts/yieldtoone && cargo +nightly fuzz run fuzz_continuous_index -- -max_total_time=120
 
 clean:
 	cargo clean
