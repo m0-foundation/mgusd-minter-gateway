@@ -10,7 +10,6 @@ const SET_YIELD_RCPT: Symbol = symbol_short!("set_yrcp");
 const SUP_SYNC: Symbol = symbol_short!("sup_sync");
 const FREEZE: Symbol = symbol_short!("freeze");
 const UNFREEZE: Symbol = symbol_short!("unfreeze");
-const CLAWBACK: Symbol = symbol_short!("clawback");
 const SET_FTM: Symbol = symbol_short!("set_ftmr");
 const AUTH_XFR: Symbol = symbol_short!("auth_xfr");
 const UPGRADED: Symbol = symbol_short!("upgraded");
@@ -50,10 +49,6 @@ pub fn emit_account_frozen(env: &Env, account: Address) {
 
 pub fn emit_account_unfrozen(env: &Env, account: Address) {
     env.events().publish((UNFREEZE,), account);
-}
-
-pub fn emit_clawback(env: &Env, from: Address, amount: i128) {
-    env.events().publish((CLAWBACK,), (from, amount));
 }
 
 pub fn emit_forced_transfer_manager_set(env: &Env, old: Address, new: Address) {

@@ -24,7 +24,7 @@ For the condensed design reference, see [DESIGN.md](./DESIGN.md).
 ### 3. Redemption (End User → MoneyGram → Bridge)
 
 1. End user initiates redemption through MoneyGram
-2. Bridge calls `burn(user_address, amount)` — clawbacks tokens at the SAC layer
+2. Bridge calls `burn(user_address, amount)` — removes tokens at the SAC layer
 3. Contract finalizes pending yield, decreases both accumulators
 4. MoneyGram sends fiat to the end user off-chain
 
@@ -46,7 +46,7 @@ The system consists of three on-chain components:
 ```
 ┌─────────────────┐     admin ops      ┌──────────────────────┐
 │  SAC (Classic    │◄───────────────────│  Wrapper Contract    │
-│  Stellar Asset)  │  mint/clawback/    │  (Soroban — this     │
+│  Stellar Asset)  │  mint/burn/        │  (Soroban — this     │
 │                  │  set_authorized    │   contract)          │
 └────────┬─────────┘                    └──────────┬───────────┘
          │                                         │
@@ -73,7 +73,7 @@ The system consists of three on-chain components:
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `freeze_account`, `unfreeze_account`, `clawback`, `upgrade`)
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `freeze_account`, `unfreeze_account`, `upgrade`)
 - All roles are **single-address** — exactly one holder per role at any time
 - Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager)
 - Every role-gated function calls `require_auth()` on the role holder — no implicit trust
@@ -85,7 +85,7 @@ The system consists of three on-chain components:
 
 > **Note:** Admin can call any function below, not just the admin-exclusive ones. Each non-admin role can only call its own functions.
 
-### Admin-Exclusive Functions (8)
+### Admin-Exclusive Functions (7)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -95,7 +95,6 @@ The system consists of three on-chain components:
 | `set_forced_transfer_manager` | `(new_ftm: Address)` | Set a new forced transfer manager |
 | `freeze_account` | `(account: Address)` | Freeze account on SAC (`set_authorized(false)`) |
 | `unfreeze_account` | `(account: Address)` | Unfreeze account on SAC (`set_authorized(true)`) |
-| `clawback` | `(from: Address, amount: i128)` | Force-remove tokens; updates both accumulators |
 | `upgrade` | `(new_wasm_hash: BytesN<32>)` | Upgrade contract WASM to a new version |
 
 ### Minter Functions (3)
@@ -103,7 +102,7 @@ The system consists of three on-chain components:
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `mint` | `(to: Address, amount: i128)` | Mint SAC tokens and increase both accumulators |
-| `burn` | `(from: Address, amount: i128)` | Clawback SAC tokens and decrease both accumulators |
+| `burn` | `(from: Address, amount: i128)` | Remove SAC tokens and decrease both accumulators |
 | `set_rate` | `(rate_bps: u32)` | Set interest rate in basis points (max 10000 = 100%) |
 
 ### Yield Recipient Manager Functions (1)
@@ -189,7 +188,7 @@ Rate is in basis points: 100 = 1%, max 10,000 = 100%.
 ### Key Properties
 
 - **Always updates the yield index** before modifying supply (prevents yield loss/gain from ordering)
-- Burns use SAC `clawback` (not transfer-to-issuer), bypassing the issuer burn problem
+- Burns use SAC clawback internally (not transfer-to-issuer), bypassing the issuer burn problem
 
 ---
 
@@ -215,8 +214,8 @@ The `e^x` approximation uses a 4th-order Taylor series: `1 + x + x²/2 + x³/6 +
 
 | Accumulator | Tracks | Modified By |
 |-------------|--------|-------------|
-| `total_principal` | Yield-earning base (mints − burns) | `mint`, `burn`, `clawback` |
-| `total_supply` | All outstanding tokens (principal + claimed yield) | `mint`, `burn`, `clawback`, `claim_yield` |
+| `total_principal` | Yield-earning base (mints − burns) | `mint`, `burn` |
+| `total_supply` | All outstanding tokens (principal + claimed yield) | `mint`, `burn`, `claim_yield` |
 
 ### Yield Accrual Formula
 
@@ -238,7 +237,7 @@ When `claim_yield()` is called:
 
 ### Index Update Ordering
 
-The index is updated **before** every state-changing operation (`mint`, `burn`, `clawback`, `claim_yield`, `set_rate`). This ensures yield is finalized at the correct principal and rate before any changes take effect.
+The index is updated **before** every state-changing operation (`mint`, `burn`, `claim_yield`, `set_rate`). This ensures yield is finalized at the correct principal and rate before any changes take effect.
 
 ---
 
@@ -279,13 +278,6 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 - `freeze_account(addr)` → SAC `set_authorized(false)` → account is blocked
 - Only Admin can freeze/unfreeze
 
-### Clawback
-
-- `clawback(from, amount)` — Admin force-removes tokens without the target's consent
-- Updates both accumulators (same as burn) — capped at `total_principal`
-- Finalizes yield before executing
-- Does **not** require `from.require_auth()`
-
 ### Authorize & Transfer
 
 - `authorize_and_transfer(from, to, amount)` — Forced Transfer Manager or Admin
@@ -319,7 +311,7 @@ Runnable scripts are provided in `scripts/` for each SDK method:
 | Script | Description |
 |--------|-------------|
 | `invoke-mint.ts` | Mint tokens to a destination address |
-| `invoke-burn.ts` | Burn (clawback) tokens from an address |
+| `invoke-burn.ts` | Burn tokens from an address |
 | `invoke-set-rate.ts` | Set the interest rate in basis points |
 
 ### Fireblocks RAW Signing Pipeline

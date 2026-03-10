@@ -113,14 +113,6 @@ fn test_burn_negative_amount() {
     assert_eq!(result, Err(Ok(crate::YieldTokenError::NegativeAmountError)));
 }
 
-#[test]
-fn test_clawback_negative_amount() {
-    let s = setup();
-
-    let result = s.contract.try_clawback(&s.yield_recipient, &-1);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::NegativeAmountError)));
-}
-
 // =============================================================================
 // ZERO AMOUNT TESTS
 // =============================================================================

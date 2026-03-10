@@ -3,7 +3,7 @@ use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env};
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::errors::YieldTokenError;
 use crate::events::{
-    emit_account_frozen, emit_account_unfrozen, emit_authorize_and_transfer, emit_clawback,
+    emit_account_frozen, emit_account_unfrozen, emit_authorize_and_transfer,
     emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set,
     emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
     emit_yield_recipient_manager_set, emit_yield_recipient_set,
@@ -149,28 +149,6 @@ impl YieldToken {
         emit_account_unfrozen(&e, account);
     }
 
-    /// Claws back tokens from an account, reducing both SAC balance and accumulators.
-    /// Admin only.
-    /// Does NOT require `from.require_auth()` — this is an admin-forced operation.
-    pub fn clawback(e: Env, from: Address, amount: i128) -> Result<(), YieldTokenError> {
-        check_nonnegative_amount(amount)?;
-        require_admin(&e);
-        extend_instance_ttl(&e);
-
-        // Finalize yield at current rates before changing principal
-        update_index(&e);
-
-        // Decrease both accumulators (capped at total_principal)
-        decrease_both_accumulators(&e, amount)?;
-
-        // Cross-contract call: clawback SAC tokens
-        let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).clawback(&from, &amount);
-
-        emit_clawback(&e, from, amount);
-        Ok(())
-    }
-
     // =========================================================================
     // Admin Upgrade Functions
     // =========================================================================
@@ -248,7 +226,7 @@ impl YieldToken {
         Ok(())
     }
 
-    /// Burns (clawbacks) SAC tokens from an account and updates accumulators.
+    /// Burns SAC tokens from an account and updates accumulators.
     /// Minter or admin only.
     pub fn burn(e: Env, caller: Address, from: Address, amount: i128) -> Result<(), YieldTokenError> {
         check_nonnegative_amount(amount)?;
@@ -261,7 +239,7 @@ impl YieldToken {
         // Decrease both accumulators
         decrease_both_accumulators(&e, amount)?;
 
-        // Clawback SAC tokens from account
+        // Remove SAC tokens from account via SAC clawback
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).clawback(&from, &amount);
 

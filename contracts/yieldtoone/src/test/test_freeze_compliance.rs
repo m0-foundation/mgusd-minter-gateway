@@ -84,130 +84,11 @@ fn test_unfreeze_idempotent() {
 }
 
 // =============================================================================
-// CLAWBACK TESTS
-// =============================================================================
-
-#[test]
-fn test_clawback_removes_tokens_and_updates_accumulators() {
-    let s = setup();
-    let user = Address::generate(&s.env);
-
-    s.contract.unfreeze_account(&user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
-
-    s.contract.clawback(&user, &400_0000000);
-
-    assert_eq!(s.contract.total_principal(), 600_0000000);
-    assert_eq!(s.contract.total_supply(), 600_0000000);
-    assert_eq!(s.sac_token.balance(&user), 600_0000000);
-}
-
-#[test]
-fn test_clawback_full_balance() {
-    let s = setup();
-    let user = Address::generate(&s.env);
-
-    s.contract.unfreeze_account(&user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
-
-    s.contract.clawback(&user, &1_000_0000000);
-
-    assert_eq!(s.contract.total_principal(), 0);
-    assert_eq!(s.contract.total_supply(), 0);
-    assert_eq!(s.sac_token.balance(&user), 0);
-}
-
-#[test]
-fn test_clawback_exceeding_principal_reverts() {
-    let s = setup();
-    let user = Address::generate(&s.env);
-
-    s.contract.unfreeze_account(&user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
-
-    // Clawback more than principal should fail
-    let result = s.contract.try_clawback(&user, &1_001_0000000);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_clawback_finalizes_yield_before_decreasing() {
-    let s = setup();
-    let user = Address::generate(&s.env);
-
-    s.contract.unfreeze_account(&user);
-    s.contract.mint(&s.minter, &user, &1_000_000_0000000);
-    s.contract.set_rate(&s.minter, &500);
-
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-
-    let yield_before = s.contract.accrued_yield();
-    assert!(yield_before > 0);
-
-    // Clawback should finalize yield first, then decrease principal
-    s.contract.clawback(&user, &500_000_0000000);
-
-    // Yield is preserved (accrued before the clawback)
-    assert!(s.contract.accrued_yield() >= yield_before);
-    assert_eq!(s.contract.total_principal(), 500_000_0000000);
-}
-
-#[test]
-fn test_clawback_from_frozen_account() {
-    let s = setup();
-    let user = Address::generate(&s.env);
-
-    s.contract.unfreeze_account(&user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
-
-    // Freeze then clawback
-    s.contract.freeze_account(&user);
-    s.contract.clawback(&user, &500_0000000);
-
-    assert_eq!(s.contract.total_principal(), 500_0000000);
-    assert_eq!(s.sac_token.balance(&user), 500_0000000);
-    assert!(!s.contract.is_authorized(&user));
-}
-
-#[test]
-fn test_clawback_then_yield_accrues_on_reduced_principal() {
-    let s = setup();
-    let user = Address::generate(&s.env);
-    let principal = 1_000_000_0000000i128;
-
-    s.contract.unfreeze_account(&user);
-    s.contract.mint(&s.minter, &user, &principal);
-    s.contract.set_rate(&s.minter, &500);
-
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-
-    // Claim yield first to get a clean baseline
-    let first_year_yield = s.contract.claim_yield(&s.yield_recipient);
-    assert!(first_year_yield > 0);
-
-    // Clawback half the principal
-    s.contract.clawback(&user, &(principal / 2));
-    assert_eq!(s.contract.total_principal(), principal / 2);
-
-    // Advance another year
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-
-    let second_year_yield = s.contract.accrued_yield();
-    // Yield on half principal should be roughly half
-    let ratio = (second_year_yield as f64) / (first_year_yield as f64);
-    assert!(
-        ratio > 0.45 && ratio < 0.55,
-        "Expected ~0.5 ratio, got {}",
-        ratio
-    );
-}
-
-// =============================================================================
 // COMPLIANCE INTEGRATION TEST
 // =============================================================================
 
 #[test]
-fn test_compliance_flow_freeze_clawback_unfreeze() {
+fn test_compliance_flow_freeze_burn_unfreeze() {
     let s = setup();
     let user = Address::generate(&s.env);
     let principal = 1_000_0000000i128;
@@ -222,8 +103,8 @@ fn test_compliance_flow_freeze_clawback_unfreeze() {
     s.contract.freeze_account(&user);
     assert!(!s.contract.is_authorized(&user));
 
-    // Step 3: Clawback half
-    s.contract.clawback(&user, &(principal / 2));
+    // Step 3: Burn half
+    s.contract.burn(&s.minter, &user, &(principal / 2));
     assert_eq!(s.sac_token.balance(&user), principal / 2);
     assert_eq!(s.contract.total_principal(), principal / 2);
     assert_eq!(s.contract.total_supply(), principal / 2);

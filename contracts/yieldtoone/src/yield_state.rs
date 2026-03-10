@@ -99,7 +99,7 @@ pub fn increase_both_accumulators(env: &Env, amount: i128) {
 }
 
 /// Decreases both total_principal and total_supply by the same amount.
-/// Used by burn and clawback.
+/// Used by burn.
 /// Must call update_index first to finalize yield at current principal.
 /// Returns error if amount exceeds total_principal — you cannot burn more than was minted.
 pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), YieldTokenError> {

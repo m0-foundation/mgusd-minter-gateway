@@ -39,7 +39,7 @@ fn test_mint_multiple_recipients() {
 }
 
 // =============================================================================
-// 3. DIRECT BURN — clawbacks SAC tokens and updates accumulators
+// 3. DIRECT BURN — removes SAC tokens and updates accumulators
 // =============================================================================
 
 #[test]
