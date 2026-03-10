@@ -4,6 +4,7 @@ import {
   Asset,
   AuthClawbackEnabledFlag,
   AuthFlag,
+  AuthRequiredFlag,
   AuthRevocableFlag,
   Contract,
   Keypair,
@@ -153,7 +154,13 @@ export async function buildConfigureIssuerTransaction(
   })
     .addOperation(
       Operation.setOptions({
-        setFlags: (AuthRevocableFlag | AuthClawbackEnabledFlag) as unknown as AuthFlag,
+        // IMPORTANT: AuthRequiredFlag — accounts must be explicitly authorized (unfrozen)
+        //   before they can hold or receive tokens. Without this, any account can receive freely.
+        // IMPORTANT: AuthRevocableFlag — allows the admin to freeze (deauthorize) accounts
+        //   after they have been authorized, enabling compliance enforcement.
+        // IMPORTANT: AuthClawbackEnabledFlag — allows the admin to clawback (burn) tokens
+        //   from any account, required for the contract's burn() via SAC clawback.
+        setFlags: (AuthRequiredFlag | AuthRevocableFlag | AuthClawbackEnabledFlag) as unknown as AuthFlag,
       }),
     )
     .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)

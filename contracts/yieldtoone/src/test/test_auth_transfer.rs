@@ -1,4 +1,4 @@
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, IssuerFlags};
 
 use super::setup::*;
 
@@ -322,6 +322,174 @@ fn test_direct_sac_transfer_from_blocked_for_deauthorized_recipient() {
     // Balances unchanged
     assert_eq!(s.sac_token.balance(&alice), amount);
     assert_eq!(s.sac_token.balance(&bob), 0);
+}
+
+// =============================================================================
+// AUTH_REQUIRED IS OPT-IN — DEFAULT ALLOWS RECEIVING
+// =============================================================================
+//
+// AUTH_REQUIRED (IssuerFlags::RequiredFlag) must be explicitly set on the issuer.
+// Without it, all accounts are authorized by default and can freely receive tokens.
+// These tests prove that blocking is only active because we explicitly enable it.
+
+#[test]
+fn test_without_required_flag_accounts_are_authorized_by_default() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+
+    // Register SAC WITHOUT setting RequiredFlag
+    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let sac_addr = sac.address();
+    let sac_token = TokenClient::new(&env, &sac_addr);
+    let sac_admin = StellarAssetClient::new(&env, &sac_addr);
+
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    // Mint directly via SAC admin — no unfreeze needed
+    sac_admin.mint(&sender, &1_000_0000000);
+
+    // Transfer succeeds without any authorization — RequiredFlag was never set
+    sac_token.transfer(&sender, &receiver, &500_0000000);
+
+    assert_eq!(sac_token.balance(&sender), 500_0000000);
+    assert_eq!(sac_token.balance(&receiver), 500_0000000);
+}
+
+#[test]
+fn test_with_required_flag_new_accounts_are_blocked_by_default() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+
+    // Register SAC WITH RequiredFlag — mirrors our production setup
+    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    sac.issuer().set_flag(IssuerFlags::RequiredFlag);
+    let sac_addr = sac.address();
+    let sac_token = TokenClient::new(&env, &sac_addr);
+    let sac_admin = StellarAssetClient::new(&env, &sac_addr);
+
+    let sender = Address::generate(&env);
+    let receiver = Address::generate(&env);
+
+    // Authorize sender and mint
+    sac_admin.set_authorized(&sender, &true);
+    sac_admin.mint(&sender, &1_000_0000000);
+
+    // Receiver is NOT authorized — transfer fails
+    let result = sac_token.try_transfer(&sender, &receiver, &500_0000000);
+    assert!(result.is_err());
+
+    // Authorize receiver — now it works
+    sac_admin.set_authorized(&receiver, &true);
+    sac_token.transfer(&sender, &receiver, &500_0000000);
+
+    assert_eq!(sac_token.balance(&sender), 500_0000000);
+    assert_eq!(sac_token.balance(&receiver), 500_0000000);
+}
+
+#[test]
+fn test_contract_address_blocked_by_default_due_to_required_flag() {
+    // Using our standard setup which has RequiredFlag enabled
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let contract_addr = s.contract.address.clone();
+    let amount = 1_000_0000000i128;
+
+    s.contract.unfreeze_account(&user);
+    s.contract.mint(&s.minter, &user, &amount);
+
+    // Contract address was never authorized — blocked by RequiredFlag
+    assert!(!s.contract.is_authorized(&contract_addr));
+
+    let result = s.sac_token.try_transfer(&user, &contract_addr, &500_0000000);
+    assert!(result.is_err());
+
+    // Only after explicit authorization does it work
+    s.contract.unfreeze_account(&contract_addr);
+    assert!(s.contract.is_authorized(&contract_addr));
+
+    s.sac_token.transfer(&user, &contract_addr, &500_0000000);
+    assert_eq!(s.sac_token.balance(&contract_addr), 500_0000000);
+}
+
+// =============================================================================
+// TRANSFER TO CONTRACT ADDRESS TESTS
+// =============================================================================
+//
+// These tests verify what happens when a user transfers SAC tokens directly to
+// the yield token contract's own address. Since the contract has no withdrawal
+// mechanism, tokens sent to it are effectively locked forever.
+
+#[test]
+fn test_sac_transfer_to_contract_blocked_when_contract_not_authorized() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let amount = 1_000_0000000i128;
+    let contract_addr = s.contract.address.clone();
+
+    // Authorize user and mint tokens
+    s.contract.unfreeze_account(&user);
+    s.contract.mint(&s.minter, &user, &amount);
+
+    // Contract address is NOT authorized (never unfrozen) — transfer should fail
+    let result = s.sac_token.try_transfer(&user, &contract_addr, &500_0000000);
+    assert!(result.is_err());
+
+    // User balance unchanged
+    assert_eq!(s.sac_token.balance(&user), amount);
+}
+
+#[test]
+fn test_sac_transfer_to_contract_succeeds_when_contract_authorized() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let amount = 1_000_0000000i128;
+    let transfer_amount = 400_0000000i128;
+    let contract_addr = s.contract.address.clone();
+
+    // Authorize user and mint tokens
+    s.contract.unfreeze_account(&user);
+    s.contract.mint(&s.minter, &user, &amount);
+
+    // Authorize the contract address itself
+    s.contract.unfreeze_account(&contract_addr);
+
+    // Transfer to contract address — succeeds but tokens are locked forever
+    s.sac_token.transfer(&user, &contract_addr, &transfer_amount);
+
+    assert_eq!(s.sac_token.balance(&user), amount - transfer_amount);
+    assert_eq!(s.sac_token.balance(&contract_addr), transfer_amount);
+
+    // Accumulators unchanged — contract doesn't know about direct SAC transfers
+    assert_eq!(s.contract.total_principal(), amount);
+    assert_eq!(s.contract.total_supply(), amount);
+}
+
+#[test]
+fn test_sac_transfer_full_balance_to_contract_locks_tokens() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let amount = 1_000_0000000i128;
+    let contract_addr = s.contract.address.clone();
+
+    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&contract_addr);
+    s.contract.mint(&s.minter, &user, &amount);
+
+    // Send entire balance to the contract
+    s.sac_token.transfer(&user, &contract_addr, &amount);
+
+    assert_eq!(s.sac_token.balance(&user), 0);
+    assert_eq!(s.sac_token.balance(&contract_addr), amount);
+
+    // Tokens are stuck — the contract has no function to send them back.
+    // Accumulators still show the original mint.
+    assert_eq!(s.contract.total_principal(), amount);
+    assert_eq!(s.contract.total_supply(), amount);
 }
 
 #[test]
