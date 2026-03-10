@@ -5,7 +5,7 @@
 - SMA Bridge Mint is a **Soroban smart contract** that acts as the **admin of a Stellar Asset Contract (SAC)**
 - It wraps a classic Stellar asset into a **yield-bearing token** — minting/burning SAC tokens directly
 - Yield accrues continuously on principal using an exponential index (`e^(rate × time)`) and is **non-compounding** — claimed yield does not earn more yield
-- The contract never holds user funds — it orchestrates SAC operations (mint, clawback, authorize) on behalf of designated roles
+- The contract never holds user funds — it orchestrates SAC operations (mint, burn, authorize) on behalf of designated roles
 
 ---
 
@@ -19,7 +19,7 @@
 
 | Role | Permissions |
 |------|------------|
-| **Admin** | Set all other roles, freeze/unfreeze accounts, clawback tokens |
+| **Admin** | Set all other roles, freeze/unfreeze accounts |
 | **Minter** | Mint (wrap), burn (unwrap), set interest rate |
 | **Yield Recipient Manager** | Set the yield recipient address |
 | **Yield Recipient** | Claim accrued yield |
@@ -42,7 +42,7 @@ The Minter acts as the **bridge gateway** — the sole entry point for supply ch
 
 **Burn (Unwrap)**
 - Minter calls `burn(from, amount)`
-- Finalizes pending yield → decreases both accumulators → clawbacks SAC tokens from account
+- Finalizes pending yield → decreases both accumulators → removes SAC tokens from account
 - Capped: cannot burn more than `total_principal` (prevents burning claimed yield)
 - Does NOT require the target account's authorization
 
@@ -66,7 +66,7 @@ The Minter acts as the **bridge gateway** — the sole entry point for supply ch
   - `total_supply` — total outstanding tokens (principal + claimed yield)
 - **Yield formula**: `yield = total_principal × (newIndex - oldIndex) / INDEX_SCALE`
 - **Non-compounding**: `claim_yield()` mints new SAC tokens to the yield recipient but does NOT increase `total_principal` — future yield still calculated on original principal only
-- **Index updated** on every state-changing operation (mint, burn, clawback, claim, set_rate)
+- **Index updated** on every state-changing operation (mint, burn, claim, set_rate)
 
 ---
 
@@ -96,11 +96,6 @@ The Minter acts as the **bridge gateway** — the sole entry point for supply ch
 - SAC operates in `AUTH_REQUIRED` mode — accounts are unauthorized (frozen) by default
 - Admin calls `unfreeze_account(addr)` → SAC `set_authorized(true)` → account can send/receive
 - Admin calls `freeze_account(addr)` → SAC `set_authorized(false)` → account blocked
-
-**Clawback**
-- Admin calls `clawback(from, amount)` — force-removes tokens without target's consent
-- Updates both accumulators (same as burn) — capped at `total_principal`
-- Finalizes yield before executing
 
 **Authorize & Transfer**
 - Forced Transfer Manager calls `authorize_and_transfer(from, to, amount)`

@@ -97,7 +97,7 @@ A Soroban contract that acts as the **SAC admin** for a Stellar asset. It direct
 This contract is set as the **SAC admin**, giving it the ability to:
 
 - **Mint** new SAC tokens to authorized recipients (`mint`)
-- **Burn** SAC tokens from accounts via clawback (`burn`)
+- **Burn** SAC tokens from accounts (`burn`)
 - **Claim yield** by minting new tokens to the yield recipient (`claim_yield`)
 - **Control authorization** — freeze, unfreeze, and `authorize_and_transfer`
 
@@ -117,7 +117,7 @@ The contract never holds user funds. Users hold tokens directly in their account
 
 1. Minter (bridge) calls `burn(caller, from, amount)` on the yield contract
 2. Contract updates accumulators (decreases both)
-3. Contract clawbacks SAC tokens from the account via `StellarAssetClient::clawback`
+3. Contract removes SAC tokens from the account via `StellarAssetClient::clawback`
 
 ### Token Distribution
 
@@ -159,13 +159,10 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 |----------|------|-------------|
 | `freeze_account(account)` | Admin | Removes account from allowlist — blocks sending and receiving |
 | `unfreeze_account(account)` | Admin | Adds account to allowlist — permits sending and receiving |
-| `clawback(from, amount)` | Admin | Force-removes tokens from an account and decreases both accumulators |
 | `authorize_and_transfer(from, to, amount)` | Forced Transfer Manager | Authorizes recipient, transfers tokens, then re-freezes recipient |
 | `is_authorized(account)` | (view) | Returns whether an account is authorized |
 
 - `freeze_account` and `unfreeze_account` call the SAC's `set_authorized` under the hood
-- `clawback` finalizes yield at current rates before decreasing accumulators, then calls the SAC's `clawback`
-- `clawback` does **not** require the target account's authorization — it is an admin-forced operation
 
 ## Roles
 
@@ -179,7 +176,7 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `freeze_account`, `unfreeze_account`, `clawback`, `upgrade`)
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `freeze_account`, `unfreeze_account`, `upgrade`)
 - All roles are **single-address** — exactly one holder per role at any time
 - Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager)
 - Every role-gated function calls `require_auth()` on the role holder — no implicit trust
@@ -191,7 +188,7 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 Admin
 ├── Top-level authority
 ├── Can set/change Minter, Yield Recipient Manager, Forced Transfer Manager
-└── Compliance: freeze, unfreeze, clawback accounts
+└── Compliance: freeze, unfreeze accounts
 
 Minter (Bridge / Issuer)
 ├── Mints SAC tokens directly via mint()
@@ -232,4 +229,4 @@ The `soroban-fireblocks-sdk/` directory contains a TypeScript SDK that wraps the
 
 - [ ] Implement industry standard math library (replace Taylor series with Pade approximation to match EVM precision)
 - [ ] Double check rounding math (verify rounding directions are consistent and protocol-favorable across all operations)
-- [ ] Add remaining SDK methods (freeze, unfreeze, clawback, authorize_and_transfer, claim_yield, view functions)
+- [ ] Add remaining SDK methods (freeze, unfreeze, authorize_and_transfer, claim_yield, view functions)

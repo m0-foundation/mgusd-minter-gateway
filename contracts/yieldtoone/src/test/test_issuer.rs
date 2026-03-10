@@ -187,7 +187,7 @@ fn test_issuer_cannot_be_frozen_to_block_send_to_issuer() {
 }
 
 /// Normal operations remain unaffected by failed freeze attempt on issuer.
-/// Minting, claiming yield, clawback, and authorize_and_transfer all work fine.
+/// Minting, claiming yield, burn, and authorize_and_transfer all work fine.
 #[test]
 fn test_operations_work_after_failed_issuer_freeze() {
     let s = setup();
@@ -213,9 +213,8 @@ fn test_operations_work_after_failed_issuer_freeze() {
     let claimed = s.contract.claim_yield(&s.yield_recipient);
     assert!(claimed > 0);
 
-    // Clawback still works
-    s.contract.freeze_account(&user);
-    s.contract.clawback(&user, &100_0000000);
+    // Burn still works
+    s.contract.burn(&s.minter, &user, &100_0000000);
     assert_eq!(s.sac_token.balance(&user), amount - 100_0000000);
 
     // authorize_and_transfer still works

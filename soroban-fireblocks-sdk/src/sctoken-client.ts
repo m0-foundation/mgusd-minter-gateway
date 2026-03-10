@@ -85,7 +85,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
   }
 
   async deployFull(params: DeployFullParams): Promise<DeployFullResult> {
-    // Step 1: Configure issuer flags (AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED)
+    // Step 1: Configure issuer flags (AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED — clawback enabled is required for burn)
     console.log("Step 1/5: Configuring issuer flags...");
     const issuerResult = await this.configureIssuer();
     if (issuerResult.status !== "SUCCESS") {

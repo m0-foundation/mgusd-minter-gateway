@@ -10,7 +10,7 @@ use super::setup::*;
 // the wrong role. Covers all functions that use `require_admin_or`.
 //
 // Note: Admin-only functions (set_admin, set_minter, set_yield_recipient_manager,
-// set_forced_transfer_manager, freeze_account, unfreeze_account, clawback) use
+// set_forced_transfer_manager, freeze_account, unfreeze_account) use
 // `require_admin` which calls `admin.require_auth()` directly. With mock_all_auths,
 // Soroban's native auth always passes, so we cannot test wrong-role rejection for
 // those functions in this manner. They are covered by Soroban's auth system.
