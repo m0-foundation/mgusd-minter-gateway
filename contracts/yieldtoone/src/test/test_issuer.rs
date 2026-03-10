@@ -187,13 +187,11 @@ fn test_issuer_cannot_be_frozen_to_block_send_to_issuer() {
 }
 
 /// Normal operations remain unaffected by failed freeze attempt on issuer.
-/// Minting, claiming yield, burn, and authorize_and_transfer all work fine.
+/// Minting, claiming yield, and burn all work fine.
 #[test]
 fn test_operations_work_after_failed_issuer_freeze() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let treasury = Address::generate(&s.env);
-    let recipient = Address::generate(&s.env);
     let amount = 1_000_0000000i128;
     let issuer = &s.issuer;
 
@@ -216,13 +214,6 @@ fn test_operations_work_after_failed_issuer_freeze() {
     // Burn still works
     s.contract.burn(&s.minter, &user, &100_0000000);
     assert_eq!(s.sac_token.balance(&user), amount - 100_0000000);
-
-    // authorize_and_transfer still works
-    s.contract.unfreeze_account(&treasury);
-    s.contract.mint(&s.minter, &treasury, &500_0000000);
-    s.contract
-        .authorize_and_transfer(&s.forced_transfer_manager, &treasury, &recipient, &200_0000000);
-    assert_eq!(s.sac_token.balance(&recipient), 200_0000000);
 }
 
 // =============================================================================

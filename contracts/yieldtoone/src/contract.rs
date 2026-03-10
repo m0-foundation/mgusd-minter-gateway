@@ -3,10 +3,10 @@ use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env};
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::errors::YieldTokenError;
 use crate::events::{
-    emit_account_frozen, emit_account_unfrozen, emit_authorize_and_transfer,
-    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set,
-    emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
-    emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_account_frozen, emit_account_unfrozen, emit_forced_transfer_manager_set,
+    emit_interest_rate_set, emit_minter_set, emit_set_admin, emit_supply_synced,
+    emit_upgraded, emit_yield_claimed, emit_yield_recipient_manager_set,
+    emit_yield_recipient_set,
 };
 use crate::roles::{
     read_forced_transfer_manager, read_minter, read_yield_recipient, read_yield_recipient_manager,
@@ -164,40 +164,6 @@ impl YieldToken {
         e.deployer().update_current_contract_wasm(new_wasm_hash.clone());
 
         emit_upgraded(&e, admin, new_wasm_hash);
-    }
-
-    // =========================================================================
-    // Forced Transfer Manager Functions
-    // =========================================================================
-
-    /// Authorizes a recipient on the SAC and transfers tokens to it atomically.
-    /// Forced transfer manager or admin only.
-    ///
-    /// `from` must authorize the transfer (required by SAC's transfer).
-    /// Does NOT update accumulators — this is a balance redistribution, not a mint/burn.
-    pub fn authorize_and_transfer(
-        e: Env,
-        caller: Address,
-        from: Address,
-        to: Address,
-        amount: i128,
-    ) -> Result<(), YieldTokenError> {
-        from.require_auth();
-        check_nonnegative_amount(amount)?;
-        require_admin_or(&e, &caller, &read_forced_transfer_manager(&e))?;
-        extend_instance_ttl(&e);
-
-        let sac_addr = read_sac_token(&e);
-
-        let sac = token::StellarAssetClient::new(&e, &sac_addr);
-
-        // Authorize recipient, transfer, then re-freeze recipient
-        sac.set_authorized(&to, &true);
-        token::Client::new(&e, &sac_addr).transfer(&from, &to, &amount);
-        sac.set_authorized(&to, &false);
-
-        emit_authorize_and_transfer(&e, from, to, amount);
-        Ok(())
     }
 
     // =========================================================================
