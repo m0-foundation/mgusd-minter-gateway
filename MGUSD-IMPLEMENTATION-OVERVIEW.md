@@ -2,8 +2,6 @@
 
 M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin built as a Soroban smart contract that administers a Stellar Asset Contract (SAC). This document covers the full implementation: flows, roles, contract interface, yield mechanics, compliance controls, and the Fireblocks SDK used by the Bridge operator.
 
-For the condensed design reference, see [DESIGN.md](./DESIGN.md).
-
 ---
 
 ## Flows
