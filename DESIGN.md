@@ -23,7 +23,7 @@
 | **Minter** | Mint (wrap), burn (unwrap), set interest rate |
 | **Yield Recipient Manager** | Set the yield recipient address |
 | **Yield Recipient** | Claim accrued yield |
-| **Forced Transfer Manager** | Atomic authorize-transfer-refreeze between accounts |
+| **Forced Transfer Manager** | Role stored but no active function (reserved for future use) |
 
 - All roles are single-address (one holder per role)
 - Only Admin can reassign roles (except Yield Recipient, managed by YRM)
@@ -85,7 +85,7 @@ The Minter acts as the **bridge gateway** — the sole entry point for supply ch
 **How this contract prevents it:**
 - SAC is configured with `AUTH_REQUIRED` — all accounts start frozen
 - Accounts can only transact after Admin explicitly calls `unfreeze_account()`
-- `authorize_and_transfer` deliberately **re-freezes** the recipient after transferring, so they hold tokens but cannot move them (including to the issuer)
+- Admin re-freezes accounts after transfers to maintain the walled garden
 - To allow free transfers, Admin must consciously unfreeze an account, accepting the risk
 
 ---
@@ -97,9 +97,8 @@ The Minter acts as the **bridge gateway** — the sole entry point for supply ch
 - Admin calls `unfreeze_account(addr)` → SAC `set_authorized(true)` → account can send/receive
 - Admin calls `freeze_account(addr)` → SAC `set_authorized(false)` → account blocked
 
-**Authorize & Transfer**
-- Forced Transfer Manager calls `authorize_and_transfer(from, to, amount)`
-- Atomic: authorize recipient → transfer → re-freeze recipient
-- Requires `from.require_auth()` (sender must consent)
-- Does NOT update accumulators (balance redistribution, not mint/burn)
-- Prevents recipients from accidentally burning tokens by sending to the issuer
+**Token Transfers**
+- Transfers use the SAC's standard SEP-41 `transfer()` — the wrapper contract has no transfer function
+- Both sender and receiver must be authorized (unfrozen) for a transfer to succeed
+- Admin manages freeze/unfreeze lifecycle to control who can transfer and when
+- Transfers do NOT update accumulators (balance redistribution, not mint/burn)

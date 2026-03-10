@@ -17,9 +17,10 @@ For the condensed design reference, see [DESIGN.md](./DESIGN.md).
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Crossmint (Forced Transfer Manager) calls `authorize_and_transfer(treasury, user, amount)`
-2. Contract atomically: authorizes the recipient on the SAC → transfers tokens → re-freezes the recipient
-3. End user now holds MGUSD in their wallet but cannot freely transfer (walled garden model)
+1. Admin unfreezes the end user's account on the SAC
+2. Treasury (or an authorized party) calls the SAC's standard SEP-41 `transfer()` to send tokens to the end user
+3. Admin re-freezes the end user's account after distribution (walled garden model)
+4. End user now holds MGUSD in their wallet but cannot freely transfer
 
 ### 3. Redemption (End User → MoneyGram → Bridge)
 
@@ -69,7 +70,7 @@ The system consists of three on-chain components:
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
-| **Forced Transfer Manager** | `authorize_and_transfer` | Crossmint |
+| **Forced Transfer Manager** | *(role stored but no active function)* | Crossmint |
 
 **Design properties:**
 
@@ -116,12 +117,6 @@ The system consists of three on-chain components:
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `claim_yield` | `() -> i128` | Claim accrued yield; mints new SAC tokens to caller |
-
-### Forced Transfer Manager Functions (1)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `authorize_and_transfer` | `(from: Address, to: Address, amount: i128)` | Atomic: authorize recipient → transfer → re-freeze. Requires `from.require_auth()` |
 
 ### View / Query Functions (13)
 
@@ -262,10 +257,10 @@ On classic Stellar, sending tokens to the **issuer address** burns them automati
 The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by default.
 
 1. Accounts can only transact after Admin explicitly calls `unfreeze_account()`
-2. `authorize_and_transfer` deliberately **re-freezes** the recipient after transferring
+2. Admin re-freezes accounts after transfers to maintain the walled garden
 3. Frozen accounts hold tokens but cannot move them (including to the issuer)
 
-**Current approach (walled garden):** All recipients are re-frozen after every transfer via `authorize_and_transfer`. Users cannot initiate transfers themselves — only the Forced Transfer Manager can move tokens between accounts.
+**Current approach (walled garden):** Accounts are frozen by default and only temporarily unfrozen by Admin for transfers. Users cannot initiate transfers themselves unless explicitly unfrozen.
 
 ---
 
@@ -278,19 +273,18 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 - `freeze_account(addr)` → SAC `set_authorized(false)` → account is blocked
 - Only Admin can freeze/unfreeze
 
-### Authorize & Transfer
+### Token Transfers
 
-- `authorize_and_transfer(from, to, amount)` — Forced Transfer Manager or Admin
-- Atomic three-step: authorize recipient → transfer → re-freeze recipient
-- Requires `from.require_auth()` (sender must consent to the transfer)
-- Does **not** update accumulators — this is a balance redistribution, not a mint/burn
-- Prevents recipients from accidentally burning tokens by sending to the issuer
+- Transfers use the SAC's standard SEP-41 `transfer()` — the wrapper contract has no transfer function
+- Both sender and receiver must be authorized (unfrozen) for a transfer to succeed
+- Admin manages the freeze/unfreeze lifecycle to control who can transfer and when
+- Transfers do **not** update accumulators — they are balance redistributions, not mint/burn operations
 
 ---
 
 ## Minter Gateway SDK (Fireblocks)
 
-The `soroban-sctoken-fireblocks-sdk` provides a TypeScript client for the Bridge to interact with the wrapper contract via Fireblocks' institutional custody infrastructure.
+The `soroban-fireblocks-sdk` provides a TypeScript client for the Bridge to interact with the wrapper contract via Fireblocks' institutional custody infrastructure.
 
 ### SDK Methods
 
