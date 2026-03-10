@@ -63,7 +63,7 @@ fn test_forced_transfer_manager_view() {
 // ADMIN SUPER-ROLE TESTS
 // =============================================================================
 // Admin can call any role-gated function (mint, burn, set_rate, claim_yield,
-// set_yield_recipient, authorize_and_transfer) without holding that role.
+// set_yield_recipient) without holding that role.
 
 #[test]
 fn test_admin_can_mint() {
@@ -126,22 +126,6 @@ fn test_admin_can_set_yield_recipient() {
     s.contract.set_yield_recipient(&s.admin, &new_yr);
 
     assert_eq!(s.contract.yield_recipient(), new_yr);
-}
-
-#[test]
-fn test_admin_can_authorize_and_transfer() {
-    let s = setup();
-    let treasury = Address::generate(&s.env);
-    let recipient = Address::generate(&s.env);
-
-    s.contract.unfreeze_account(&treasury);
-    s.contract.mint(&s.minter, &treasury, &1_000_0000000);
-
-    // Admin calls authorize_and_transfer
-    s.contract.authorize_and_transfer(&s.admin, &treasury, &recipient, &500_0000000);
-
-    assert_eq!(s.sac_token.balance(&recipient), 500_0000000);
-    assert!(!s.contract.is_authorized(&recipient));
 }
 
 #[test]
