@@ -15,10 +15,10 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Admin unfreezes the end user's account on the SAC
-2. Treasury (or an authorized party) calls the SAC's standard SEP-41 `transfer()` to send tokens to the end user
-3. Admin re-freezes the end user's account after distribution (walled garden model)
-4. End user now holds MGUSD in their wallet but cannot freely transfer
+1. Admin whitelists (unfreezes) the end user's account via `unfreeze_account(user)`
+2. Treasury transfers tokens to the user via the SAC's standard SEP-41 `transfer()`
+3. Whitelisted (unfrozen) accounts can freely transfer among themselves
+4. Non-whitelisted (frozen) accounts cannot send or receive tokens
 
 ### 3. Redemption (End User → MoneyGram → Bridge)
 
@@ -100,21 +100,21 @@ The system consists of three on-chain components:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `mint` | `(to: Address, amount: i128)` | Mint SAC tokens and increase both accumulators |
-| `burn` | `(from: Address, amount: i128)` | Remove SAC tokens and decrease both accumulators |
-| `set_rate` | `(rate_bps: u32)` | Set interest rate in basis points (max 10000 = 100%) |
+| `mint` | `(caller: Address, to: Address, amount: i128)` | Mint SAC tokens and increase both accumulators |
+| `burn` | `(caller: Address, from: Address, amount: i128)` | Remove SAC tokens and decrease both accumulators |
+| `set_rate` | `(caller: Address, rate_bps: u32)` | Set interest rate in basis points (max 10000 = 100%) |
 
 ### Yield Recipient Manager Functions (1)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `set_yield_recipient` | `(new_yr: Address)` | Set the address that can claim yield |
+| `set_yield_recipient` | `(caller: Address, new_yr: Address)` | Set the address that can claim yield |
 
 ### Yield Recipient Functions (1)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `claim_yield` | `() -> i128` | Claim accrued yield; mints new SAC tokens to caller |
+| `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to yield recipient |
 
 ### View / Query Functions (13)
 
@@ -250,15 +250,16 @@ On classic Stellar, sending tokens to the **issuer address** burns them automati
 - The wrapper contract's `total_principal` and `total_supply` are **never updated**
 - Yield keeps accruing on phantom principal — breaking the yield invariant
 
-### Prevention: AUTH_REQUIRED + Walled Garden
+### Prevention: AUTH_REQUIRED + Whitelist Model
 
 The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by default.
 
 1. Accounts can only transact after Admin explicitly calls `unfreeze_account()`
-2. Admin re-freezes accounts after transfers to maintain the walled garden
-3. Frozen accounts hold tokens but cannot move them (including to the issuer)
+2. The issuer account is **never** unfrozen — it has no trustline for its own asset
+3. Unfrozen accounts form a closed transfer network that cannot reach the issuer
+4. Frozen accounts hold tokens but cannot move them (including to the issuer)
 
-**Current approach (walled garden):** Accounts are frozen by default and only temporarily unfrozen by Admin for transfers. Users cannot initiate transfers themselves unless explicitly unfrozen.
+**Current approach (whitelist):** Admin whitelists accounts via `unfreeze_account()`. Whitelisted accounts can freely transfer among themselves using the SAC's standard SEP-41 `transfer()`. Since the issuer is never part of the whitelist, tokens cannot be accidentally sent to the issuer.
 
 ---
 
@@ -274,9 +275,10 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 ### Token Transfers
 
 - Transfers use the SAC's standard SEP-41 `transfer()` — the wrapper contract has no transfer function
-- Both sender and receiver must be authorized (unfrozen) for a transfer to succeed
-- Admin manages the freeze/unfreeze lifecycle to control who can transfer and when
-- Transfers do **not** update accumulators — they are balance redistributions, not mint/burn operations
+- Both sender and receiver must be whitelisted (unfrozen) for a transfer to succeed
+- Admin whitelists accounts via `unfreeze_account()` and can revoke via `freeze_account()`
+- Transfers do **not** update accumulators — they are balance redistributions, not mints/burns
+- The issuer is never whitelisted, preventing accidental issuer burn
 
 ---
 
@@ -286,25 +288,31 @@ The `soroban-fireblocks-sdk` provides a TypeScript client for the Bridge to inte
 
 ### SDK Methods
 
-The SDK exposes dedicated methods for the three Minter actions:
+The SDK exposes dedicated methods for Minter actions and queries:
 
 | SDK Method | Contract Function | Parameters |
 |------------|-------------------|------------|
-| `mint()` | `mint(to, amount)` | `contractId`, `to: string`, `amount: bigint` |
-| `burn()` | `burn(from, amount)` | `contractId`, `from: string`, `amount: bigint` |
-| `setRate()` | `set_rate(rate_bps)` | `contractId`, `rateBps: number` |
+| `mint()` | `mint(caller, to, amount)` | `contractId`, `to: string`, `amount: bigint` |
+| `burn()` | `burn(caller, from, amount)` | `contractId`, `from: string`, `amount: bigint` |
+| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `rateBps: number` |
+| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter: string` |
+| `queryAdmin()` | `admin()` | `contractId` |
+| `querySacToken()` | `sac_token()` | `contractId` |
+| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `wasm` |
 
-Query and other functions are available through the generic `invokeContract({ contractId, method: "..." })` interface.
+Other functions are available through the generic `invokeContract({ contractId, method: "..." })` interface.
 
 ### Scripts
 
-Runnable scripts are provided in `scripts/` for each SDK method:
+Runnable scripts are provided in `scripts/`:
 
 | Script | Description |
 |--------|-------------|
+| `deploy-full.ts` | Full 5-step deploy pipeline (configure issuer → deploy SAC → upload WASM → deploy contract → transfer SAC admin) |
 | `invoke-mint.ts` | Mint tokens to a destination address |
 | `invoke-burn.ts` | Burn tokens from an address |
-| `invoke-set-rate.ts` | Set the interest rate in basis points |
+| `query-admin.ts` | Query the current admin address |
+| `setup-trustline.ts` | Set up a trustline for the token |
 
 ### Fireblocks RAW Signing Pipeline
 
