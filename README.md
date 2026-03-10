@@ -99,7 +99,7 @@ This contract is set as the **SAC admin**, giving it the ability to:
 - **Mint** new SAC tokens to authorized recipients (`mint`)
 - **Burn** SAC tokens from accounts (`burn`)
 - **Claim yield** by minting new tokens to the yield recipient (`claim_yield`)
-- **Control authorization** — freeze, unfreeze, and `authorize_and_transfer`
+- **Control authorization** — freeze and unfreeze accounts via the SAC allowlist
 
 The contract never holds user funds. Users hold tokens directly in their accounts.
 
@@ -121,7 +121,7 @@ The contract never holds user funds. Users hold tokens directly in their account
 
 ### Token Distribution
 
-The forced transfer manager calls `authorize_and_transfer(from, to, amount)` to move tokens between accounts. This temporarily authorizes the recipient, transfers tokens, then **re-freezes** the recipient to lock tokens at the destination. Accumulators are not affected — it is a balance redistribution, not a mint/burn.
+Admin whitelists (unfreezes) recipient accounts via `unfreeze_account()`. Once whitelisted, tokens can be transferred to the recipient using the SAC's standard SEP-41 `transfer()`. Whitelisted accounts can freely transfer among themselves. Accumulators are not affected by transfers — they are balance redistributions, not mints/burns.
 
 ## Authorization & Allowlist
 
@@ -139,17 +139,9 @@ The SAC issuer is configured with **AUTH_REQUIRED**, **REVOCABLE**, and **CLAWBA
 | **Authorized** | ✓ | ✓ | Admin calls `unfreeze_account` |
 | **Unauthorized** (default) | ✗ | ✗ | Default state, or admin calls `freeze_account` |
 
-### `authorize_and_transfer` (Forced Transfer Manager)
+### Issuer Burn Prevention
 
-The forced transfer manager can atomically authorize a recipient, transfer tokens, and **re-freeze** the recipient in a single call:
-
-1. Temporarily authorizes the recipient on the SAC (`set_authorized(to, true)`)
-2. Transfers tokens from sender to recipient
-3. **Re-freezes the recipient** (`set_authorized(to, false)`)
-
-The recipient ends up holding tokens but **cannot move them freely**. This prevents recipients from sending tokens to the issuer address (which would burn them without updating the yield accumulators). To allow a recipient to transfer tokens independently, the admin must explicitly call `unfreeze_account`.
-
-This function does **not** update accumulators — it is a balance redistribution, not a mint or burn. The sender (`from`) must authorize the call.
+The issuer account is never whitelisted (it has no trustline for its own asset). Since unfrozen accounts form a closed transfer network that cannot reach the issuer, tokens cannot be accidentally sent to the issuer address — which would burn them at the SAC layer without updating the yield accumulators.
 
 ## Compliance Controls
 
@@ -159,7 +151,6 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 |----------|------|-------------|
 | `freeze_account(account)` | Admin | Removes account from allowlist — blocks sending and receiving |
 | `unfreeze_account(account)` | Admin | Adds account to allowlist — permits sending and receiving |
-| `authorize_and_transfer(from, to, amount)` | Forced Transfer Manager | Authorizes recipient, transfers tokens, then re-freezes recipient |
 | `is_authorized(account)` | (view) | Returns whether an account is authorized |
 
 - `freeze_account` and `unfreeze_account` call the SAC's `set_authorized` under the hood
@@ -172,7 +163,7 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
-| **Forced Transfer Manager** | `authorize_and_transfer` | Crossmint |
+| **Forced Transfer Manager** | *(role stored but no active function)* | Crossmint |
 
 **Design properties:**
 
@@ -202,7 +193,7 @@ Yield Recipient
 └── Can claim accrued yield
 
 Forced Transfer Manager
-└── Can authorize a recipient and transfer tokens atomically (authorize_and_transfer)
+└── (role stored but no active function)
 ```
 
 ---
@@ -229,4 +220,4 @@ The `soroban-fireblocks-sdk/` directory contains a TypeScript SDK that wraps the
 
 - [ ] Implement industry standard math library (replace Taylor series with Pade approximation to match EVM precision)
 - [ ] Double check rounding math (verify rounding directions are consistent and protocol-favorable across all operations)
-- [ ] Add remaining SDK methods (freeze, unfreeze, authorize_and_transfer, claim_yield, view functions)
+- [ ] Add remaining SDK methods (freeze, unfreeze, claim_yield, view functions)
