@@ -218,6 +218,4 @@ The `soroban-fireblocks-sdk/` directory contains a TypeScript SDK that wraps the
 
 ## TODO
 
-- [ ] Implement industry standard math library (replace Taylor series with Pade approximation to match EVM precision)
 - [ ] Double check rounding math (verify rounding directions are consistent and protocol-favorable across all operations)
-- [ ] Add remaining SDK methods (freeze, unfreeze, claim_yield, view functions)
