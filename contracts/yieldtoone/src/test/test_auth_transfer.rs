@@ -59,6 +59,154 @@ fn test_authorized_user_can_send_full_balance_to_issuer() {
 }
 
 // =============================================================================
+// SAC TRANSFER BEHAVIOR TESTS
+// =============================================================================
+//
+// These tests cover transfer behaviors between authorized accounts using
+// direct SAC transfers. They replace the removed authorize_and_transfer tests,
+// verifying the same behaviors (full balance, multiple recipients, zero amount,
+// insufficient funds, yield interaction, onboarding) via user-to-user transfers.
+
+#[test]
+fn test_sac_transfer_full_balance() {
+    let s = setup();
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let amount = 1_000_0000000i128;
+
+    s.contract.unfreeze_account(&alice);
+    s.contract.unfreeze_account(&bob);
+    s.contract.mint(&s.minter, &alice, &amount);
+
+    // Transfer entire balance
+    s.sac_token.transfer(&alice, &bob, &amount);
+
+    assert_eq!(s.sac_token.balance(&alice), 0);
+    assert_eq!(s.sac_token.balance(&bob), amount);
+
+    // Accumulators unchanged — contract doesn't see SAC transfers
+    assert_eq!(s.contract.total_principal(), amount);
+    assert_eq!(s.contract.total_supply(), amount);
+}
+
+#[test]
+fn test_sac_transfer_multiple_recipients() {
+    let s = setup();
+    let treasury = Address::generate(&s.env);
+    let recipient_a = Address::generate(&s.env);
+    let recipient_b = Address::generate(&s.env);
+    let amount = 1_000_0000000i128;
+
+    s.contract.unfreeze_account(&treasury);
+    s.contract.unfreeze_account(&recipient_a);
+    s.contract.unfreeze_account(&recipient_b);
+    s.contract.mint(&s.minter, &treasury, &amount);
+
+    // Distribute to multiple recipients
+    s.sac_token.transfer(&treasury, &recipient_a, &400_0000000);
+    s.sac_token.transfer(&treasury, &recipient_b, &300_0000000);
+
+    assert_eq!(s.sac_token.balance(&treasury), 300_0000000);
+    assert_eq!(s.sac_token.balance(&recipient_a), 400_0000000);
+    assert_eq!(s.sac_token.balance(&recipient_b), 300_0000000);
+
+    // Accumulators unchanged
+    assert_eq!(s.contract.total_principal(), amount);
+    assert_eq!(s.contract.total_supply(), amount);
+}
+
+#[test]
+fn test_sac_transfer_zero_amount() {
+    let s = setup();
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let amount = 1_000_0000000i128;
+
+    s.contract.unfreeze_account(&alice);
+    s.contract.unfreeze_account(&bob);
+    s.contract.mint(&s.minter, &alice, &amount);
+
+    // Transfer zero tokens
+    s.sac_token.transfer(&alice, &bob, &0);
+
+    // Balances unchanged
+    assert_eq!(s.sac_token.balance(&alice), amount);
+    assert_eq!(s.sac_token.balance(&bob), 0);
+}
+
+#[test]
+fn test_sac_transfer_insufficient_balance() {
+    let s = setup();
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let amount = 500_0000000i128;
+
+    s.contract.unfreeze_account(&alice);
+    s.contract.unfreeze_account(&bob);
+    s.contract.mint(&s.minter, &alice, &amount);
+
+    // Try to transfer more than alice has
+    let result = s.sac_token.try_transfer(&alice, &bob, &1_000_0000000);
+    assert!(result.is_err());
+
+    // Balances unchanged
+    assert_eq!(s.sac_token.balance(&alice), amount);
+    assert_eq!(s.sac_token.balance(&bob), 0);
+}
+
+#[test]
+fn test_sac_transfer_does_not_affect_yield() {
+    let s = setup();
+    let treasury = Address::generate(&s.env);
+    let recipient = Address::generate(&s.env);
+    let amount = 10_000_0000000i128;
+
+    s.contract.unfreeze_account(&treasury);
+    s.contract.unfreeze_account(&recipient);
+    s.contract.mint(&s.minter, &treasury, &amount);
+
+    // Set 5% rate and advance 1 year to accrue yield
+    s.contract.set_rate(&s.minter, &500);
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    // Record yield state before transfer
+    let yield_before = s.contract.accrued_yield();
+    let principal_before = s.contract.total_principal();
+    let supply_before = s.contract.total_supply();
+    assert!(yield_before > 0);
+
+    // Transfer half via SAC
+    s.sac_token.transfer(&treasury, &recipient, &(amount / 2));
+
+    // Yield state unchanged — contract doesn't see SAC transfers
+    assert_eq!(s.contract.accrued_yield(), yield_before);
+    assert_eq!(s.contract.total_principal(), principal_before);
+    assert_eq!(s.contract.total_supply(), supply_before);
+}
+
+#[test]
+fn test_onboarding_flow() {
+    let s = setup();
+    let new_user = Address::generate(&s.env);
+    let existing_user = Address::generate(&s.env);
+    let mint_amount = 1_000_0000000i128;
+    let transfer_amount = 100_0000000i128;
+
+    // Admin unfreezes both users (onboarding)
+    s.contract.unfreeze_account(&new_user);
+    s.contract.unfreeze_account(&existing_user);
+
+    // Mint to new user
+    s.contract.mint(&s.minter, &new_user, &mint_amount);
+
+    // New user can freely transfer to existing user — no authorize_and_transfer needed
+    s.sac_token.transfer(&new_user, &existing_user, &transfer_amount);
+
+    assert_eq!(s.sac_token.balance(&new_user), mint_amount - transfer_amount);
+    assert_eq!(s.sac_token.balance(&existing_user), transfer_amount);
+}
+
+// =============================================================================
 // DIRECT SAC TRANSFER BYPASS TESTS
 // =============================================================================
 //
