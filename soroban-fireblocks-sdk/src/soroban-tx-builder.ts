@@ -4,6 +4,7 @@ import {
   Asset,
   AuthClawbackEnabledFlag,
   AuthFlag,
+  AuthRequiredFlag,
   AuthRevocableFlag,
   Contract,
   Keypair,
@@ -153,7 +154,7 @@ export async function buildConfigureIssuerTransaction(
   })
     .addOperation(
       Operation.setOptions({
-        setFlags: (AuthRevocableFlag | AuthClawbackEnabledFlag) as unknown as AuthFlag,
+        setFlags: (AuthRequiredFlag | AuthRevocableFlag | AuthClawbackEnabledFlag) as unknown as AuthFlag,
       }),
     )
     .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
