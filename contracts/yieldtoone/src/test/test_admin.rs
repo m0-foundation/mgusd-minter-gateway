@@ -220,3 +220,52 @@ fn test_upgrade_fails_with_invalid_wasm_hash() {
     let result = s.contract.try_upgrade(&hash);
     assert!(result.is_err(), "upgrade with non-existent WASM hash should fail");
 }
+
+// =============================================================================
+// ACCESS CONTROL — SET_YIELD_RECIPIENT (admin or yield_recipient_manager only)
+// =============================================================================
+
+#[test]
+fn test_minter_cannot_set_yield_recipient() {
+    let s = setup();
+    let new_yr = Address::generate(&s.env);
+
+    let result = s
+        .contract
+        .try_set_yield_recipient(&s.minter, &new_yr);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_yield_recipient_cannot_set_yield_recipient() {
+    let s = setup();
+    let new_yr = Address::generate(&s.env);
+
+    let result = s
+        .contract
+        .try_set_yield_recipient(&s.yield_recipient, &new_yr);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_forced_transfer_manager_cannot_set_yield_recipient() {
+    let s = setup();
+    let new_yr = Address::generate(&s.env);
+
+    let result = s
+        .contract
+        .try_set_yield_recipient(&s.forced_transfer_manager, &new_yr);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_random_cannot_set_yield_recipient() {
+    let s = setup();
+    let random = Address::generate(&s.env);
+    let new_yr = Address::generate(&s.env);
+
+    let result = s
+        .contract
+        .try_set_yield_recipient(&random, &new_yr);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}

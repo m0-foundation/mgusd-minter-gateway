@@ -1,5 +1,4 @@
 mod setup;
-mod test_access_control;
 mod test_accumulators;
 mod test_admin;
 mod test_auth_transfer;
