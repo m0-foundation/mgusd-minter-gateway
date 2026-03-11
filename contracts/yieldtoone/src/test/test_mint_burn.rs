@@ -3,7 +3,7 @@ use soroban_sdk::testutils::Address as _;
 use super::setup::*;
 
 // =============================================================================
-// MINT — mints SAC tokens and updates accumulators
+// 2. DIRECT MINT — mints SAC tokens and updates accumulators
 // =============================================================================
 
 #[test]
@@ -39,7 +39,7 @@ fn test_mint_multiple_recipients() {
 }
 
 // =============================================================================
-// BURN — happy path
+// 3. DIRECT BURN — removes SAC tokens and updates accumulators
 // =============================================================================
 
 #[test]
@@ -55,6 +55,51 @@ fn test_burn_decreases_both_accumulators_and_sac_balance() {
     assert_eq!(s.contract.total_supply(), 600_0000000);
     assert_eq!(s.sac_token.balance(&user), 600_0000000);
 }
+
+#[test]
+fn test_burn_exceeding_principal_reverts() {
+    let s = setup();
+
+    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract.set_rate(&s.minter, &500);
+
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    // Claim yield so yield_recipient has more SAC tokens than principal
+    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    assert!(claimed > 0);
+
+    // Try to burn more than principal — should fail
+    let total_sac_balance = s.sac_token.balance(&s.yield_recipient);
+    assert!(total_sac_balance > 1_000_0000000);
+
+    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &total_sac_balance);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_burn_exactly_principal() {
+    let s = setup();
+    let initial = 1_000_0000000i128;
+
+    s.contract.mint(&s.minter, &s.yield_recipient, &initial);
+    s.contract.set_rate(&s.minter, &500);
+
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    let claimed = s.contract.claim_yield(&s.yield_recipient);
+
+    // Burn exactly principal — succeeds
+    s.contract.burn(&s.minter, &s.yield_recipient, &initial);
+
+    assert_eq!(s.contract.total_principal(), 0);
+    // total_supply still has the claimed yield portion
+    assert_eq!(s.contract.total_supply(), claimed);
+}
+
+// =============================================================================
+// BURN AFFECTS PRINCIPAL TESTS
+// =============================================================================
 
 #[test]
 fn test_burn_decreases_principal() {
@@ -98,50 +143,9 @@ fn test_burn_decreases_principal() {
     );
 }
 
-#[test]
-fn test_burn_exactly_principal() {
-    let s = setup();
-    let initial = 1_000_0000000i128;
-
-    s.contract.mint(&s.minter, &s.yield_recipient, &initial);
-    s.contract.set_rate(&s.minter, &500);
-
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
-
-    // Burn exactly principal — succeeds
-    s.contract.burn(&s.minter, &s.yield_recipient, &initial);
-
-    assert_eq!(s.contract.total_principal(), 0);
-    // total_supply still has the claimed yield portion
-    assert_eq!(s.contract.total_supply(), claimed);
-}
-
 // =============================================================================
-// EDGE CASES & ERROR PATHS
+// EDGE CASES
 // =============================================================================
-
-#[test]
-fn test_burn_exceeding_principal_reverts() {
-    let s = setup();
-
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
-    s.contract.set_rate(&s.minter, &500);
-
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-
-    // Claim yield so yield_recipient has more SAC tokens than principal
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
-    assert!(claimed > 0);
-
-    // Try to burn more than principal — should fail
-    let total_sac_balance = s.sac_token.balance(&s.yield_recipient);
-    assert!(total_sac_balance > 1_000_0000000);
-
-    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &total_sac_balance);
-    assert!(result.is_err());
-}
 
 #[test]
 fn test_mint_after_burn_to_zero() {
