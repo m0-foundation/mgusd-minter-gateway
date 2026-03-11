@@ -120,3 +120,30 @@ fn test_compliance_flow_freeze_burn_unfreeze() {
     assert_eq!(s.sac_token.balance(&recipient), 100_0000000);
 }
 
+#[test]
+fn test_freeze_blocks_subsequent_direct_sac_transfer() {
+    let s = setup();
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let amount = 1_000_0000000i128;
+
+    // Authorize both and mint
+    s.contract.unfreeze_account(&alice);
+    s.contract.unfreeze_account(&bob);
+    s.contract.mint(&s.minter, &alice, &amount);
+
+    // Direct SAC transfer works while both are authorized
+    s.sac_token.transfer(&alice, &bob, &100_0000000);
+    assert_eq!(s.sac_token.balance(&bob), 100_0000000);
+
+    // Admin freezes alice via our contract
+    s.contract.freeze_account(&alice);
+
+    // Alice tries another direct SAC transfer — BLOCKED
+    let result = s.sac_token.try_transfer(&alice, &bob, &100_0000000);
+    assert!(result.is_err());
+
+    // Alice's remaining balance is locked
+    assert_eq!(s.sac_token.balance(&alice), amount - 100_0000000);
+}
+
