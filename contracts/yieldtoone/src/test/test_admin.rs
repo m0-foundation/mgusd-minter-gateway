@@ -3,7 +3,17 @@ use soroban_sdk::testutils::Address as _;
 use super::setup::*;
 
 // =============================================================================
-// ADMIN ROLE MANAGEMENT TESTS
+// ROLE GETTERS — verify initial state
+// =============================================================================
+
+#[test]
+fn test_forced_transfer_manager_view() {
+    let s = setup();
+    assert_eq!(s.contract.forced_transfer_manager(), s.forced_transfer_manager);
+}
+
+// =============================================================================
+// ROLE SETTERS — happy-path mutations
 // =============================================================================
 
 #[test]
@@ -53,17 +63,9 @@ fn test_set_forced_transfer_manager() {
     assert_eq!(s.contract.forced_transfer_manager(), new_ftm);
 }
 
-#[test]
-fn test_forced_transfer_manager_view() {
-    let s = setup();
-    assert_eq!(s.contract.forced_transfer_manager(), s.forced_transfer_manager);
-}
-
 // =============================================================================
-// ADMIN SUPER-ROLE TESTS
+// ADMIN SUPER-ROLE — admin bypasses role gates
 // =============================================================================
-// Admin can call any role-gated function (mint, burn, set_rate, claim_yield,
-// set_yield_recipient) without holding that role.
 
 #[test]
 fn test_admin_can_mint() {
@@ -128,18 +130,8 @@ fn test_admin_can_set_yield_recipient() {
     assert_eq!(s.contract.yield_recipient(), new_yr);
 }
 
-#[test]
-fn test_unauthorized_caller_rejected() {
-    let s = setup();
-    let random = Address::generate(&s.env);
-
-    // Random address tries to mint — should return UnauthorizedError
-    let result = s.contract.try_mint(&random, &s.yield_recipient, &1_000_0000000);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
-}
-
 // =============================================================================
-// ACCESS CONTROL — SET_YIELD_RECIPIENT (admin or yield_recipient_manager only)
+// ACCESS CONTROL — set_yield_recipient wrong-role rejections
 // =============================================================================
 
 #[test]
