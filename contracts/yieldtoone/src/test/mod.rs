@@ -1,10 +1,10 @@
 mod setup;
-mod test_access_control;
 mod test_accumulators;
 mod test_admin;
-mod test_auth_transfer;
+mod test_transfer;
 mod test_continuous_index;
-mod test_freeze_compliance;
+mod test_deployment;
+mod test_freeze;
 mod test_issuer;
 mod test_mint_burn;
 mod test_rate_boundaries;

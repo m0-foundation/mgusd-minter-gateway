@@ -3,7 +3,7 @@ use soroban_sdk::testutils::Address as _;
 use super::setup::*;
 
 // =============================================================================
-// 2. DIRECT MINT — mints SAC tokens and updates accumulators
+// MINT — mints SAC tokens and updates accumulators
 // =============================================================================
 
 #[test]
@@ -39,7 +39,7 @@ fn test_mint_multiple_recipients() {
 }
 
 // =============================================================================
-// 3. DIRECT BURN — removes SAC tokens and updates accumulators
+// BURN — happy path
 // =============================================================================
 
 #[test]
@@ -55,51 +55,6 @@ fn test_burn_decreases_both_accumulators_and_sac_balance() {
     assert_eq!(s.contract.total_supply(), 600_0000000);
     assert_eq!(s.sac_token.balance(&user), 600_0000000);
 }
-
-#[test]
-fn test_burn_exceeding_principal_reverts() {
-    let s = setup();
-
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
-    s.contract.set_rate(&s.minter, &500);
-
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-
-    // Claim yield so yield_recipient has more SAC tokens than principal
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
-    assert!(claimed > 0);
-
-    // Try to burn more than principal — should fail
-    let total_sac_balance = s.sac_token.balance(&s.yield_recipient);
-    assert!(total_sac_balance > 1_000_0000000);
-
-    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &total_sac_balance);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_burn_exactly_principal() {
-    let s = setup();
-    let initial = 1_000_0000000i128;
-
-    s.contract.mint(&s.minter, &s.yield_recipient, &initial);
-    s.contract.set_rate(&s.minter, &500);
-
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
-
-    // Burn exactly principal — succeeds
-    s.contract.burn(&s.minter, &s.yield_recipient, &initial);
-
-    assert_eq!(s.contract.total_principal(), 0);
-    // total_supply still has the claimed yield portion
-    assert_eq!(s.contract.total_supply(), claimed);
-}
-
-// =============================================================================
-// BURN AFFECTS PRINCIPAL TESTS
-// =============================================================================
 
 #[test]
 fn test_burn_decreases_principal() {
@@ -143,9 +98,50 @@ fn test_burn_decreases_principal() {
     );
 }
 
+#[test]
+fn test_burn_exactly_principal() {
+    let s = setup();
+    let initial = 1_000_0000000i128;
+
+    s.contract.mint(&s.minter, &s.yield_recipient, &initial);
+    s.contract.set_rate(&s.minter, &500);
+
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    let claimed = s.contract.claim_yield(&s.yield_recipient);
+
+    // Burn exactly principal — succeeds
+    s.contract.burn(&s.minter, &s.yield_recipient, &initial);
+
+    assert_eq!(s.contract.total_principal(), 0);
+    // total_supply still has the claimed yield portion
+    assert_eq!(s.contract.total_supply(), claimed);
+}
+
 // =============================================================================
-// EDGE CASES
+// EDGE CASES & ERROR PATHS
 // =============================================================================
+
+#[test]
+fn test_burn_exceeding_principal_reverts() {
+    let s = setup();
+
+    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract.set_rate(&s.minter, &500);
+
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    // Claim yield so yield_recipient has more SAC tokens than principal
+    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    assert!(claimed > 0);
+
+    // Try to burn more than principal — should fail
+    let total_sac_balance = s.sac_token.balance(&s.yield_recipient);
+    assert!(total_sac_balance > 1_000_0000000);
+
+    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &total_sac_balance);
+    assert!(result.is_err());
+}
 
 #[test]
 fn test_mint_after_burn_to_zero() {
@@ -163,4 +159,143 @@ fn test_mint_after_burn_to_zero() {
     assert_eq!(s.contract.total_principal(), amount);
     assert_eq!(s.contract.total_supply(), amount);
     assert_eq!(s.sac_token.balance(&s.yield_recipient), amount);
+}
+
+// =============================================================================
+// AUTH ENFORCEMENT — require_auth reverts without signature
+// =============================================================================
+
+#[test]
+fn test_mint_reverts_without_caller_auth() {
+    let s = setup_no_mock_auth();
+    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+}
+
+#[test]
+fn test_burn_reverts_without_caller_auth() {
+    let s = setup_no_mock_auth();
+    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+}
+
+// =============================================================================
+// ALLOWLIST (AUTH_REQUIRED) TESTS
+// =============================================================================
+
+#[test]
+fn test_unauthorized_account_cannot_receive_mint() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    // Do NOT authorize — user is unauthorized by default (AUTH_REQUIRED)
+    assert!(!s.contract.is_authorized(&user));
+
+    // Minting to unauthorized account should fail
+    let result = s.contract.try_mint(&s.minter, &user, &1_000_0000000);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_authorized_account_can_receive_mint() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    // Authorize via unfreeze_account (allowlist)
+    s.contract.unfreeze_account(&user);
+    assert!(s.contract.is_authorized(&user));
+
+    // Minting to authorized account succeeds
+    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
+}
+
+// =============================================================================
+// ACCESS CONTROL — MINT (admin or minter only)
+// =============================================================================
+
+#[test]
+fn test_yield_recipient_manager_cannot_mint() {
+    let s = setup();
+
+    let result = s
+        .contract
+        .try_mint(&s.yield_recipient_manager, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_yield_recipient_cannot_mint() {
+    let s = setup();
+
+    let result = s
+        .contract
+        .try_mint(&s.yield_recipient, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_forced_transfer_manager_cannot_mint() {
+    let s = setup();
+
+    let result = s
+        .contract
+        .try_mint(&s.forced_transfer_manager, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_random_cannot_mint() {
+    let s = setup();
+    let random = Address::generate(&s.env);
+
+    let result = s
+        .contract
+        .try_mint(&random, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+// =============================================================================
+// ACCESS CONTROL — BURN (admin or minter only)
+// =============================================================================
+
+#[test]
+fn test_yield_recipient_manager_cannot_burn() {
+    let s = setup();
+
+    let result = s
+        .contract
+        .try_burn(&s.yield_recipient_manager, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_yield_recipient_cannot_burn() {
+    let s = setup();
+
+    let result = s
+        .contract
+        .try_burn(&s.yield_recipient, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_forced_transfer_manager_cannot_burn() {
+    let s = setup();
+
+    let result = s
+        .contract
+        .try_burn(&s.forced_transfer_manager, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_random_cannot_burn() {
+    let s = setup();
+    let random = Address::generate(&s.env);
+
+    let result = s
+        .contract
+        .try_burn(&random, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }

@@ -82,6 +82,22 @@ pub fn setup() -> TestSetup<'static> {
     }
 }
 
+/// Same as `setup()` but switches to enforcing auth mode with no entries.
+/// Calls to functions with `require_auth()` will revert unless explicitly mocked.
+pub fn setup_no_mock_auth() -> TestSetup<'static> {
+    let s = setup();
+    s.env.mock_auths(&[]);
+    s
+}
+
+/// The Soroban host error returned when `require_auth()` fails.
+pub fn auth_error() -> soroban_sdk::Error {
+    soroban_sdk::Error::from_type_and_code(
+        soroban_sdk::xdr::ScErrorType::Context,
+        soroban_sdk::xdr::ScErrorCode::InvalidAction,
+    )
+}
+
 pub fn advance_time(env: &Env, seconds: u64) {
     let current = env.ledger().timestamp();
     env.ledger().set_timestamp(current + seconds);

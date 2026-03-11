@@ -131,52 +131,102 @@ fn test_admin_can_set_yield_recipient() {
 }
 
 // =============================================================================
+// AUTH ENFORCEMENT — require_auth reverts without signature
+// =============================================================================
+
+#[test]
+fn test_set_admin_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let new_admin = Address::generate(&s.env);
+    let err = s.contract.try_set_admin(&new_admin).unwrap_err().unwrap();
+    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+}
+
+#[test]
+fn test_set_minter_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let new_minter = Address::generate(&s.env);
+    let err = s.contract.try_set_minter(&new_minter).unwrap_err().unwrap();
+    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+}
+
+#[test]
+fn test_set_yield_recipient_manager_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let new_yrm = Address::generate(&s.env);
+    let err = s.contract.try_set_yield_recipient_manager(&new_yrm).unwrap_err().unwrap();
+    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+}
+
+#[test]
+fn test_set_forced_transfer_manager_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let new_ftm = Address::generate(&s.env);
+    let err = s.contract.try_set_forced_transfer_manager(&new_ftm).unwrap_err().unwrap();
+    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+}
+
+#[test]
+fn test_set_yield_recipient_reverts_without_caller_auth() {
+    let s = setup_no_mock_auth();
+    let new_yr = Address::generate(&s.env);
+    let result = s.contract.try_set_yield_recipient(&s.yield_recipient_manager, &new_yr);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+}
+
+#[test]
+fn test_upgrade_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let fake_hash = BytesN::from_array(&s.env, &[0u8; 32]);
+    let err = s.contract.try_upgrade(&fake_hash).unwrap_err().unwrap();
+    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+}
+
+// =============================================================================
 // ACCESS CONTROL — set_yield_recipient wrong-role rejections
 // =============================================================================
 
 #[test]
-#[should_panic]
-fn test_upgrade_requires_admin_auth() {
-    // Setup WITHOUT mock_all_auths — admin.require_auth() will fail
-    let env = Env::default();
-    env.ledger().set_timestamp(T0);
+fn test_minter_cannot_set_yield_recipient() {
+    let s = setup();
+    let new_yr = Address::generate(&s.env);
 
-    let admin = Address::generate(&env);
-    let minter = Address::generate(&env);
-    let yield_recipient_manager = Address::generate(&env);
-    let yield_recipient = Address::generate(&env);
-    let forced_transfer_manager = Address::generate(&env);
-
-    // Register SAC — env.register* helpers don't need auth
-    let sac = env.register_stellar_asset_contract_v2(admin.clone());
-    let sac_addr = sac.address();
-
-    let contract_addr = env.register(
-        YieldToken,
-        (
-            &sac_addr,
-            &admin,
-            &minter,
-            &yield_recipient_manager,
-            &yield_recipient,
-            &forced_transfer_manager,
-        ),
-    );
-    let contract = YieldTokenClient::new(&env, &contract_addr);
-
-    // Call upgrade without any auth — should panic at require_admin
-    let hash = BytesN::from_array(&env, &[0u8; 32]);
-    contract.upgrade(&hash);
+    let result = s
+        .contract
+        .try_set_yield_recipient(&s.minter, &new_yr);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 #[test]
-fn test_upgrade_fails_with_invalid_wasm_hash() {
+fn test_yield_recipient_cannot_set_yield_recipient() {
     let s = setup();
-    let hash = BytesN::from_array(&s.env, &[1u8; 32]);
+    let new_yr = Address::generate(&s.env);
 
-    // With mock_all_auths, admin auth passes. The call should fail at
-    // update_current_contract_wasm because the hash doesn't correspond
-    // to any uploaded WASM — proving auth was satisfied (not an auth error).
-    let result = s.contract.try_upgrade(&hash);
-    assert!(result.is_err(), "upgrade with non-existent WASM hash should fail");
+    let result = s
+        .contract
+        .try_set_yield_recipient(&s.yield_recipient, &new_yr);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_forced_transfer_manager_cannot_set_yield_recipient() {
+    let s = setup();
+    let new_yr = Address::generate(&s.env);
+
+    let result = s
+        .contract
+        .try_set_yield_recipient(&s.forced_transfer_manager, &new_yr);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_random_cannot_set_yield_recipient() {
+    let s = setup();
+    let random = Address::generate(&s.env);
+    let new_yr = Address::generate(&s.env);
+
+    let result = s
+        .contract
+        .try_set_yield_recipient(&random, &new_yr);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }

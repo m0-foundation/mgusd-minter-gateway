@@ -84,6 +84,26 @@ fn test_unfreeze_idempotent() {
 }
 
 // =============================================================================
+// AUTH ENFORCEMENT — require_auth reverts without signature
+// =============================================================================
+
+#[test]
+fn test_freeze_account_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let user = Address::generate(&s.env);
+    let err = s.contract.try_freeze_account(&user).unwrap_err().unwrap();
+    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+}
+
+#[test]
+fn test_unfreeze_account_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let user = Address::generate(&s.env);
+    let err = s.contract.try_unfreeze_account(&user).unwrap_err().unwrap();
+    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+}
+
+// =============================================================================
 // COMPLIANCE INTEGRATION TEST
 // =============================================================================
 
@@ -120,52 +140,30 @@ fn test_compliance_flow_freeze_burn_unfreeze() {
     assert_eq!(s.sac_token.balance(&recipient), 100_0000000);
 }
 
-// =============================================================================
-// ALLOWLIST (AUTH_REQUIRED) TESTS
-// =============================================================================
-
 #[test]
-fn test_unauthorized_account_cannot_receive_mint() {
+fn test_freeze_blocks_subsequent_direct_sac_transfer() {
     let s = setup();
-    let user = Address::generate(&s.env);
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let amount = 1_000_0000000i128;
 
-    // Do NOT authorize — user is unauthorized by default (AUTH_REQUIRED)
-    assert!(!s.contract.is_authorized(&user));
+    // Authorize both and mint
+    s.contract.unfreeze_account(&alice);
+    s.contract.unfreeze_account(&bob);
+    s.contract.mint(&s.minter, &alice, &amount);
 
-    // Minting to unauthorized account should fail
-    let result = s.contract.try_mint(&s.minter, &user, &1_000_0000000);
+    // Direct SAC transfer works while both are authorized
+    s.sac_token.transfer(&alice, &bob, &100_0000000);
+    assert_eq!(s.sac_token.balance(&bob), 100_0000000);
+
+    // Admin freezes alice via our contract
+    s.contract.freeze_account(&alice);
+
+    // Alice tries another direct SAC transfer — BLOCKED
+    let result = s.sac_token.try_transfer(&alice, &bob, &100_0000000);
     assert!(result.is_err());
+
+    // Alice's remaining balance is locked
+    assert_eq!(s.sac_token.balance(&alice), amount - 100_0000000);
 }
 
-#[test]
-fn test_authorized_account_can_receive_mint() {
-    let s = setup();
-    let user = Address::generate(&s.env);
-
-    // Authorize via unfreeze_account (allowlist)
-    s.contract.unfreeze_account(&user);
-    assert!(s.contract.is_authorized(&user));
-
-    // Minting to authorized account succeeds
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
-    assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
-}
-
-#[test]
-fn test_unauthorized_recipient_cannot_receive_transfer() {
-    let s = setup();
-    let sender = Address::generate(&s.env);
-    let recipient = Address::generate(&s.env);
-
-    // Authorize and mint to sender
-    s.contract.unfreeze_account(&sender);
-    s.contract.mint(&s.minter, &sender, &1_000_0000000);
-    assert!(s.contract.is_authorized(&sender));
-
-    // Recipient is NOT authorized (AUTH_REQUIRED default)
-    assert!(!s.contract.is_authorized(&recipient));
-
-    // Transfer to unauthorized recipient should fail
-    let result = s.sac_token.try_transfer(&sender, &recipient, &100_0000000);
-    assert!(result.is_err());
-}

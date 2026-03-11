@@ -164,6 +164,22 @@ fn test_current_index_from_non_unity_base() {
 }
 
 // =============================================================================
+// CURRENT INDEX EARLY-RETURN (same timestamp)
+// =============================================================================
+
+#[test]
+fn test_current_index_returns_stored_when_no_time_elapsed() {
+    let s = setup();
+
+    // set_rate calls update_index, which stores T0 as last_update_timestamp
+    s.contract.set_rate(&s.minter, &500);
+
+    // Call current_index at the same timestamp (no advance_time)
+    // This hits the `current_time <= last_update_timestamp` early return
+    assert_eq!(s.contract.current_index(), INDEX_SCALE);
+}
+
+// =============================================================================
 // INDEX UPDATE INTEGRATION TESTS
 // =============================================================================
 
