@@ -162,6 +162,24 @@ fn test_mint_after_burn_to_zero() {
 }
 
 // =============================================================================
+// AUTH ENFORCEMENT — require_auth reverts without signature
+// =============================================================================
+
+#[test]
+fn test_mint_reverts_without_caller_auth() {
+    let s = setup_no_mock_auth();
+    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+}
+
+#[test]
+fn test_burn_reverts_without_caller_auth() {
+    let s = setup_no_mock_auth();
+    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+}
+
+// =============================================================================
 // ALLOWLIST (AUTH_REQUIRED) TESTS
 // =============================================================================
 

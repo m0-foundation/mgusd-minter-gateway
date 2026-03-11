@@ -84,6 +84,26 @@ fn test_unfreeze_idempotent() {
 }
 
 // =============================================================================
+// AUTH ENFORCEMENT — require_auth reverts without signature
+// =============================================================================
+
+#[test]
+fn test_freeze_account_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let user = Address::generate(&s.env);
+    let err = s.contract.try_freeze_account(&user).unwrap_err().unwrap();
+    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+}
+
+#[test]
+fn test_unfreeze_account_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let user = Address::generate(&s.env);
+    let err = s.contract.try_unfreeze_account(&user).unwrap_err().unwrap();
+    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+}
+
+// =============================================================================
 // COMPLIANCE INTEGRATION TEST
 // =============================================================================
 

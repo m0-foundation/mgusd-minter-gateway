@@ -308,6 +308,24 @@ fn test_no_yield_accrues_after_principal_zero() {
 }
 
 // =============================================================================
+// AUTH ENFORCEMENT — require_auth reverts without signature
+// =============================================================================
+
+#[test]
+fn test_set_rate_reverts_without_caller_auth() {
+    let s = setup_no_mock_auth();
+    let result = s.contract.try_set_rate(&s.minter, &500);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+}
+
+#[test]
+fn test_claim_yield_reverts_without_caller_auth() {
+    let s = setup_no_mock_auth();
+    let result = s.contract.try_claim_yield(&s.yield_recipient);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+}
+
+// =============================================================================
 // ACCESS CONTROL — SET_RATE (admin or minter only)
 // =============================================================================
 
