@@ -417,6 +417,29 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
 }
 
 // =============================================================================
+// ALLOWLIST (AUTH_REQUIRED) TESTS
+// =============================================================================
+
+#[test]
+fn test_unauthorized_recipient_cannot_receive_transfer() {
+    let s = setup();
+    let sender = Address::generate(&s.env);
+    let recipient = Address::generate(&s.env);
+
+    // Authorize and mint to sender
+    s.contract.unfreeze_account(&sender);
+    s.contract.mint(&s.minter, &sender, &1_000_0000000);
+    assert!(s.contract.is_authorized(&sender));
+
+    // Recipient is NOT authorized (AUTH_REQUIRED default)
+    assert!(!s.contract.is_authorized(&recipient));
+
+    // Transfer to unauthorized recipient should fail
+    let result = s.sac_token.try_transfer(&sender, &recipient, &100_0000000);
+    assert!(result.is_err());
+}
+
+// =============================================================================
 // TRANSFER TO CONTRACT ADDRESS TESTS
 // =============================================================================
 //

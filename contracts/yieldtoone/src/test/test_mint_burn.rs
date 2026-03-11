@@ -164,3 +164,34 @@ fn test_mint_after_burn_to_zero() {
     assert_eq!(s.contract.total_supply(), amount);
     assert_eq!(s.sac_token.balance(&s.yield_recipient), amount);
 }
+
+// =============================================================================
+// ALLOWLIST (AUTH_REQUIRED) TESTS
+// =============================================================================
+
+#[test]
+fn test_unauthorized_account_cannot_receive_mint() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    // Do NOT authorize — user is unauthorized by default (AUTH_REQUIRED)
+    assert!(!s.contract.is_authorized(&user));
+
+    // Minting to unauthorized account should fail
+    let result = s.contract.try_mint(&s.minter, &user, &1_000_0000000);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_authorized_account_can_receive_mint() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    // Authorize via unfreeze_account (allowlist)
+    s.contract.unfreeze_account(&user);
+    assert!(s.contract.is_authorized(&user));
+
+    // Minting to authorized account succeeds
+    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
+}
