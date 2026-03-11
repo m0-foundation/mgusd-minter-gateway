@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const assetIssuer = config.sourcePublicKey;
   const wasmPath =
     process.env.WASM_PATH ||
-    "./target/wasm32v1-none/release/yieldtoone.wasm";
+    "./target/wasm32v1-none/release/mintergateway.wasm";
 
   const minterPublicKey = process.env.MINTER_PUBLIC_KEY;
   if (!minterPublicKey) throw new Error("Missing MINTER_PUBLIC_KEY in .env");

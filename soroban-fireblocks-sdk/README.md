@@ -2,7 +2,7 @@
 
 Soroban SCToken contract deployment and invocation SDK with Fireblocks raw signing (Ed25519).
 
-Extends the generic `SorobanFireblocksClient` with typed convenience methods for the `contracts/yieldtoone` (YieldToken) contract — specifically its `mint(caller, to, amount)`, `burn(caller, from, amount)`, `set_rate(caller, rateBps)`, `set_minter(newMinter)`, `admin()`, and `sac_token()` methods, plus a full Fireblocks-signed deployment pipeline.
+Extends the generic `SorobanFireblocksClient` with typed convenience methods for the `contracts/mintergateway` (YieldToken) contract — specifically its `mint(caller, to, amount)`, `burn(caller, from, amount)`, `set_rate(caller, rateBps)`, `set_minter(newMinter)`, `admin()`, and `sac_token()` methods, plus a full Fireblocks-signed deployment pipeline.
 
 ## Project Structure
 
@@ -26,7 +26,7 @@ soroban-fireblocks-sdk/
 └── package.json
 ```
 
-> The Soroban contract (YieldToken) lives at `contracts/yieldtoone/` in the repo root and is built via the root Cargo workspace.
+> The Soroban contract (YieldToken) lives at `contracts/mintergateway/` in the repo root and is built via the root Cargo workspace.
 
 ## Prerequisites
 
@@ -104,7 +104,7 @@ Runs the full 5-step Fireblocks-signed deployment pipeline. The **issuer** Fireb
 Build the contract WASM first (requires Rust + Soroban CLI):
 
 ```bash
-stellar contract build   # from repo root — builds contracts/yieldtoone via workspace
+stellar contract build   # from repo root — builds contracts/mintergateway via workspace
 ```
 
 Uses `.env` variables: `ASSET_CODE`, `WASM_PATH`, `MINTER_PUBLIC_KEY`
@@ -184,7 +184,7 @@ const minterPublicKey = process.env.MINTER_PUBLIC_KEY!;
 const deploy = await issuerClient.deployFull({
   assetCode: "TMGUSD",
   assetIssuer: issuerConfig.sourcePublicKey,
-  wasm: fs.readFileSync("./target/wasm32v1-none/release/yieldtoone.wasm"),
+  wasm: fs.readFileSync("./target/wasm32v1-none/release/mintergateway.wasm"),
   admin: minterPublicKey,
   minter: minterPublicKey,
   yieldRecipientManager: minterPublicKey,

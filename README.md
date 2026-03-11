@@ -6,7 +6,7 @@ Monorepo for the **SAC Admin Yield Token** contract and the **Fireblocks signing
 
 | Directory | Description |
 |-----------|-------------|
-| `contracts/yieldtoone/` | Soroban yield contract — SAC admin that mints, burns, tracks yield, and enforces an allowlist |
+| `contracts/mintergateway/` | Soroban yield contract — SAC admin that mints, burns, tracks yield, and enforces an allowlist |
 | `soroban-fireblocks-sdk/` | TypeScript SDK for invoking the contract via Fireblocks raw signing (Ed25519) |
 
 ## Prerequisites
