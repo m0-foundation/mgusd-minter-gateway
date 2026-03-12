@@ -175,8 +175,8 @@ pub fn current_index(latest_index: u128, rate_bps: u32, time_elapsed: u64) -> u1
     let yearly_rate = convert_from_basis_points(rate_bps);
     let delta_index = get_continuous_index(yearly_rate, time_elapsed);
 
-    // Rounding: UP via `multiply_indices_up` — the only rounding-up step in the index pipeline.
-    multiply_indices_up(latest_index, delta_index)
+    // Rounding: DOWN via `multiply_indices_down` — favors the protocol (matches EVM m-core).
+    multiply_indices_down(latest_index, delta_index)
 }
 
 #[cfg(test)]

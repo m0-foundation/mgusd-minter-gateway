@@ -159,7 +159,7 @@ fn test_yield_no_compounding() {
     advance_time(&s.env, half_year);
 
     let second_claim = s.contract.claim_yield(&s.yield_recipient);
-    assert_eq!(second_claim, 259_559_757_650);
+    assert_eq!(second_claim, 259_559_757_640);
 
     // Second claim is slightly larger than first because the index grew on a
     // higher base (index compounds), but it's only computed on the ORIGINAL
