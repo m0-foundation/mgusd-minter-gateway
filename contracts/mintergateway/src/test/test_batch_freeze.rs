@@ -195,7 +195,7 @@ fn test_random_cannot_batch_freeze() {
 fn test_batch_freeze_exceeds_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..41 {
+    for _ in 0..21 {
         accounts.push_back(Address::generate(&s.env));
     }
 
@@ -212,11 +212,11 @@ fn test_batch_freeze_exceeds_max_size() {
 fn test_batch_unfreeze_at_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..40 {
+    for _ in 0..20 {
         accounts.push_back(Address::generate(&s.env));
     }
 
-    // Should succeed at exactly 40
+    // Should succeed at exactly 20
     s.contract
         .batch_unfreeze_accounts(&s.distributor, &accounts);
 
@@ -229,7 +229,7 @@ fn test_batch_unfreeze_at_max_size() {
 fn test_batch_freeze_at_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..40 {
+    for _ in 0..20 {
         accounts.push_back(Address::generate(&s.env));
     }
 
