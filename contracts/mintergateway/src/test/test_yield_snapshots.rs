@@ -93,16 +93,16 @@ fn test_claim_then_claim_same_timestamp() {
 }
 
 // =============================================================================
-// NEGATIVE AMOUNT REJECTION TESTS
+// INVALID AMOUNT REJECTION TESTS (amount <= 0)
 // =============================================================================
-// Code path: contract.rs:25-30 (check_nonnegative_amount)
+// Code path: contract.rs:25-30 (check_positive_amount)
 
 #[test]
 fn test_mint_negative_amount() {
     let s = setup();
 
     let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &-1);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::NegativeAmountError)));
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
 }
 
 #[test]
@@ -110,41 +110,21 @@ fn test_burn_negative_amount() {
     let s = setup();
 
     let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &-1);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::NegativeAmountError)));
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
 }
-
-// =============================================================================
-// ZERO AMOUNT TESTS
-// =============================================================================
 
 #[test]
 fn test_mint_zero_amount() {
     let s = setup();
 
-    let principal_before = s.contract.total_principal();
-    let supply_before = s.contract.total_supply();
-
-    s.contract.mint(&s.minter, &s.yield_recipient, &0);
-
-    // Accumulators unchanged
-    assert_eq!(s.contract.total_principal(), principal_before);
-    assert_eq!(s.contract.total_supply(), supply_before);
+    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &0);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
 }
 
 #[test]
 fn test_burn_zero_amount() {
     let s = setup();
 
-    // Mint first so there's principal to potentially burn
-    s.contract
-        .mint(&s.minter, &s.yield_recipient, &1_000_0000000);
-
-    let principal_before = s.contract.total_principal();
-    let supply_before = s.contract.total_supply();
-
-    s.contract.burn(&s.minter, &s.yield_recipient, &0);
-
-    // Accumulators unchanged
-    assert_eq!(s.contract.total_principal(), principal_before);
-    assert_eq!(s.contract.total_supply(), supply_before);
+    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &0);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
 }
