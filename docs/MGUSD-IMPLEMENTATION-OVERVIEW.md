@@ -34,6 +34,14 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 3. Yield Recipient (MoneyGram) calls `claim_yield()` to mint accrued yield as new SAC tokens
 4. Claimed yield increases `total_supply` but **not** `total_principal` — it does not compound
 
+### 5. Forced Transfer (Compliance Action)
+
+1. Forced Transfer Manager (Crossmint) or Admin identifies a need to move tokens between accounts
+2. Caller invokes `force_transfer(from, to, amount)` — no authorization from the source account is needed
+3. Contract clawbacks tokens from the source and mints them to the destination at the SAC layer
+4. Accumulators are unchanged — this is a balance redistribution, not a supply change
+5. Works even if the source account is frozen
+
 ---
 
 ## Architecture Diagram
@@ -50,7 +58,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
-| **Forced Transfer Manager** | *(role stored but no active function)* | Crossmint |
+| **Forced Transfer Manager** | `force_transfer` | Crossmint |
 | **Distributor** | `batch_freeze_accounts`, `batch_unfreeze_accounts` | Compliance Operator |
 
 **Design properties:**
@@ -87,6 +95,12 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `mint` | `(caller: Address, to: Address, amount: i128)` | Mint SAC tokens and increase both accumulators |
 | `burn` | `(caller: Address, from: Address, amount: i128)` | Remove SAC tokens and decrease both accumulators |
 | `set_rate` | `(caller: Address, rate_bps: u32)` | Set interest rate in basis points (max 10000 = 100%) |
+
+### Forced Transfer Manager Functions (1)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `force_transfer` | `(caller: Address, from: Address, to: Address, amount: i128)` | Force-move SAC tokens between accounts (clawback + mint) |
 
 ### Yield Recipient Manager Functions (1)
 
@@ -174,6 +188,29 @@ Rate is in basis points: 100 = 1%, max 10,000 = 100%.
 
 - **Always updates the yield index** before modifying supply (prevents yield loss/gain from ordering)
 - Burns use SAC clawback internally (not transfer-to-issuer), bypassing the issuer burn problem
+
+---
+
+## Forced Transfer
+
+```
+force_transfer(caller: Address, from: Address, to: Address, amount: i128)
+```
+
+Administrative token movement that does not require the source account's authorization. Forced Transfer Manager or Admin only.
+
+1. Validates non-negative amount and caller role
+2. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
+3. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
+4. Emits `force_tx` event with `(from, to, amount)`
+
+### Key Properties
+
+- **No accumulator changes** — supply is unchanged (tokens are moved, not created or destroyed), so `total_principal` and `total_supply` are not touched
+- **No source authorization** — only the caller (Forced Transfer Manager or Admin) must authenticate; the `from` account does not need to sign
+- **Works on frozen accounts** — clawback bypasses the SAC's `AUTH_REQUIRED` freeze on the source
+- **Destination must be authorized** — the `to` account must be unfrozen to receive the minted tokens
+- **Dedicated event** — emits `force_tx`, not `sup_sync`, since supply doesn't change
 
 ---
 
