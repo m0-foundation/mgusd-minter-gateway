@@ -3,7 +3,7 @@ use soroban_sdk::{Address, Vec};
 
 use super::setup::*;
 
-/// Verifies that batch operations at MAX_BATCH_SIZE (40) stay within
+/// Verifies that batch operations at MAX_BATCH_SIZE (20) stay within
 /// Soroban per-transaction resource limits (SLP-0001):
 ///   - Write entries ≤ 50
 ///   - Read entries ≤ 100
@@ -13,7 +13,7 @@ use super::setup::*;
 fn test_batch_at_max_size_within_resource_limits() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..40 {
+    for _ in 0..20 {
         accounts.push_back(Address::generate(&s.env));
     }
 
