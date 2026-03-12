@@ -116,8 +116,8 @@ The system consists of three on-chain components:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `batch_freeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Freeze up to 20 accounts in a single transaction |
-| `batch_unfreeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Unfreeze up to 20 accounts in a single transaction |
+| `batch_freeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Freeze up to 40 accounts in a single transaction |
+| `batch_unfreeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Unfreeze up to 40 accounts in a single transaction |
 
 ### Yield Recipient Functions (1)
 
@@ -281,7 +281,8 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 - `unfreeze_account(addr)` → SAC `set_authorized(true)` → account can send/receive
 - `freeze_account(addr)` → SAC `set_authorized(false)` → account is blocked
 - Only Admin can freeze/unfreeze individual accounts
-- **Batch operations:** `batch_freeze_accounts` and `batch_unfreeze_accounts` accept up to 20 accounts per call and can be called by Admin or Distributor
+- **Batch operations:** `batch_freeze_accounts` and `batch_unfreeze_accounts` accept up to 40 accounts per call and can be called by Admin or Distributor
+- The 40-account cap is derived from Soroban's per-transaction write entry limit of 50 (SLP-0001); each account consumes 1 write entry plus 1 overhead for the contract instance
 - Batch operations are atomic — if any account fails, the entire transaction reverts
 - Each account in a batch emits its own `freeze`/`unfreeze` event for indexer compatibility
 

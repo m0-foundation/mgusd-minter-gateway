@@ -8,4 +8,4 @@ pub const RATE_SCALE: u128 = 1_000_000_000_000;
 pub const SECONDS_PER_YEAR: u128 = 31_536_000;
 
 /// Maximum number of accounts in a batch freeze/unfreeze operation
-pub const MAX_BATCH_SIZE: u32 = 20;
+pub const MAX_BATCH_SIZE: u32 = 40;
