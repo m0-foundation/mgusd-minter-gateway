@@ -38,25 +38,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ## Architecture Diagram
 
-*(See diagram in `images/` directory)*
-
-The system consists of three on-chain components:
-
-```
-┌─────────────────┐     admin ops      ┌──────────────────────┐
-│  SAC (Classic    │◄───────────────────│  Wrapper Contract    │
-│  Stellar Asset)  │  mint/burn/        │  (Soroban — this     │
-│                  │  set_authorized    │   contract)          │
-└────────┬─────────┘                    └──────────┬───────────┘
-         │                                         │
-         │  SEP-41 transfer()                      │  invoke via SDK
-         │  (direct SAC calls)                     │
-         ▼                                         ▼
-┌─────────────────┐                    ┌──────────────────────┐
-│  User Wallets   │                    │  Bridge (Fireblocks)  │
-│  (hold tokens)  │                    │  Minter role          │
-└─────────────────┘                    └──────────────────────┘
-```
+![MGUSD Architecture](../images/architecture.png)
 
 ---
 
