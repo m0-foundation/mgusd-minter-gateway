@@ -15,7 +15,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Admin whitelists (unfreezes) the end user's account via `unfreeze_account(user)`
+1. Admin or Distributor whitelists (unfreezes) accounts — individually via `unfreeze_account(user)` or in batch via `batch_unfreeze_accounts(caller, accounts)` (up to 20 per call)
 2. Treasury transfers tokens to the user via the SAC's standard SEP-41 `transfer()`
 3. Whitelisted (unfrozen) accounts can freely transfer among themselves
 4. Non-whitelisted (frozen) accounts cannot send or receive tokens
@@ -69,10 +69,11 @@ The system consists of three on-chain components:
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
 | **Forced Transfer Manager** | *(role stored but no active function)* | Crossmint |
+| **Distributor** | `batch_freeze_accounts`, `batch_unfreeze_accounts` | Compliance Operator |
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `freeze_account`, `unfreeze_account`, `upgrade`)
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_distributor`, `freeze_account`, `unfreeze_account`, `upgrade`)
 - All roles are **single-address** — exactly one holder per role at any time
 - Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager)
 - Every role-gated function calls `require_auth()` on the role holder — no implicit trust
@@ -84,7 +85,7 @@ The system consists of three on-chain components:
 
 > **Note:** Admin can call any function below, not just the admin-exclusive ones. Each non-admin role can only call its own functions.
 
-### Admin-Exclusive Functions (7)
+### Admin-Exclusive Functions (8)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -92,6 +93,7 @@ The system consists of three on-chain components:
 | `set_minter` | `(new_minter: Address)` | Set a new minter address |
 | `set_yield_recipient_manager` | `(new_yrm: Address)` | Set a new yield recipient manager |
 | `set_forced_transfer_manager` | `(new_ftm: Address)` | Set a new forced transfer manager |
+| `set_distributor` | `(new_distributor: Address)` | Set a new distributor address |
 | `freeze_account` | `(account: Address)` | Freeze account on SAC (`set_authorized(false)`) |
 | `unfreeze_account` | `(account: Address)` | Unfreeze account on SAC (`set_authorized(true)`) |
 | `upgrade` | `(new_wasm_hash: BytesN<32>)` | Upgrade contract WASM to a new version |
@@ -110,13 +112,20 @@ The system consists of three on-chain components:
 |----------|-----------|-------------|
 | `set_yield_recipient` | `(caller: Address, new_yr: Address)` | Set the address that can claim yield |
 
+### Distributor Functions (2)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `batch_freeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Freeze up to 20 accounts in a single transaction |
+| `batch_unfreeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Unfreeze up to 20 accounts in a single transaction |
+
 ### Yield Recipient Functions (1)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to yield recipient |
 
-### View / Query Functions (13)
+### View / Query Functions (14)
 
 | Function | Returns | Description |
 |----------|---------|-------------|
@@ -125,6 +134,7 @@ The system consists of three on-chain components:
 | `yield_recipient_manager` | `Address` | Current yield recipient manager |
 | `yield_recipient` | `Address` | Current yield recipient |
 | `forced_transfer_manager` | `Address` | Current forced transfer manager |
+| `distributor` | `Address` | Current distributor address |
 | `sac_token` | `Address` | SAC token contract address |
 | `interest_rate` | `u32` | Current rate in basis points |
 | `current_index` | `u128` | Real-time index (includes pending growth) |
@@ -270,7 +280,10 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 - SAC operates in `AUTH_REQUIRED` mode — accounts are unauthorized (frozen) by default
 - `unfreeze_account(addr)` → SAC `set_authorized(true)` → account can send/receive
 - `freeze_account(addr)` → SAC `set_authorized(false)` → account is blocked
-- Only Admin can freeze/unfreeze
+- Only Admin can freeze/unfreeze individual accounts
+- **Batch operations:** `batch_freeze_accounts` and `batch_unfreeze_accounts` accept up to 20 accounts per call and can be called by Admin or Distributor
+- Batch operations are atomic — if any account fails, the entire transaction reverts
+- Each account in a batch emits its own `freeze`/`unfreeze` event for indexer compatibility
 
 ### Token Transfers
 
@@ -298,7 +311,7 @@ The SDK exposes dedicated methods for Minter actions and queries:
 | `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter: string` |
 | `queryAdmin()` | `admin()` | `contractId` |
 | `querySacToken()` | `sac_token()` | `contractId` |
-| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `wasm` |
+| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `distributor`, `wasm` |
 
 Other functions are available through the generic `invokeContract({ contractId, method: "..." })` interface.
 
