@@ -1,3 +1,5 @@
+use soroban_sdk::testutils::Address as _;
+
 use super::setup::*;
 
 // =============================================================================
@@ -303,4 +305,100 @@ fn test_no_yield_accrues_after_principal_zero() {
 
     // No principal means no yield
     assert_eq!(s.contract.accrued_yield(), 0);
+}
+
+// =============================================================================
+// AUTH ENFORCEMENT — require_auth reverts without signature
+// =============================================================================
+
+#[test]
+fn test_set_rate_reverts_without_caller_auth() {
+    let s = setup_no_mock_auth();
+    let result = s.contract.try_set_rate(&s.minter, &500);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+}
+
+#[test]
+fn test_claim_yield_reverts_without_caller_auth() {
+    let s = setup_no_mock_auth();
+    let result = s.contract.try_claim_yield(&s.yield_recipient);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+}
+
+// =============================================================================
+// ACCESS CONTROL — SET_RATE (admin or minter only)
+// =============================================================================
+
+#[test]
+fn test_yield_recipient_manager_cannot_set_rate() {
+    let s = setup();
+
+    let result = s
+        .contract
+        .try_set_rate(&s.yield_recipient_manager, &500);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_yield_recipient_cannot_set_rate() {
+    let s = setup();
+
+    let result = s.contract.try_set_rate(&s.yield_recipient, &500);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_forced_transfer_manager_cannot_set_rate() {
+    let s = setup();
+
+    let result = s
+        .contract
+        .try_set_rate(&s.forced_transfer_manager, &500);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_random_cannot_set_rate() {
+    let s = setup();
+    let random = Address::generate(&s.env);
+
+    let result = s.contract.try_set_rate(&random, &500);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+// =============================================================================
+// ACCESS CONTROL — CLAIM_YIELD (admin or yield_recipient only)
+// =============================================================================
+
+#[test]
+fn test_minter_cannot_claim_yield() {
+    let s = setup();
+
+    let result = s.contract.try_claim_yield(&s.minter);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_yield_recipient_manager_cannot_claim_yield() {
+    let s = setup();
+
+    let result = s.contract.try_claim_yield(&s.yield_recipient_manager);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_forced_transfer_manager_cannot_claim_yield() {
+    let s = setup();
+
+    let result = s.contract.try_claim_yield(&s.forced_transfer_manager);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_random_cannot_claim_yield() {
+    let s = setup();
+    let random = Address::generate(&s.env);
+
+    let result = s.contract.try_claim_yield(&random);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }

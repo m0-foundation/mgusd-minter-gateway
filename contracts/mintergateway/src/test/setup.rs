@@ -25,6 +25,7 @@ pub struct TestSetup<'a> {
     pub yield_recipient_manager: Address,
     pub yield_recipient: Address,
     pub forced_transfer_manager: Address,
+    pub distributor: Address,
 }
 
 pub fn setup() -> TestSetup<'static> {
@@ -37,6 +38,7 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
+    let distributor = Address::generate(&env);
 
     // Register SAC token with admin as initial issuer
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
@@ -59,6 +61,7 @@ pub fn setup() -> TestSetup<'static> {
             &yield_recipient_manager,
             &yield_recipient,
             &forced_transfer_manager,
+            &distributor,
         ),
     );
     let contract = YieldTokenClient::new(&env, &contract_addr);
@@ -67,7 +70,7 @@ pub fn setup() -> TestSetup<'static> {
     sac_admin_client.set_admin(&contract_addr);
 
     // Authorize yield_recipient so claim_yield can mint to it (AUTH_REQUIRED mode)
-    contract.unfreeze_account(&yield_recipient);
+    contract.unfreeze_account(&admin, &yield_recipient);
 
     TestSetup {
         env,
@@ -79,7 +82,24 @@ pub fn setup() -> TestSetup<'static> {
         yield_recipient_manager,
         yield_recipient,
         forced_transfer_manager,
+        distributor,
     }
+}
+
+/// Same as `setup()` but switches to enforcing auth mode with no entries.
+/// Calls to functions with `require_auth()` will revert unless explicitly mocked.
+pub fn setup_no_mock_auth() -> TestSetup<'static> {
+    let s = setup();
+    s.env.mock_auths(&[]);
+    s
+}
+
+/// The Soroban host error returned when `require_auth()` fails.
+pub fn auth_error() -> soroban_sdk::Error {
+    soroban_sdk::Error::from_type_and_code(
+        soroban_sdk::xdr::ScErrorType::Context,
+        soroban_sdk::xdr::ScErrorCode::InvalidAction,
+    )
 }
 
 pub fn advance_time(env: &Env, seconds: u64) {

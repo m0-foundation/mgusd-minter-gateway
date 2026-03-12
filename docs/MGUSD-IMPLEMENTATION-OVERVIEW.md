@@ -2,8 +2,6 @@
 
 M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin built as a Soroban smart contract that administers a Stellar Asset Contract (SAC). This document covers the full implementation: flows, roles, contract interface, yield mechanics, compliance controls, and the Fireblocks SDK used by the Bridge operator.
 
-For the condensed design reference, see [DESIGN.md](./DESIGN.md).
-
 ---
 
 ## Flows
@@ -17,14 +15,15 @@ For the condensed design reference, see [DESIGN.md](./DESIGN.md).
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Crossmint (Forced Transfer Manager) calls `authorize_and_transfer(treasury, user, amount)`
-2. Contract atomically: authorizes the recipient on the SAC → transfers tokens → re-freezes the recipient
-3. End user now holds MGUSD in their wallet but cannot freely transfer (walled garden model)
+1. Admin or Distributor whitelists (unfreezes) accounts — individually via `unfreeze_account(caller, account)` or in batch via `batch_unfreeze_accounts(caller, accounts)` (up to 40 per call)
+2. Treasury transfers tokens to the user via the SAC's standard SEP-41 `transfer()`
+3. Whitelisted (unfrozen) accounts can freely transfer among themselves
+4. Non-whitelisted (frozen) accounts cannot send or receive tokens
 
 ### 3. Redemption (End User → MoneyGram → Bridge)
 
 1. End user initiates redemption through MoneyGram
-2. Bridge calls `burn(user_address, amount)` — clawbacks tokens at the SAC layer
+2. Bridge calls `burn(user_address, amount)` — removes tokens at the SAC layer
 3. Contract finalizes pending yield, decreases both accumulators
 4. MoneyGram sends fiat to the end user off-chain
 
@@ -35,29 +34,19 @@ For the condensed design reference, see [DESIGN.md](./DESIGN.md).
 3. Yield Recipient (MoneyGram) calls `claim_yield()` to mint accrued yield as new SAC tokens
 4. Claimed yield increases `total_supply` but **not** `total_principal` — it does not compound
 
+### 5. Forced Transfer (Compliance Action)
+
+1. Forced Transfer Manager (Crossmint) or Admin identifies a need to move tokens between accounts
+2. Caller invokes `force_transfer(from, to, amount)` — no authorization from the source account is needed
+3. Contract clawbacks tokens from the source and mints them to the destination at the SAC layer
+4. Accumulators are unchanged — this is a balance redistribution, not a supply change
+5. Works even if the source account is frozen
+
 ---
 
 ## Architecture Diagram
 
-*(See diagram in `images/` directory)*
-
-The system consists of three on-chain components:
-
-```
-┌─────────────────┐     admin ops      ┌──────────────────────┐
-│  SAC (Classic    │◄───────────────────│  Wrapper Contract    │
-│  Stellar Asset)  │  mint/clawback/    │  (Soroban — this     │
-│                  │  set_authorized    │   contract)          │
-└────────┬─────────┘                    └──────────┬───────────┘
-         │                                         │
-         │  SEP-41 transfer()                      │  invoke via SDK
-         │  (direct SAC calls)                     │
-         ▼                                         ▼
-┌─────────────────┐                    ┌──────────────────────┐
-│  User Wallets   │                    │  Bridge (Fireblocks)  │
-│  (hold tokens)  │                    │  Minter role          │
-└─────────────────┘                    └──────────────────────┘
-```
+![MGUSD Architecture](../images/architecture.png)
 
 ---
 
@@ -69,11 +58,12 @@ The system consists of three on-chain components:
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
-| **Forced Transfer Manager** | `authorize_and_transfer` | Crossmint |
+| **Forced Transfer Manager** | `force_transfer` | Crossmint |
+| **Distributor** | `freeze_account`, `unfreeze_account`, `batch_freeze_accounts`, `batch_unfreeze_accounts` | Compliance Operator |
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `freeze_account`, `unfreeze_account`, `clawback`, `upgrade`)
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_distributor`, `upgrade`)
 - All roles are **single-address** — exactly one holder per role at any time
 - Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager)
 - Every role-gated function calls `require_auth()` on the role holder — no implicit trust
@@ -85,7 +75,7 @@ The system consists of three on-chain components:
 
 > **Note:** Admin can call any function below, not just the admin-exclusive ones. Each non-admin role can only call its own functions.
 
-### Admin-Exclusive Functions (8)
+### Admin-Exclusive Functions (6)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -93,38 +83,45 @@ The system consists of three on-chain components:
 | `set_minter` | `(new_minter: Address)` | Set a new minter address |
 | `set_yield_recipient_manager` | `(new_yrm: Address)` | Set a new yield recipient manager |
 | `set_forced_transfer_manager` | `(new_ftm: Address)` | Set a new forced transfer manager |
-| `freeze_account` | `(account: Address)` | Freeze account on SAC (`set_authorized(false)`) |
-| `unfreeze_account` | `(account: Address)` | Unfreeze account on SAC (`set_authorized(true)`) |
-| `clawback` | `(from: Address, amount: i128)` | Force-remove tokens; updates both accumulators |
+| `set_distributor` | `(new_distributor: Address)` | Set a new distributor address |
 | `upgrade` | `(new_wasm_hash: BytesN<32>)` | Upgrade contract WASM to a new version |
 
 ### Minter Functions (3)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `mint` | `(to: Address, amount: i128)` | Mint SAC tokens and increase both accumulators |
-| `burn` | `(from: Address, amount: i128)` | Clawback SAC tokens and decrease both accumulators |
-| `set_rate` | `(rate_bps: u32)` | Set interest rate in basis points (max 10000 = 100%) |
-
-### Yield Recipient Manager Functions (1)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `set_yield_recipient` | `(new_yr: Address)` | Set the address that can claim yield |
-
-### Yield Recipient Functions (1)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `claim_yield` | `() -> i128` | Claim accrued yield; mints new SAC tokens to caller |
+| `mint` | `(caller: Address, to: Address, amount: i128)` | Mint SAC tokens and increase both accumulators |
+| `burn` | `(caller: Address, from: Address, amount: i128)` | Remove SAC tokens and decrease both accumulators |
+| `set_rate` | `(caller: Address, rate_bps: u32)` | Set interest rate in basis points (max 10000 = 100%) |
 
 ### Forced Transfer Manager Functions (1)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `authorize_and_transfer` | `(from: Address, to: Address, amount: i128)` | Atomic: authorize recipient → transfer → re-freeze. Requires `from.require_auth()` |
+| `force_transfer` | `(caller: Address, from: Address, to: Address, amount: i128)` | Force-move SAC tokens between accounts (clawback + mint) |
 
-### View / Query Functions (13)
+### Yield Recipient Manager Functions (1)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `set_yield_recipient` | `(caller: Address, new_yr: Address)` | Set the address that can claim yield |
+
+### Distributor Functions (4)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `freeze_account` | `(caller: Address, account: Address)` | Freeze account on SAC (`set_authorized(false)`) |
+| `unfreeze_account` | `(caller: Address, account: Address)` | Unfreeze account on SAC (`set_authorized(true)`) |
+| `batch_freeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Freeze up to 40 accounts in a single transaction |
+| `batch_unfreeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Unfreeze up to 40 accounts in a single transaction |
+
+### Yield Recipient Functions (1)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to yield recipient |
+
+### View / Query Functions (14)
 
 | Function | Returns | Description |
 |----------|---------|-------------|
@@ -133,6 +130,7 @@ The system consists of three on-chain components:
 | `yield_recipient_manager` | `Address` | Current yield recipient manager |
 | `yield_recipient` | `Address` | Current yield recipient |
 | `forced_transfer_manager` | `Address` | Current forced transfer manager |
+| `distributor` | `Address` | Current distributor address |
 | `sac_token` | `Address` | SAC token contract address |
 | `interest_rate` | `u32` | Current rate in basis points |
 | `current_index` | `u128` | Real-time index (includes pending growth) |
@@ -189,7 +187,30 @@ Rate is in basis points: 100 = 1%, max 10,000 = 100%.
 ### Key Properties
 
 - **Always updates the yield index** before modifying supply (prevents yield loss/gain from ordering)
-- Burns use SAC `clawback` (not transfer-to-issuer), bypassing the issuer burn problem
+- Burns use SAC clawback internally (not transfer-to-issuer), bypassing the issuer burn problem
+
+---
+
+## Forced Transfer
+
+```
+force_transfer(caller: Address, from: Address, to: Address, amount: i128)
+```
+
+Administrative token movement that does not require the source account's authorization. Forced Transfer Manager or Admin only.
+
+1. Validates non-negative amount and caller role
+2. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
+3. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
+4. Emits `force_tx` event with `(from, to, amount)`
+
+### Key Properties
+
+- **No accumulator changes** — supply is unchanged (tokens are moved, not created or destroyed), so `total_principal` and `total_supply` are not touched
+- **No source authorization** — only the caller (Forced Transfer Manager or Admin) must authenticate; the `from` account does not need to sign
+- **Works on frozen accounts** — clawback bypasses the SAC's `AUTH_REQUIRED` freeze on the source
+- **Destination must be authorized** — the `to` account must be unfrozen to receive the minted tokens
+- **Dedicated event** — emits `force_tx`, not `sup_sync`, since supply doesn't change
 
 ---
 
@@ -215,8 +236,8 @@ The `e^x` approximation uses a 4th-order Taylor series: `1 + x + x²/2 + x³/6 +
 
 | Accumulator | Tracks | Modified By |
 |-------------|--------|-------------|
-| `total_principal` | Yield-earning base (mints − burns) | `mint`, `burn`, `clawback` |
-| `total_supply` | All outstanding tokens (principal + claimed yield) | `mint`, `burn`, `clawback`, `claim_yield` |
+| `total_principal` | Yield-earning base (mints − burns) | `mint`, `burn` |
+| `total_supply` | All outstanding tokens (principal + claimed yield) | `mint`, `burn`, `claim_yield` |
 
 ### Yield Accrual Formula
 
@@ -238,7 +259,7 @@ When `claim_yield()` is called:
 
 ### Index Update Ordering
 
-The index is updated **before** every state-changing operation (`mint`, `burn`, `clawback`, `claim_yield`, `set_rate`). This ensures yield is finalized at the correct principal and rate before any changes take effect.
+The index is updated **before** every state-changing operation (`mint`, `burn`, `claim_yield`, `set_rate`). This ensures yield is finalized at the correct principal and rate before any changes take effect.
 
 ---
 
@@ -258,15 +279,16 @@ On classic Stellar, sending tokens to the **issuer address** burns them automati
 - The wrapper contract's `total_principal` and `total_supply` are **never updated**
 - Yield keeps accruing on phantom principal — breaking the yield invariant
 
-### Prevention: AUTH_REQUIRED + Walled Garden
+### Prevention: AUTH_REQUIRED + Whitelist Model
 
 The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by default.
 
-1. Accounts can only transact after Admin explicitly calls `unfreeze_account()`
-2. `authorize_and_transfer` deliberately **re-freezes** the recipient after transferring
-3. Frozen accounts hold tokens but cannot move them (including to the issuer)
+1. Accounts can only transact after Admin or Distributor calls `unfreeze_account()`
+2. The issuer account is **never** unfrozen — it has no trustline for its own asset
+3. Unfrozen accounts form a closed transfer network that cannot reach the issuer
+4. Frozen accounts hold tokens but cannot move them (including to the issuer)
 
-**Current approach (walled garden):** All recipients are re-frozen after every transfer via `authorize_and_transfer`. Users cannot initiate transfers themselves — only the Forced Transfer Manager can move tokens between accounts.
+**Current approach (whitelist):** Admin or Distributor whitelists accounts via `unfreeze_account()`. Whitelisted accounts can freely transfer among themselves using the SAC's standard SEP-41 `transfer()`. Since the issuer is never part of the whitelist, tokens cannot be accidentally sent to the issuer.
 
 ---
 
@@ -275,52 +297,55 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 ### Freeze / Unfreeze
 
 - SAC operates in `AUTH_REQUIRED` mode — accounts are unauthorized (frozen) by default
-- `unfreeze_account(addr)` → SAC `set_authorized(true)` → account can send/receive
-- `freeze_account(addr)` → SAC `set_authorized(false)` → account is blocked
-- Only Admin can freeze/unfreeze
+- `unfreeze_account(caller, addr)` → SAC `set_authorized(true)` → account can send/receive
+- `freeze_account(caller, addr)` → SAC `set_authorized(false)` → account is blocked
+- Admin or Distributor can freeze/unfreeze individual accounts
+- **Batch operations:** `batch_freeze_accounts` and `batch_unfreeze_accounts` accept up to 40 accounts per call and can be called by Admin or Distributor
+- The 40-account cap is derived from Soroban's per-transaction write entry limit of 50 (SLP-0001); each account consumes 1 write entry plus 1 overhead for the contract instance
+- Batch operations are atomic — if any account fails, the entire transaction reverts
+- Each account in a batch emits its own `freeze`/`unfreeze` event for indexer compatibility
 
-### Clawback
+### Token Transfers
 
-- `clawback(from, amount)` — Admin force-removes tokens without the target's consent
-- Updates both accumulators (same as burn) — capped at `total_principal`
-- Finalizes yield before executing
-- Does **not** require `from.require_auth()`
-
-### Authorize & Transfer
-
-- `authorize_and_transfer(from, to, amount)` — Forced Transfer Manager or Admin
-- Atomic three-step: authorize recipient → transfer → re-freeze recipient
-- Requires `from.require_auth()` (sender must consent to the transfer)
-- Does **not** update accumulators — this is a balance redistribution, not a mint/burn
-- Prevents recipients from accidentally burning tokens by sending to the issuer
+- Transfers use the SAC's standard SEP-41 `transfer()` — the wrapper contract has no transfer function
+- Both sender and receiver must be whitelisted (unfrozen) for a transfer to succeed
+- Admin or Distributor whitelists accounts via `unfreeze_account()` and can revoke via `freeze_account()`
+- Transfers do **not** update accumulators — they are balance redistributions, not mints/burns
+- The issuer is never whitelisted, preventing accidental issuer burn
 
 ---
 
 ## Minter Gateway SDK (Fireblocks)
 
-The `soroban-sctoken-fireblocks-sdk` provides a TypeScript client for the Bridge to interact with the wrapper contract via Fireblocks' institutional custody infrastructure.
+The `soroban-fireblocks-sdk` provides a TypeScript client for the Bridge to interact with the wrapper contract via Fireblocks' institutional custody infrastructure.
 
 ### SDK Methods
 
-The SDK exposes dedicated methods for the three Minter actions:
+The SDK exposes dedicated methods for Minter actions and queries:
 
 | SDK Method | Contract Function | Parameters |
 |------------|-------------------|------------|
-| `mint()` | `mint(to, amount)` | `contractId`, `to: string`, `amount: bigint` |
-| `burn()` | `burn(from, amount)` | `contractId`, `from: string`, `amount: bigint` |
-| `setRate()` | `set_rate(rate_bps)` | `contractId`, `rateBps: number` |
+| `mint()` | `mint(caller, to, amount)` | `contractId`, `to: string`, `amount: bigint` |
+| `burn()` | `burn(caller, from, amount)` | `contractId`, `from: string`, `amount: bigint` |
+| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `rateBps: number` |
+| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter: string` |
+| `queryAdmin()` | `admin()` | `contractId` |
+| `querySacToken()` | `sac_token()` | `contractId` |
+| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `distributor`, `wasm` |
 
-Query and other functions are available through the generic `invokeContract({ contractId, method: "..." })` interface.
+Other functions are available through the generic `invokeContract({ contractId, method: "..." })` interface.
 
 ### Scripts
 
-Runnable scripts are provided in `scripts/` for each SDK method:
+Runnable scripts are provided in `scripts/`:
 
 | Script | Description |
 |--------|-------------|
+| `deploy-full.ts` | Full 5-step deploy pipeline (configure issuer → deploy SAC → upload WASM → deploy contract → transfer SAC admin) |
 | `invoke-mint.ts` | Mint tokens to a destination address |
-| `invoke-burn.ts` | Burn (clawback) tokens from an address |
-| `invoke-set-rate.ts` | Set the interest rate in basis points |
+| `invoke-burn.ts` | Burn tokens from an address |
+| `query-admin.ts` | Query the current admin address |
+| `setup-trustline.ts` | Set up a trustline for the token |
 
 ### Fireblocks RAW Signing Pipeline
 

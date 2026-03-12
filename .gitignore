@@ -15,5 +15,8 @@ dist/
 # Test snapshots
 test_snapshots/
 
+# Claude Code worktrees
+.claude/worktrees/
+
 # macOS
 .DS_Store

@@ -20,7 +20,7 @@ impl Default for YieldStateValue {
     fn default() -> Self {
         Self {
             rate_bps: 0,
-            latest_index: 1_000_000_000_000, // 1.0 scaled by 1e12
+            latest_index: crate::constants::INDEX_SCALE, // 1.0 scaled by 1e12
             last_update_timestamp: 0,
             accrued_yield: 0,
             total_principal: 0,
@@ -42,4 +42,5 @@ pub enum DataKey {
     YieldRecipientManager, // Instance: Address (can set yield recipient)
     YieldRecipient,        // Instance: Address (can claim yield)
     ForcedTransferManager, // Instance: Address (can authorize + transfer tokens)
+    Distributor,           // Instance: Address (can batch freeze/unfreeze accounts)
 }

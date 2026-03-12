@@ -1,18 +1,20 @@
-use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env};
+use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::errors::YieldTokenError;
 use crate::events::{
-    emit_account_frozen, emit_account_unfrozen, emit_authorize_and_transfer, emit_clawback,
-    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set,
-    emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
+    emit_account_frozen, emit_account_unfrozen, emit_distributor_set,
+    emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set,
+    emit_minter_set, emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
     emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    read_forced_transfer_manager, read_minter, read_yield_recipient, read_yield_recipient_manager,
-    require_admin_or, write_forced_transfer_manager, write_minter, write_yield_recipient,
+    read_distributor, read_forced_transfer_manager, read_minter, read_yield_recipient,
+    read_yield_recipient_manager, require_admin_or, write_distributor,
+    write_forced_transfer_manager, write_minter, write_yield_recipient,
     write_yield_recipient_manager,
 };
+use crate::constants::MAX_BATCH_SIZE;
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
 use crate::yield_state::{
@@ -22,9 +24,9 @@ use crate::yield_state::{
     update_index,
 };
 
-pub(crate) fn check_nonnegative_amount(amount: i128) -> Result<(), YieldTokenError> {
-    if amount < 0 {
-        return Err(YieldTokenError::NegativeAmountError);
+pub(crate) fn check_positive_amount(amount: i128) -> Result<(), YieldTokenError> {
+    if amount <= 0 {
+        return Err(YieldTokenError::InvalidAmountError);
     }
     Ok(())
 }
@@ -49,6 +51,7 @@ impl YieldToken {
     /// * `yield_recipient_manager` - Address that can set the yield recipient
     /// * `yield_recipient` - Address that can claim yield
     /// * `forced_transfer_manager` - Address that can authorize accounts and transfer tokens
+    /// * `distributor` - Address that can batch freeze/unfreeze accounts
     pub fn __constructor(
         e: Env,
         sac_token: Address,
@@ -57,6 +60,7 @@ impl YieldToken {
         yield_recipient_manager: Address,
         yield_recipient: Address,
         forced_transfer_manager: Address,
+        distributor: Address,
     ) -> Result<(), YieldTokenError> {
         if has_admin(&e) {
             return Err(YieldTokenError::AlreadyInitializedError);
@@ -71,6 +75,7 @@ impl YieldToken {
         write_yield_recipient_manager(&e, &yield_recipient_manager);
         write_yield_recipient(&e, &yield_recipient);
         write_forced_transfer_manager(&e, &forced_transfer_manager);
+        write_distributor(&e, &distributor);
         Ok(())
     }
 
@@ -121,53 +126,106 @@ impl YieldToken {
         emit_forced_transfer_manager_set(&e, old, new_forced_transfer_manager);
     }
 
+    /// Sets a new distributor address. Admin only.
+    pub fn set_distributor(e: Env, new_distributor: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        let old = read_distributor(&e);
+        write_distributor(&e, &new_distributor);
+
+        emit_distributor_set(&e, old, new_distributor);
+    }
+
     // =========================================================================
-    // Admin Compliance Functions
+    // Compliance Functions (Admin or Distributor)
     // =========================================================================
 
     /// Freezes an account, preventing it from sending or receiving SAC tokens.
-    /// Admin only.
-    pub fn freeze_account(e: Env, account: Address) {
-        require_admin(&e);
+    /// Admin or distributor only.
+    pub fn freeze_account(
+        e: Env,
+        caller: Address,
+        account: Address,
+    ) -> Result<(), YieldTokenError> {
+        require_admin_or(&e, &caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&account, &false);
 
         emit_account_frozen(&e, account);
+        Ok(())
     }
 
     /// Unfreezes an account, restoring its ability to send and receive SAC tokens.
-    /// Admin only.
-    pub fn unfreeze_account(e: Env, account: Address) {
-        require_admin(&e);
+    /// Admin or distributor only.
+    pub fn unfreeze_account(
+        e: Env,
+        caller: Address,
+        account: Address,
+    ) -> Result<(), YieldTokenError> {
+        require_admin_or(&e, &caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&account, &true);
 
         emit_account_unfrozen(&e, account);
+        Ok(())
     }
 
-    /// Claws back tokens from an account, reducing both SAC balance and accumulators.
-    /// Admin only.
-    /// Does NOT require `from.require_auth()` — this is an admin-forced operation.
-    pub fn clawback(e: Env, from: Address, amount: i128) -> Result<(), YieldTokenError> {
-        check_nonnegative_amount(amount)?;
-        require_admin(&e);
+    // =========================================================================
+    // Batch Compliance Functions (Admin or Distributor)
+    // =========================================================================
+
+    /// Freezes multiple accounts in a single transaction.
+    /// Admin or distributor only. Max 20 accounts per call.
+    pub fn batch_freeze_accounts(
+        e: Env,
+        caller: Address,
+        accounts: Vec<Address>,
+    ) -> Result<(), YieldTokenError> {
+        require_admin_or(&e, &caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
-        // Finalize yield at current rates before changing principal
-        update_index(&e);
+        if accounts.len() > MAX_BATCH_SIZE {
+            return Err(YieldTokenError::BatchTooLargeError);
+        }
 
-        // Decrease both accumulators (capped at total_principal)
-        decrease_both_accumulators(&e, amount)?;
-
-        // Cross-contract call: clawback SAC tokens
         let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).clawback(&from, &amount);
+        let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
 
-        emit_clawback(&e, from, amount);
+        for account in accounts.iter() {
+            sac_client.set_authorized(&account, &false);
+            emit_account_frozen(&e, account);
+        }
+
+        Ok(())
+    }
+
+    /// Unfreezes multiple accounts in a single transaction.
+    /// Admin or distributor only. Max 20 accounts per call.
+    pub fn batch_unfreeze_accounts(
+        e: Env,
+        caller: Address,
+        accounts: Vec<Address>,
+    ) -> Result<(), YieldTokenError> {
+        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        extend_instance_ttl(&e);
+
+        if accounts.len() > MAX_BATCH_SIZE {
+            return Err(YieldTokenError::BatchTooLargeError);
+        }
+
+        let sac_addr = read_sac_token(&e);
+        let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+
+        for account in accounts.iter() {
+            sac_client.set_authorized(&account, &true);
+            emit_account_unfrozen(&e, account);
+        }
+
         Ok(())
     }
 
@@ -189,47 +247,13 @@ impl YieldToken {
     }
 
     // =========================================================================
-    // Forced Transfer Manager Functions
-    // =========================================================================
-
-    /// Authorizes a recipient on the SAC and transfers tokens to it atomically.
-    /// Forced transfer manager or admin only.
-    ///
-    /// `from` must authorize the transfer (required by SAC's transfer).
-    /// Does NOT update accumulators — this is a balance redistribution, not a mint/burn.
-    pub fn authorize_and_transfer(
-        e: Env,
-        caller: Address,
-        from: Address,
-        to: Address,
-        amount: i128,
-    ) -> Result<(), YieldTokenError> {
-        from.require_auth();
-        check_nonnegative_amount(amount)?;
-        require_admin_or(&e, &caller, &read_forced_transfer_manager(&e))?;
-        extend_instance_ttl(&e);
-
-        let sac_addr = read_sac_token(&e);
-
-        let sac = token::StellarAssetClient::new(&e, &sac_addr);
-
-        // Authorize recipient, transfer, then re-freeze recipient
-        sac.set_authorized(&to, &true);
-        token::Client::new(&e, &sac_addr).transfer(&from, &to, &amount);
-        sac.set_authorized(&to, &false);
-
-        emit_authorize_and_transfer(&e, from, to, amount);
-        Ok(())
-    }
-
-    // =========================================================================
     // Minter Functions — Direct Mint/Burn/Rate
     // =========================================================================
 
     /// Mints SAC tokens directly to the recipient and updates accumulators.
     /// Minter or admin only.
     pub fn mint(e: Env, caller: Address, to: Address, amount: i128) -> Result<(), YieldTokenError> {
-        check_nonnegative_amount(amount)?;
+        check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
@@ -248,10 +272,10 @@ impl YieldToken {
         Ok(())
     }
 
-    /// Burns (clawbacks) SAC tokens from an account and updates accumulators.
+    /// Burns SAC tokens from an account and updates accumulators.
     /// Minter or admin only.
     pub fn burn(e: Env, caller: Address, from: Address, amount: i128) -> Result<(), YieldTokenError> {
-        check_nonnegative_amount(amount)?;
+        check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
@@ -261,7 +285,7 @@ impl YieldToken {
         // Decrease both accumulators
         decrease_both_accumulators(&e, amount)?;
 
-        // Clawback SAC tokens from account
+        // Remove SAC tokens from account via SAC clawback
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).clawback(&from, &amount);
 
@@ -284,6 +308,34 @@ impl YieldToken {
         set_interest_rate(&e, rate_bps)?;
 
         emit_interest_rate_set(&e, rate_bps);
+        Ok(())
+    }
+
+    // =========================================================================
+    // Forced Transfer Manager Functions
+    // =========================================================================
+
+    /// Forces a transfer of SAC tokens from one account to another.
+    /// Forced transfer manager or admin only. Does not require source authorization.
+    /// Implemented as clawback + mint. Accumulators are NOT touched — supply is unchanged.
+    pub fn force_transfer(
+        e: Env,
+        caller: Address,
+        from: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), YieldTokenError> {
+        check_positive_amount(amount)?;
+        require_admin_or(&e, &caller, &read_forced_transfer_manager(&e))?;
+        extend_instance_ttl(&e);
+
+        // SAC operations: clawback from source, mint to destination
+        let sac_addr = read_sac_token(&e);
+        let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+        sac_client.clawback(&from, &amount);
+        sac_client.mint(&to, &amount);
+
+        emit_force_transfer(&e, from, to, amount);
         Ok(())
     }
 
@@ -419,5 +471,11 @@ impl YieldToken {
     pub fn forced_transfer_manager(e: Env) -> Address {
         extend_instance_ttl(&e);
         read_forced_transfer_manager(&e)
+    }
+
+    /// Returns the distributor address.
+    pub fn distributor(e: Env) -> Address {
+        extend_instance_ttl(&e);
+        read_distributor(&e)
     }
 }
