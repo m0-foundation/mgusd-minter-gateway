@@ -141,7 +141,7 @@ The SAC issuer is configured with **AUTH_REQUIRED**, **REVOCABLE**, and **CLAWBA
 
 ### Issuer Burn Prevention
 
-The issuer account is never whitelisted (it has no trustline for its own asset). Since unfrozen accounts form a closed transfer network that cannot reach the issuer, tokens cannot be accidentally sent to the issuer address — which would burn them at the SAC layer without updating the yield accumulators.
+The issuer account has no trustline for its own asset and cannot be frozen or unfrozen. However, the issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level — authorized (unfrozen) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. Tokens sent to the issuer are destroyed (un-issued) without updating the contract's yield accumulators. See [Note 2](#note-2--send-to-issuer-bypasses-yield-accrual) for operational implications.
 
 ## Compliance Controls
 
@@ -149,8 +149,10 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 
 | Function | Role | Description |
 |----------|------|-------------|
-| `freeze_account(account)` | Admin | Removes account from allowlist — blocks sending and receiving |
-| `unfreeze_account(account)` | Admin | Adds account to allowlist — permits sending and receiving |
+| `freeze_account(caller, account)` | Admin or Distributor | Removes account from allowlist — blocks sending and receiving |
+| `unfreeze_account(caller, account)` | Admin or Distributor | Adds account to allowlist — permits sending and receiving |
+| `batch_freeze_accounts(caller, accounts)` | Admin or Distributor | Freeze up to 20 accounts per call |
+| `batch_unfreeze_accounts(caller, accounts)` | Admin or Distributor | Unfreeze up to 20 accounts per call |
 | `is_authorized(account)` | (view) | Returns whether an account is authorized |
 
 - `freeze_account` and `unfreeze_account` call the SAC's `set_authorized` under the hood
@@ -163,13 +165,14 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
-| **Forced Transfer Manager** | *(role stored but no active function)* | Crossmint |
+| **Distributor** | `freeze_account`, `unfreeze_account`, `batch_freeze_accounts`, `batch_unfreeze_accounts` | Crossmint |
+| **Forced Transfer Manager** | `force_transfer` | *(configurable)* |
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `freeze_account`, `unfreeze_account`, `upgrade`)
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_distributor`, `freeze_account`, `unfreeze_account`, `upgrade`)
 - All roles are **single-address** — exactly one holder per role at any time
-- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager)
+- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager, and Distributor is set by Admin)
 - Every role-gated function calls `require_auth()` on the role holder — no implicit trust
 - Roles are stored in **Instance** storage
 
@@ -178,7 +181,7 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 ```
 Admin
 ├── Top-level authority
-├── Can set/change Minter, Yield Recipient Manager, Forced Transfer Manager
+├── Can set/change Minter, Yield Recipient Manager, Forced Transfer Manager, Distributor
 └── Compliance: freeze, unfreeze accounts
 
 Minter (Bridge / Issuer)
@@ -192,8 +195,12 @@ Yield Recipient Manager
 Yield Recipient
 └── Can claim accrued yield
 
+Distributor
+├── Freezes/unfreezes individual accounts
+└── Batch freeze/unfreeze (max 20 per call)
+
 Forced Transfer Manager
-└── (role stored but no active function)
+└── force_transfer — clawback + mint (bypasses freeze on source)
 ```
 
 ---
@@ -213,6 +220,22 @@ The `soroban-fireblocks-sdk/` directory contains a TypeScript SDK that wraps the
 | `queryAdmin()` | `admin` | Query the admin address |
 | `querySacToken()` | `sac_token` | Query the SAC token address |
 | `deployFull(...)` | — | Full deploy pipeline (configure issuer, deploy SAC, upload WASM, deploy wrapper, transfer admin) |
+
+---
+
+## Notes
+
+### Note 1 — Trustline + Authorization Required for Token Distribution
+
+- Recipient accounts must establish a classic Stellar **trustline** (`ChangeTrust` operation) for the MGUSD asset before they can hold tokens — the contract and SAC do not create trustlines on behalf of recipients
+- All accounts start **unauthorized** due to `AUTH_REQUIRED` on the issuer — the Distributor (Crossmint) must call `batch_unfreeze_accounts` to authorize recipients before they can receive tokens
+- Distribution flow: recipient creates trustline → Distributor batch-unfreezes recipients → tokens can be transferred via SAC `transfer()`
+
+### Note 2 — Send-to-Issuer Bypasses Yield Accrual
+
+- Because MGUSD is a Stellar-native asset (SAC-wrapped), authorized users can send tokens directly to the issuer address using standard Stellar operations (SAC `transfer()`, classic `PaymentOp`) — the issuer is exempt from `AUTH_REQUIRED` and cannot be frozen
+- Tokens sent to the issuer are destroyed at the protocol level (un-issued), but the contract's accumulators (`total_principal`, `total_supply`) are **not updated** — the contract has no visibility into these direct transfers
+- M0 must account for this in its off-chain yield calculations by reconciling actual circulating supply against the contract's reported `total_supply`
 
 ---
 
