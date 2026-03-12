@@ -4,8 +4,8 @@ use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::errors::YieldTokenError;
 use crate::events::{
     emit_account_frozen, emit_account_unfrozen, emit_distributor_set,
-    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set,
-    emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
+    emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set,
+    emit_minter_set, emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
     emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
@@ -308,6 +308,34 @@ impl YieldToken {
         set_interest_rate(&e, rate_bps)?;
 
         emit_interest_rate_set(&e, rate_bps);
+        Ok(())
+    }
+
+    // =========================================================================
+    // Forced Transfer Manager Functions
+    // =========================================================================
+
+    /// Forces a transfer of SAC tokens from one account to another.
+    /// Forced transfer manager or admin only. Does not require source authorization.
+    /// Implemented as clawback + mint. Accumulators are NOT touched — supply is unchanged.
+    pub fn force_transfer(
+        e: Env,
+        caller: Address,
+        from: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), YieldTokenError> {
+        check_nonnegative_amount(amount)?;
+        require_admin_or(&e, &caller, &read_forced_transfer_manager(&e))?;
+        extend_instance_ttl(&e);
+
+        // SAC operations: clawback from source, mint to destination
+        let sac_addr = read_sac_token(&e);
+        let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+        sac_client.clawback(&from, &amount);
+        sac_client.mint(&to, &amount);
+
+        emit_force_transfer(&e, from, to, amount);
         Ok(())
     }
 

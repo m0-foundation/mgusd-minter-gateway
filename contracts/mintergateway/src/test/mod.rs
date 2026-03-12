@@ -12,3 +12,4 @@ mod test_yield;
 mod test_batch_budget;
 mod test_batch_freeze;
 mod test_yield_snapshots;
+mod test_force_transfer;
