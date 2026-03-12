@@ -157,7 +157,7 @@ fn test_current_index_from_non_unity_base() {
     let base = 1_050_000_000_000u128;
     let result = current_index(base, 500, SECONDS_PER_YEAR as u64);
     let delta = get_continuous_index(convert_from_basis_points(500), SECONDS_PER_YEAR as u64);
-    let expected = multiply_indices_up(base, delta);
+    let expected = multiply_indices_down(base, delta);
     assert_eq!(result, expected);
     assert!(result > 1_103_000_000_000);
     assert!(result < 1_104_000_000_000);
