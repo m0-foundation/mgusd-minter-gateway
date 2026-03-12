@@ -18,8 +18,8 @@ fn test_sac_transfer_full_balance() {
     let bob = Address::generate(&s.env);
     let amount = 1_000_0000000i128;
 
-    s.contract.unfreeze_account(&alice);
-    s.contract.unfreeze_account(&bob);
+    s.contract.unfreeze_account(&s.admin, &alice);
+    s.contract.unfreeze_account(&s.admin, &bob);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Transfer entire balance
@@ -41,9 +41,9 @@ fn test_sac_transfer_multiple_recipients() {
     let recipient_b = Address::generate(&s.env);
     let amount = 1_000_0000000i128;
 
-    s.contract.unfreeze_account(&treasury);
-    s.contract.unfreeze_account(&recipient_a);
-    s.contract.unfreeze_account(&recipient_b);
+    s.contract.unfreeze_account(&s.admin, &treasury);
+    s.contract.unfreeze_account(&s.admin, &recipient_a);
+    s.contract.unfreeze_account(&s.admin, &recipient_b);
     s.contract.mint(&s.minter, &treasury, &amount);
 
     // Distribute to multiple recipients
@@ -66,8 +66,8 @@ fn test_sac_transfer_zero_amount() {
     let bob = Address::generate(&s.env);
     let amount = 1_000_0000000i128;
 
-    s.contract.unfreeze_account(&alice);
-    s.contract.unfreeze_account(&bob);
+    s.contract.unfreeze_account(&s.admin, &alice);
+    s.contract.unfreeze_account(&s.admin, &bob);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Transfer zero tokens
@@ -85,8 +85,8 @@ fn test_sac_transfer_insufficient_balance() {
     let bob = Address::generate(&s.env);
     let amount = 500_0000000i128;
 
-    s.contract.unfreeze_account(&alice);
-    s.contract.unfreeze_account(&bob);
+    s.contract.unfreeze_account(&s.admin, &alice);
+    s.contract.unfreeze_account(&s.admin, &bob);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Try to transfer more than alice has
@@ -105,8 +105,8 @@ fn test_sac_transfer_does_not_affect_yield() {
     let recipient = Address::generate(&s.env);
     let amount = 10_000_0000000i128;
 
-    s.contract.unfreeze_account(&treasury);
-    s.contract.unfreeze_account(&recipient);
+    s.contract.unfreeze_account(&s.admin, &treasury);
+    s.contract.unfreeze_account(&s.admin, &recipient);
     s.contract.mint(&s.minter, &treasury, &amount);
 
     // Set 5% rate and advance 1 year to accrue yield
@@ -137,8 +137,8 @@ fn test_onboarding_flow() {
     let transfer_amount = 100_0000000i128;
 
     // Admin unfreezes both users (onboarding)
-    s.contract.unfreeze_account(&new_user);
-    s.contract.unfreeze_account(&existing_user);
+    s.contract.unfreeze_account(&s.admin, &new_user);
+    s.contract.unfreeze_account(&s.admin, &existing_user);
 
     // Mint to new user
     s.contract.mint(&s.minter, &new_user, &mint_amount);
@@ -161,7 +161,7 @@ fn test_unauthorized_recipient_cannot_receive_transfer() {
     let recipient = Address::generate(&s.env);
 
     // Authorize and mint to sender
-    s.contract.unfreeze_account(&sender);
+    s.contract.unfreeze_account(&s.admin, &sender);
     s.contract.mint(&s.minter, &sender, &1_000_0000000);
     assert!(s.contract.is_authorized(&sender));
 
@@ -189,7 +189,7 @@ fn test_sac_transfer_to_contract_blocked_when_contract_not_authorized() {
     let contract_addr = s.contract.address.clone();
 
     // Authorize user and mint tokens
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Contract address is NOT authorized (never unfrozen) — transfer should fail
@@ -209,11 +209,11 @@ fn test_sac_transfer_to_contract_succeeds_when_contract_authorized() {
     let contract_addr = s.contract.address.clone();
 
     // Authorize user and mint tokens
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Authorize the contract address itself
-    s.contract.unfreeze_account(&contract_addr);
+    s.contract.unfreeze_account(&s.admin, &contract_addr);
 
     // Transfer to contract address — succeeds but tokens are locked forever
     s.sac_token.transfer(&user, &contract_addr, &transfer_amount);
@@ -233,8 +233,8 @@ fn test_sac_transfer_full_balance_to_contract_locks_tokens() {
     let amount = 1_000_0000000i128;
     let contract_addr = s.contract.address.clone();
 
-    s.contract.unfreeze_account(&user);
-    s.contract.unfreeze_account(&contract_addr);
+    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.admin, &contract_addr);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Send entire balance to the contract

@@ -41,7 +41,7 @@ fn test_send_to_issuer_destroys_tokens() {
 
     let issuer = &s.issuer;
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
     assert_eq!(s.sac_token.balance(&user), amount);
 
@@ -73,16 +73,16 @@ fn test_frozen_user_cannot_send_to_issuer() {
 
     let issuer = &s.issuer;
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Freeze the user
-    s.contract.freeze_account(&user);
+    s.contract.freeze_account(&s.admin, &user);
     assert!(!s.contract.is_authorized(&user));
 
     // Frozen user CANNOT transfer to a normal account
     let other = Address::generate(&s.env);
-    s.contract.unfreeze_account(&other);
+    s.contract.unfreeze_account(&s.admin, &other);
     let result = s.sac_token.try_transfer(&user, &other, &100_0000000);
     assert!(result.is_err());
 
@@ -122,7 +122,7 @@ fn test_freeze_issuer_panics_no_trustline() {
 
     // Attempt to freeze the issuer — should fail because issuer has no trustline.
     // SAC diagnostic: "issuer doesn't have a trustline"
-    let result = s.contract.try_freeze_account(issuer);
+    let result = s.contract.try_freeze_account(&s.admin, issuer);
     assert!(
         result.is_err(),
         "freeze_account(issuer) should fail — issuer has no trustline"
@@ -136,7 +136,7 @@ fn test_unfreeze_issuer_panics_no_trustline() {
     let issuer = &s.issuer;
 
     // Attempt to unfreeze the issuer — should also fail (no trustline)
-    let result = s.contract.try_unfreeze_account(issuer);
+    let result = s.contract.try_unfreeze_account(&s.admin, issuer);
     assert!(
         result.is_err(),
         "unfreeze_account(issuer) should fail — issuer has no trustline"
@@ -170,11 +170,11 @@ fn test_issuer_cannot_be_frozen_to_block_send_to_issuer() {
     let issuer = &s.issuer;
 
     // Setup: authorize user, mint tokens
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // We CANNOT freeze the issuer to block the bypass
-    let freeze_result = s.contract.try_freeze_account(issuer);
+    let freeze_result = s.contract.try_freeze_account(&s.admin, issuer);
     assert!(freeze_result.is_err(), "Cannot freeze issuer");
 
     // The authorized user CAN still send to issuer (the bypass)
@@ -196,10 +196,10 @@ fn test_operations_work_after_failed_issuer_freeze() {
     let issuer = &s.issuer;
 
     // Attempt to freeze issuer (fails, but shouldn't corrupt state)
-    let _ = s.contract.try_freeze_account(issuer);
+    let _ = s.contract.try_freeze_account(&s.admin, issuer);
 
     // Minting still works
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
     assert_eq!(s.sac_token.balance(&user), amount);
 
@@ -377,7 +377,7 @@ fn test_authorized_user_can_send_to_issuer_to_burn() {
     let send_amount = 400_0000000i128;
 
     // Authorize user and mint tokens
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
     assert_eq!(s.sac_token.balance(&user), amount);
     assert!(s.contract.is_authorized(&user));
@@ -406,7 +406,7 @@ fn test_authorized_user_can_send_full_balance_to_issuer() {
     let user = Address::generate(&s.env);
     let amount = 1_000_0000000i128;
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Send entire balance to issuer
@@ -437,7 +437,7 @@ fn test_direct_sac_transfer_blocked_for_deauthorized_recipient() {
     let amount = 1_000_0000000i128;
 
     // Authorize alice and mint tokens to her
-    s.contract.unfreeze_account(&alice);
+    s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.mint(&s.minter, &alice, &amount);
     assert_eq!(s.sac_token.balance(&alice), amount);
 
@@ -462,8 +462,8 @@ fn test_direct_sac_transfer_succeeds_between_authorized_accounts() {
     let transfer_amount = 400_0000000i128;
 
     // Authorize both accounts and mint to alice
-    s.contract.unfreeze_account(&alice);
-    s.contract.unfreeze_account(&bob);
+    s.contract.unfreeze_account(&s.admin, &alice);
+    s.contract.unfreeze_account(&s.admin, &bob);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Alice calls SAC transfer directly — bypassing our contract entirely
@@ -492,8 +492,8 @@ fn test_direct_sac_approve_and_transfer_from_bypass() {
     let allowance_amount = 500_0000000i128;
 
     // Authorize alice and bob, mint to alice
-    s.contract.unfreeze_account(&alice);
-    s.contract.unfreeze_account(&bob);
+    s.contract.unfreeze_account(&s.admin, &alice);
+    s.contract.unfreeze_account(&s.admin, &bob);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Alice approves a spender directly on the SAC
@@ -519,7 +519,7 @@ fn test_direct_sac_transfer_from_blocked_for_deauthorized_recipient() {
     let spender = Address::generate(&s.env);
     let amount = 1_000_0000000i128;
 
-    s.contract.unfreeze_account(&alice);
+    s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Alice approves spender on the SAC
@@ -609,7 +609,7 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     let contract_addr = s.contract.address.clone();
     let amount = 1_000_0000000i128;
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Contract address was never authorized — blocked by RequiredFlag
@@ -619,7 +619,7 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     assert!(result.is_err());
 
     // Only after explicit authorization does it work
-    s.contract.unfreeze_account(&contract_addr);
+    s.contract.unfreeze_account(&s.admin, &contract_addr);
     assert!(s.contract.is_authorized(&contract_addr));
 
     s.sac_token.transfer(&user, &contract_addr, &500_0000000);

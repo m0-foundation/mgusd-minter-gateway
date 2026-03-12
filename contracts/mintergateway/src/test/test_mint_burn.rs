@@ -13,7 +13,7 @@ fn test_mint_increases_both_accumulators_and_sac_balance() {
     let recipient = Address::generate(&s.env);
 
     // Authorize recipient before mint (AUTH_REQUIRED mode)
-    s.contract.unfreeze_account(&recipient);
+    s.contract.unfreeze_account(&s.admin, &recipient);
     s.contract.mint(&s.minter, &recipient, &amount);
 
     assert_eq!(s.contract.total_principal(), amount);
@@ -27,8 +27,8 @@ fn test_mint_multiple_recipients() {
     let user_a = Address::generate(&s.env);
     let user_b = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&user_a);
-    s.contract.unfreeze_account(&user_b);
+    s.contract.unfreeze_account(&s.admin, &user_a);
+    s.contract.unfreeze_account(&s.admin, &user_b);
     s.contract.mint(&s.minter, &user_a, &500_0000000);
     s.contract.mint(&s.minter, &user_b, &300_0000000);
 
@@ -47,7 +47,7 @@ fn test_burn_decreases_both_accumulators_and_sac_balance() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &1_000_0000000);
     s.contract.burn(&s.minter, &user, &400_0000000);
 
@@ -202,7 +202,7 @@ fn test_authorized_account_can_receive_mint() {
     let user = Address::generate(&s.env);
 
     // Authorize via unfreeze_account (allowlist)
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     assert!(s.contract.is_authorized(&user));
 
     // Minting to authorized account succeeds

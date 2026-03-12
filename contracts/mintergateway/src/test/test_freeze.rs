@@ -12,10 +12,10 @@ fn test_freeze_account_prevents_transfer() {
     let user = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &1_000_0000000);
 
-    s.contract.freeze_account(&user);
+    s.contract.freeze_account(&s.admin, &user);
     assert!(!s.contract.is_authorized(&user));
 
     // Frozen user cannot transfer
@@ -29,17 +29,17 @@ fn test_unfreeze_account_restores_transfer() {
     let user = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &1_000_0000000);
 
-    s.contract.freeze_account(&user);
+    s.contract.freeze_account(&s.admin, &user);
     assert!(!s.contract.is_authorized(&user));
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     assert!(s.contract.is_authorized(&user));
 
     // Authorize recipient so they can receive (AUTH_REQUIRED mode)
-    s.contract.unfreeze_account(&recipient);
+    s.contract.unfreeze_account(&s.admin, &recipient);
 
     // Unfrozen user can transfer again
     s.sac_token.transfer(&user, &recipient, &100_0000000);
@@ -60,12 +60,12 @@ fn test_freeze_idempotent() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &1_000_0000000);
 
     // Freezing twice doesn't panic
-    s.contract.freeze_account(&user);
-    s.contract.freeze_account(&user);
+    s.contract.freeze_account(&s.admin, &user);
+    s.contract.freeze_account(&s.admin, &user);
     assert!(!s.contract.is_authorized(&user));
 }
 
@@ -75,11 +75,11 @@ fn test_unfreeze_idempotent() {
     let user = Address::generate(&s.env);
 
     // Authorize the account first
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     assert!(s.contract.is_authorized(&user));
 
     // Unfreezing an already-authorized account doesn't panic
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     assert!(s.contract.is_authorized(&user));
 }
 
@@ -91,16 +91,55 @@ fn test_unfreeze_idempotent() {
 fn test_freeze_account_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let user = Address::generate(&s.env);
-    let err = s.contract.try_freeze_account(&user).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    let result = s.contract.try_freeze_account(&s.admin, &user);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
 }
 
 #[test]
 fn test_unfreeze_account_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let user = Address::generate(&s.env);
-    let err = s.contract.try_unfreeze_account(&user).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    let result = s.contract.try_unfreeze_account(&s.admin, &user);
+    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+}
+
+#[test]
+fn test_freeze_account_rejects_unauthorized_role() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let random = Address::generate(&s.env);
+    let result = s.contract.try_freeze_account(&random, &user);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_unfreeze_account_rejects_unauthorized_role() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let random = Address::generate(&s.env);
+    let result = s.contract.try_unfreeze_account(&random, &user);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+}
+
+#[test]
+fn test_distributor_can_freeze_account() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    s.contract.unfreeze_account(&s.admin, &user);
+    assert!(s.contract.is_authorized(&user));
+
+    s.contract.freeze_account(&s.distributor, &user);
+    assert!(!s.contract.is_authorized(&user));
+}
+
+#[test]
+fn test_distributor_can_unfreeze_account() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    s.contract.unfreeze_account(&s.distributor, &user);
+    assert!(s.contract.is_authorized(&user));
 }
 
 // =============================================================================
@@ -114,13 +153,13 @@ fn test_compliance_flow_freeze_burn_unfreeze() {
     let principal = 1_000_0000000i128;
 
     // Step 1: Mint tokens
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &principal);
     assert_eq!(s.sac_token.balance(&user), principal);
     assert!(s.contract.is_authorized(&user));
 
     // Step 2: Freeze the account
-    s.contract.freeze_account(&user);
+    s.contract.freeze_account(&s.admin, &user);
     assert!(!s.contract.is_authorized(&user));
 
     // Step 3: Burn half
@@ -130,12 +169,12 @@ fn test_compliance_flow_freeze_burn_unfreeze() {
     assert_eq!(s.contract.total_supply(), principal / 2);
 
     // Step 4: Unfreeze the account
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     assert!(s.contract.is_authorized(&user));
 
     // Step 5: User can transfer remaining balance
     let recipient = Address::generate(&s.env);
-    s.contract.unfreeze_account(&recipient); // Authorize recipient (AUTH_REQUIRED mode)
+    s.contract.unfreeze_account(&s.admin, &recipient); // Authorize recipient (AUTH_REQUIRED mode)
     s.sac_token.transfer(&user, &recipient, &100_0000000);
     assert_eq!(s.sac_token.balance(&recipient), 100_0000000);
 }
@@ -148,8 +187,8 @@ fn test_freeze_blocks_subsequent_direct_sac_transfer() {
     let amount = 1_000_0000000i128;
 
     // Authorize both and mint
-    s.contract.unfreeze_account(&alice);
-    s.contract.unfreeze_account(&bob);
+    s.contract.unfreeze_account(&s.admin, &alice);
+    s.contract.unfreeze_account(&s.admin, &bob);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Direct SAC transfer works while both are authorized
@@ -157,7 +196,7 @@ fn test_freeze_blocks_subsequent_direct_sac_transfer() {
     assert_eq!(s.sac_token.balance(&bob), 100_0000000);
 
     // Admin freezes alice via our contract
-    s.contract.freeze_account(&alice);
+    s.contract.freeze_account(&s.admin, &alice);
 
     // Alice tries another direct SAC transfer — BLOCKED
     let result = s.sac_token.try_transfer(&alice, &bob, &100_0000000);
