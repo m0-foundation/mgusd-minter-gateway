@@ -15,7 +15,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Admin or Distributor whitelists (unfreezes) accounts — individually via `unfreeze_account(caller, account)` or in batch via `batch_unfreeze_accounts(caller, accounts)` (up to 40 per call)
+1. Admin or Distributor whitelists (unfreezes) accounts — individually via `unfreeze_account(caller, account)` or in batch via `batch_unfreeze_accounts(caller, accounts)` (up to 20 per call)
 2. Treasury transfers tokens to the user via the SAC's standard SEP-41 `transfer()`
 3. Whitelisted (unfrozen) accounts can freely transfer among themselves
 4. Non-whitelisted (frozen) accounts cannot send or receive tokens
@@ -58,14 +58,14 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
-| **Forced Transfer Manager** | `force_transfer` | Crossmint |
-| **Distributor** | `freeze_account`, `unfreeze_account`, `batch_freeze_accounts`, `batch_unfreeze_accounts` | Compliance Operator |
+| **Forced Transfer Manager** | `force_transfer` | *(configurable)* |
+| **Distributor** | `freeze_account`, `unfreeze_account`, `batch_freeze_accounts`, `batch_unfreeze_accounts` | Crossmint |
 
 **Design properties:**
 
 - **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_distributor`, `upgrade`)
 - All roles are **single-address** — exactly one holder per role at any time
-- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager)
+- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager, and Distributor is set by Admin)
 - Every role-gated function calls `require_auth()` on the role holder — no implicit trust
 - Roles are stored in **Instance** storage
 
@@ -112,8 +112,8 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 |----------|-----------|-------------|
 | `freeze_account` | `(caller: Address, account: Address)` | Freeze account on SAC (`set_authorized(false)`) |
 | `unfreeze_account` | `(caller: Address, account: Address)` | Unfreeze account on SAC (`set_authorized(true)`) |
-| `batch_freeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Freeze up to 40 accounts in a single transaction |
-| `batch_unfreeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Unfreeze up to 40 accounts in a single transaction |
+| `batch_freeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Freeze up to 20 accounts in a single transaction |
+| `batch_unfreeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Unfreeze up to 20 accounts in a single transaction |
 
 ### Yield Recipient Functions (1)
 
@@ -279,16 +279,15 @@ On classic Stellar, sending tokens to the **issuer address** burns them automati
 - The wrapper contract's `total_principal` and `total_supply` are **never updated**
 - Yield keeps accruing on phantom principal — breaking the yield invariant
 
-### Prevention: AUTH_REQUIRED + Whitelist Model
+### Mitigation: AUTH_REQUIRED + Whitelist Model
 
 The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by default.
 
 1. Accounts can only transact after Admin or Distributor calls `unfreeze_account()`
-2. The issuer account is **never** unfrozen — it has no trustline for its own asset
-3. Unfrozen accounts form a closed transfer network that cannot reach the issuer
-4. Frozen accounts hold tokens but cannot move them (including to the issuer)
+2. The issuer account has no trustline for its own asset and cannot be frozen or unfrozen
+3. Frozen accounts hold tokens but cannot move them (including to the issuer)
 
-**Current approach (whitelist):** Admin or Distributor whitelists accounts via `unfreeze_account()`. Whitelisted accounts can freely transfer among themselves using the SAC's standard SEP-41 `transfer()`. Since the issuer is never part of the whitelist, tokens cannot be accidentally sent to the issuer.
+**Important caveat:** The issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level. This means authorized (unfrozen) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. The whitelist model reduces accidental issuer burns by limiting who can transact, but does not eliminate the possibility entirely. M0 must reconcile actual circulating supply against the contract's reported `total_supply` to account for any tokens sent to the issuer. See the [Issuer Burn Prevention section in the README](../README.md#issuer-burn-prevention) and Note 2 for details.
 
 ---
 
@@ -300,8 +299,8 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 - `unfreeze_account(caller, addr)` → SAC `set_authorized(true)` → account can send/receive
 - `freeze_account(caller, addr)` → SAC `set_authorized(false)` → account is blocked
 - Admin or Distributor can freeze/unfreeze individual accounts
-- **Batch operations:** `batch_freeze_accounts` and `batch_unfreeze_accounts` accept up to 40 accounts per call and can be called by Admin or Distributor
-- The 40-account cap is derived from Soroban's per-transaction write entry limit of 50 (SLP-0001); each account consumes 1 write entry plus 1 overhead for the contract instance
+- **Batch operations:** `batch_freeze_accounts` and `batch_unfreeze_accounts` accept up to 20 accounts per call and can be called by Admin or Distributor
+- The 20-account cap is derived from Soroban's per-transaction resource limits; each account consumes write entries for the SAC authorization state
 - Batch operations are atomic — if any account fails, the entire transaction reverts
 - Each account in a batch emits its own `freeze`/`unfreeze` event for indexer compatibility
 
@@ -311,7 +310,7 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 - Both sender and receiver must be whitelisted (unfrozen) for a transfer to succeed
 - Admin or Distributor whitelists accounts via `unfreeze_account()` and can revoke via `freeze_account()`
 - Transfers do **not** update accumulators — they are balance redistributions, not mints/burns
-- The issuer is never whitelisted, preventing accidental issuer burn
+- The issuer is exempt from `AUTH_REQUIRED` — authorized users can send tokens to the issuer, which destroys them without updating accumulators (see [Issuer Burn Problem](#the-issuer-burn-problem))
 
 ---
 
