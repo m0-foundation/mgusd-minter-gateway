@@ -89,7 +89,7 @@ fn test_admin_can_mint() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.admin, &user, &1_000_0000000);
 
     assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
@@ -101,7 +101,7 @@ fn test_admin_can_burn() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&user);
+    s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &1_000_0000000);
 
     s.contract.burn(&s.admin, &user, &400_0000000);

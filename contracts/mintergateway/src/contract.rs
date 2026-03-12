@@ -138,31 +138,41 @@ impl YieldToken {
     }
 
     // =========================================================================
-    // Admin Compliance Functions
+    // Compliance Functions (Admin or Distributor)
     // =========================================================================
 
     /// Freezes an account, preventing it from sending or receiving SAC tokens.
-    /// Admin only.
-    pub fn freeze_account(e: Env, account: Address) {
-        require_admin(&e);
+    /// Admin or distributor only.
+    pub fn freeze_account(
+        e: Env,
+        caller: Address,
+        account: Address,
+    ) -> Result<(), YieldTokenError> {
+        require_admin_or(&e, &caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&account, &false);
 
         emit_account_frozen(&e, account);
+        Ok(())
     }
 
     /// Unfreezes an account, restoring its ability to send and receive SAC tokens.
-    /// Admin only.
-    pub fn unfreeze_account(e: Env, account: Address) {
-        require_admin(&e);
+    /// Admin or distributor only.
+    pub fn unfreeze_account(
+        e: Env,
+        caller: Address,
+        account: Address,
+    ) -> Result<(), YieldTokenError> {
+        require_admin_or(&e, &caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&account, &true);
 
         emit_account_unfrozen(&e, account);
+        Ok(())
     }
 
     // =========================================================================
