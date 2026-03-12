@@ -42,4 +42,5 @@ pub enum DataKey {
     YieldRecipientManager, // Instance: Address (can set yield recipient)
     YieldRecipient,        // Instance: Address (can claim yield)
     ForcedTransferManager, // Instance: Address (can authorize + transfer tokens)
+    Distributor,           // Instance: Address (can batch freeze/unfreeze accounts)
 }

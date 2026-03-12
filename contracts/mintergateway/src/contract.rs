@@ -1,18 +1,20 @@
-use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env};
+use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::errors::YieldTokenError;
 use crate::events::{
-    emit_account_frozen, emit_account_unfrozen, emit_forced_transfer_manager_set,
-    emit_interest_rate_set, emit_minter_set, emit_set_admin, emit_supply_synced,
-    emit_upgraded, emit_yield_claimed, emit_yield_recipient_manager_set,
-    emit_yield_recipient_set,
+    emit_account_frozen, emit_account_unfrozen, emit_distributor_set,
+    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set,
+    emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
+    emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    read_forced_transfer_manager, read_minter, read_yield_recipient, read_yield_recipient_manager,
-    require_admin_or, write_forced_transfer_manager, write_minter, write_yield_recipient,
+    read_distributor, read_forced_transfer_manager, read_minter, read_yield_recipient,
+    read_yield_recipient_manager, require_admin_or, write_distributor,
+    write_forced_transfer_manager, write_minter, write_yield_recipient,
     write_yield_recipient_manager,
 };
+use crate::constants::MAX_BATCH_SIZE;
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
 use crate::yield_state::{
@@ -49,6 +51,7 @@ impl YieldToken {
     /// * `yield_recipient_manager` - Address that can set the yield recipient
     /// * `yield_recipient` - Address that can claim yield
     /// * `forced_transfer_manager` - Address that can authorize accounts and transfer tokens
+    /// * `distributor` - Address that can batch freeze/unfreeze accounts
     pub fn __constructor(
         e: Env,
         sac_token: Address,
@@ -57,6 +60,7 @@ impl YieldToken {
         yield_recipient_manager: Address,
         yield_recipient: Address,
         forced_transfer_manager: Address,
+        distributor: Address,
     ) -> Result<(), YieldTokenError> {
         if has_admin(&e) {
             return Err(YieldTokenError::AlreadyInitializedError);
@@ -71,6 +75,7 @@ impl YieldToken {
         write_yield_recipient_manager(&e, &yield_recipient_manager);
         write_yield_recipient(&e, &yield_recipient);
         write_forced_transfer_manager(&e, &forced_transfer_manager);
+        write_distributor(&e, &distributor);
         Ok(())
     }
 
@@ -121,6 +126,17 @@ impl YieldToken {
         emit_forced_transfer_manager_set(&e, old, new_forced_transfer_manager);
     }
 
+    /// Sets a new distributor address. Admin only.
+    pub fn set_distributor(e: Env, new_distributor: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        let old = read_distributor(&e);
+        write_distributor(&e, &new_distributor);
+
+        emit_distributor_set(&e, old, new_distributor);
+    }
+
     // =========================================================================
     // Admin Compliance Functions
     // =========================================================================
@@ -147,6 +163,60 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&account, &true);
 
         emit_account_unfrozen(&e, account);
+    }
+
+    // =========================================================================
+    // Batch Compliance Functions (Admin or Distributor)
+    // =========================================================================
+
+    /// Freezes multiple accounts in a single transaction.
+    /// Admin or distributor only. Max 20 accounts per call.
+    pub fn batch_freeze_accounts(
+        e: Env,
+        caller: Address,
+        accounts: Vec<Address>,
+    ) -> Result<(), YieldTokenError> {
+        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        extend_instance_ttl(&e);
+
+        if accounts.len() > MAX_BATCH_SIZE {
+            return Err(YieldTokenError::BatchTooLargeError);
+        }
+
+        let sac_addr = read_sac_token(&e);
+        let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+
+        for account in accounts.iter() {
+            sac_client.set_authorized(&account, &false);
+            emit_account_frozen(&e, account);
+        }
+
+        Ok(())
+    }
+
+    /// Unfreezes multiple accounts in a single transaction.
+    /// Admin or distributor only. Max 20 accounts per call.
+    pub fn batch_unfreeze_accounts(
+        e: Env,
+        caller: Address,
+        accounts: Vec<Address>,
+    ) -> Result<(), YieldTokenError> {
+        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        extend_instance_ttl(&e);
+
+        if accounts.len() > MAX_BATCH_SIZE {
+            return Err(YieldTokenError::BatchTooLargeError);
+        }
+
+        let sac_addr = read_sac_token(&e);
+        let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+
+        for account in accounts.iter() {
+            sac_client.set_authorized(&account, &true);
+            emit_account_unfrozen(&e, account);
+        }
+
+        Ok(())
     }
 
     // =========================================================================
@@ -363,5 +433,11 @@ impl YieldToken {
     pub fn forced_transfer_manager(e: Env) -> Address {
         extend_instance_ttl(&e);
         read_forced_transfer_manager(&e)
+    }
+
+    /// Returns the distributor address.
+    pub fn distributor(e: Env) -> Address {
+        extend_instance_ttl(&e);
+        read_distributor(&e)
     }
 }
