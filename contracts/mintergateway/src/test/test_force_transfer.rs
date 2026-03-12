@@ -184,18 +184,11 @@ fn test_force_transfer_zero_amount() {
     let s = setup();
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
 
-    s.contract.unfreeze_account(&s.admin, &alice);
-    s.contract.unfreeze_account(&s.admin, &bob);
-    s.contract.mint(&s.minter, &alice, &amount);
-
-    // Zero-amount force transfer is a no-op
-    s.contract
-        .force_transfer(&s.forced_transfer_manager, &alice, &bob, &0);
-
-    assert_eq!(s.sac_token.balance(&alice), amount);
-    assert_eq!(s.sac_token.balance(&bob), 0);
+    let result = s
+        .contract
+        .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &0);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
 }
 
 #[test]
@@ -227,7 +220,7 @@ fn test_force_transfer_negative_amount_reverts() {
     let result = s
         .contract
         .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &(-100));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::NegativeAmountError)));
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
 }
 
 #[test]

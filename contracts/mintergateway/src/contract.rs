@@ -24,9 +24,9 @@ use crate::yield_state::{
     update_index,
 };
 
-pub(crate) fn check_nonnegative_amount(amount: i128) -> Result<(), YieldTokenError> {
-    if amount < 0 {
-        return Err(YieldTokenError::NegativeAmountError);
+pub(crate) fn check_positive_amount(amount: i128) -> Result<(), YieldTokenError> {
+    if amount <= 0 {
+        return Err(YieldTokenError::InvalidAmountError);
     }
     Ok(())
 }
@@ -253,7 +253,7 @@ impl YieldToken {
     /// Mints SAC tokens directly to the recipient and updates accumulators.
     /// Minter or admin only.
     pub fn mint(e: Env, caller: Address, to: Address, amount: i128) -> Result<(), YieldTokenError> {
-        check_nonnegative_amount(amount)?;
+        check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
@@ -275,7 +275,7 @@ impl YieldToken {
     /// Burns SAC tokens from an account and updates accumulators.
     /// Minter or admin only.
     pub fn burn(e: Env, caller: Address, from: Address, amount: i128) -> Result<(), YieldTokenError> {
-        check_nonnegative_amount(amount)?;
+        check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
@@ -325,7 +325,7 @@ impl YieldToken {
         to: Address,
         amount: i128,
     ) -> Result<(), YieldTokenError> {
-        check_nonnegative_amount(amount)?;
+        check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_forced_transfer_manager(&e))?;
         extend_instance_ttl(&e);
 

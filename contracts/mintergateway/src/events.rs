@@ -3,11 +3,11 @@ use soroban_sdk::{symbol_short, Address, BytesN, Env, Symbol};
 // Event topic symbols
 const SET_ADMIN: Symbol = symbol_short!("set_admin");
 const INT_RATE: Symbol = symbol_short!("int_rate");
-const YIELD: Symbol = symbol_short!("yield");
+const YLD_CLAIM: Symbol = symbol_short!("yld_clm");
 const SET_MINTER: Symbol = symbol_short!("set_mntr");
 const SET_YIELD_RCPT_MGR: Symbol = symbol_short!("set_yrmr");
 const SET_YIELD_RCPT: Symbol = symbol_short!("set_yrcp");
-const SUP_SYNC: Symbol = symbol_short!("sup_sync");
+const SUP_CHG: Symbol = symbol_short!("sup_chg");
 const FREEZE: Symbol = symbol_short!("freeze");
 const UNFREEZE: Symbol = symbol_short!("unfreeze");
 const SET_FTM: Symbol = symbol_short!("set_ftmr");
@@ -24,7 +24,7 @@ pub fn emit_interest_rate_set(env: &Env, rate_bps: u32) {
 }
 
 pub fn emit_yield_claimed(env: &Env, recipient: Address, amount: i128) {
-    env.events().publish((YIELD,), (recipient, amount));
+    env.events().publish((YLD_CLAIM,), (recipient, amount));
 }
 
 pub fn emit_minter_set(env: &Env, old: Address, new: Address) {
@@ -41,7 +41,7 @@ pub fn emit_yield_recipient_set(env: &Env, old: Address, new: Address) {
 
 pub fn emit_supply_synced(env: &Env, delta: i128, new_total_principal: i128, new_total_supply: i128) {
     env.events()
-        .publish((SUP_SYNC,), (delta, new_total_principal, new_total_supply));
+        .publish((SUP_CHG,), (delta, new_total_principal, new_total_supply));
 }
 
 pub fn emit_account_frozen(env: &Env, account: Address) {
