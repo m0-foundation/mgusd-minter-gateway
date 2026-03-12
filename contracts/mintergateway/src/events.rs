@@ -11,6 +11,7 @@ const SUP_SYNC: Symbol = symbol_short!("sup_sync");
 const FREEZE: Symbol = symbol_short!("freeze");
 const UNFREEZE: Symbol = symbol_short!("unfreeze");
 const SET_FTM: Symbol = symbol_short!("set_ftmr");
+const SET_DIST: Symbol = symbol_short!("set_dist");
 const UPGRADED: Symbol = symbol_short!("upgraded");
 
 pub fn emit_set_admin(env: &Env, admin: Address, new_admin: Address) {
@@ -52,6 +53,10 @@ pub fn emit_account_unfrozen(env: &Env, account: Address) {
 
 pub fn emit_forced_transfer_manager_set(env: &Env, old: Address, new: Address) {
     env.events().publish((SET_FTM,), (old, new));
+}
+
+pub fn emit_distributor_set(env: &Env, old: Address, new: Address) {
+    env.events().publish((SET_DIST,), (old, new));
 }
 
 pub fn emit_upgraded(env: &Env, by: Address, new_wasm_hash: BytesN<32>) {

@@ -16,6 +16,7 @@ fn test_double_initialization_returns_error() {
     let yrm = s.yield_recipient_manager.clone();
     let yr = s.yield_recipient.clone();
     let ftm = s.forced_transfer_manager.clone();
+    let dist = s.distributor.clone();
 
     // Re-invoke __constructor inside the contract's storage context
     // The admin already exists, so this should return AlreadyInitializedError
@@ -28,6 +29,7 @@ fn test_double_initialization_returns_error() {
             yrm,
             yr,
             ftm,
+            dist,
         )
     });
 
@@ -50,6 +52,7 @@ fn test_upgrade_requires_admin_auth() {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
+    let distributor = Address::generate(&env);
 
     // Register SAC — env.register* helpers don't need auth
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
@@ -64,6 +67,7 @@ fn test_upgrade_requires_admin_auth() {
             &yield_recipient_manager,
             &yield_recipient,
             &forced_transfer_manager,
+            &distributor,
         ),
     );
     let contract = YieldTokenClient::new(&env, &contract_addr);

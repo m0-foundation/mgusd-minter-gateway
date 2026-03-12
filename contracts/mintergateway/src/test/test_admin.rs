@@ -12,6 +12,12 @@ fn test_forced_transfer_manager_view() {
     assert_eq!(s.contract.forced_transfer_manager(), s.forced_transfer_manager);
 }
 
+#[test]
+fn test_distributor_view() {
+    let s = setup();
+    assert_eq!(s.contract.distributor(), s.distributor);
+}
+
 // =============================================================================
 // ROLE SETTERS — happy-path mutations
 // =============================================================================
@@ -61,6 +67,17 @@ fn test_set_forced_transfer_manager() {
 
     s.contract.set_forced_transfer_manager(&new_ftm);
     assert_eq!(s.contract.forced_transfer_manager(), new_ftm);
+}
+
+#[test]
+fn test_set_distributor() {
+    let s = setup();
+    let new_dist = Address::generate(&s.env);
+
+    assert_eq!(s.contract.distributor(), s.distributor);
+
+    s.contract.set_distributor(&new_dist);
+    assert_eq!(s.contract.distributor(), new_dist);
 }
 
 // =============================================================================
@@ -163,6 +180,14 @@ fn test_set_forced_transfer_manager_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_ftm = Address::generate(&s.env);
     let err = s.contract.try_set_forced_transfer_manager(&new_ftm).unwrap_err().unwrap();
+    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+}
+
+#[test]
+fn test_set_distributor_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let new_dist = Address::generate(&s.env);
+    let err = s.contract.try_set_distributor(&new_dist).unwrap_err().unwrap();
     assert_eq!(soroban_sdk::Error::from(err), auth_error());
 }
 

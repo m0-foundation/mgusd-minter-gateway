@@ -25,6 +25,7 @@ pub struct TestSetup<'a> {
     pub yield_recipient_manager: Address,
     pub yield_recipient: Address,
     pub forced_transfer_manager: Address,
+    pub distributor: Address,
 }
 
 pub fn setup() -> TestSetup<'static> {
@@ -37,6 +38,7 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
+    let distributor = Address::generate(&env);
 
     // Register SAC token with admin as initial issuer
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
@@ -59,6 +61,7 @@ pub fn setup() -> TestSetup<'static> {
             &yield_recipient_manager,
             &yield_recipient,
             &forced_transfer_manager,
+            &distributor,
         ),
     );
     let contract = YieldTokenClient::new(&env, &contract_addr);
@@ -79,6 +82,7 @@ pub fn setup() -> TestSetup<'static> {
         yield_recipient_manager,
         yield_recipient,
         forced_transfer_manager,
+        distributor,
     }
 }
 

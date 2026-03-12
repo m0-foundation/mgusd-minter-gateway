@@ -12,4 +12,5 @@ pub enum YieldTokenError {
     // Domain-specific (start at 100)
     BurnExceedsPrincipal = 100,
     RateExceedsMax = 101,
+    BatchTooLargeError = 102,
 }
