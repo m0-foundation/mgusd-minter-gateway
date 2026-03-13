@@ -4,8 +4,9 @@
 //! The index represents cumulative growth: Index(t) = Index(t₀) × e^(r × Δt)
 //!
 //! Two accumulators track token supply:
-//! - `total_principal`: yield-earning base (mints - burns, excludes claimed yield)
-//! - `total_supply`: total outstanding tokens (principal + cumulative claimed yield)
+//! - `total_principal`: yield-earning base in present-value terms (`amount * INDEX_SCALE / index`
+//!   at time of mint/burn). Excludes claimed yield.
+//! - `total_supply`: total outstanding tokens in nominal terms (principal + cumulative claimed yield)
 //!
 //! Yield accrues on `total_principal` only, not on `total_supply`.
 //! This prevents compounding of claimed yield.
@@ -93,7 +94,13 @@ pub fn increase_total_supply(env: &Env, amount: i128) {
 /// Must call update_index first to finalize yield at current principal.
 pub fn increase_both_accumulators(env: &Env, amount: i128) {
     let mut state = read_yield_state(env);
-    state.total_principal = state.total_principal.checked_add(amount).unwrap();
+    // Principal stores present-value: amount * INDEX_SCALE / latest_index
+    let pv_amount = (amount as u128)
+        .checked_mul(INDEX_SCALE)
+        .unwrap()
+        .checked_div(state.latest_index)
+        .unwrap();
+    state.total_principal = state.total_principal.checked_add(pv_amount as i128).unwrap();
     state.total_supply = state.total_supply.checked_add(amount).unwrap();
     write_yield_state(env, &state);
 }
@@ -104,10 +111,16 @@ pub fn increase_both_accumulators(env: &Env, amount: i128) {
 /// Returns error if amount exceeds total_principal — you cannot burn more than was minted.
 pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), YieldTokenError> {
     let mut state = read_yield_state(env);
-    if amount > state.total_principal {
+    // Principal stores present-value: amount * INDEX_SCALE / latest_index
+    let pv_amount = (amount as u128)
+        .checked_mul(INDEX_SCALE)
+        .unwrap()
+        .checked_div(state.latest_index)
+        .unwrap();
+    if pv_amount as i128 > state.total_principal {
         return Err(YieldTokenError::BurnExceedsPrincipal);
     }
-    state.total_principal = state.total_principal.checked_sub(amount).unwrap();
+    state.total_principal = state.total_principal.checked_sub(pv_amount as i128).unwrap();
     state.total_supply = state.total_supply.checked_sub(amount).unwrap();
     write_yield_state(env, &state);
     Ok(())

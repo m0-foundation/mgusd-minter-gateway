@@ -75,8 +75,10 @@ fn test_burn_decreases_principal() {
     let burn_amount = 500_000_0000000i128;
     s.contract.burn(&s.minter, &s.yield_recipient, &burn_amount);
 
-    // Principal reduced
-    assert_eq!(s.contract.total_principal(), initial - burn_amount);
+    // Principal reduced by PV of burn amount (burn at grown index → PV < nominal)
+    let index_1yr = current_index(INDEX_SCALE, 500, SECONDS_PER_YEAR as u64);
+    let pv_burn = burn_amount as u128 * INDEX_SCALE / index_1yr;
+    assert_eq!(s.contract.total_principal(), initial - pv_burn as i128);
 
     // Accrued yield should still be there (burn calls update_index first)
     assert!(s.contract.accrued_yield() > 0);
@@ -91,8 +93,10 @@ fn test_burn_decreases_principal() {
         "Second year yield on half principal should be less than first year"
     );
     let ratio = (second_year_yield as f64) / (yield_before_burn as f64);
+    // With PV principal, burning half the nominal tokens removes less than half the PV,
+    // so second year yield is slightly more than half of first year (ratio > 0.5)
     assert!(
-        ratio > 0.45 && ratio < 0.55,
+        ratio > 0.45 && ratio < 0.60,
         "Expected ~0.5 ratio, got {}",
         ratio
     );
@@ -110,11 +114,14 @@ fn test_burn_exactly_principal() {
 
     let claimed = s.contract.claim_yield(&s.yield_recipient);
 
-    // Burn exactly principal — succeeds
+    // Burn exactly nominal initial — succeeds but PV < nominal at grown index
+    let index_1yr = current_index(INDEX_SCALE, 500, SECONDS_PER_YEAR as u64);
     s.contract.burn(&s.minter, &s.yield_recipient, &initial);
 
-    assert_eq!(s.contract.total_principal(), 0);
-    // total_supply still has the claimed yield portion
+    // Principal has a small PV residual because PV(burn) < PV(mint) when index > 1
+    let pv_burn = initial as u128 * INDEX_SCALE / index_1yr;
+    assert_eq!(s.contract.total_principal(), initial - pv_burn as i128);
+    // total_supply reduced by nominal burn amount; claimed yield portion remains
     assert_eq!(s.contract.total_supply(), claimed);
 }
 
@@ -135,11 +142,11 @@ fn test_burn_exceeding_principal_reverts() {
     let claimed = s.contract.claim_yield(&s.yield_recipient);
     assert!(claimed > 0);
 
-    // Try to burn more than principal — should fail
-    let total_sac_balance = s.sac_token.balance(&s.yield_recipient);
-    assert!(total_sac_balance > 1_000_0000000);
-
-    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &total_sac_balance);
+    // Try to burn a large amount whose PV exceeds principal — should fail
+    // At 5% for 1yr, PV(burn) = burn * INDEX_SCALE / index_1yr
+    // Need PV(burn) > initial, so burn > initial * index_1yr / INDEX_SCALE ≈ 1.05M
+    let excessive = 2 * 1_000_0000000i128; // 2x principal, PV ≈ 1.9x > 1x
+    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &excessive);
     assert!(result.is_err());
 }
 

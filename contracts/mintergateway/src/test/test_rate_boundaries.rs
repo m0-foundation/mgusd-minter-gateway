@@ -180,7 +180,9 @@ fn test_first_update_index_from_timestamp_zero() {
 
     // Still no yield (principal was 0 during the entire growth period)
     assert_eq!(s.contract.accrued_yield(), 0);
-    assert_eq!(s.contract.total_principal(), one_million);
+    // Principal is PV: 1M * INDEX_SCALE / grown_index
+    let pv = (one_million as u128 * INDEX_SCALE / idx) as i128;
+    assert_eq!(s.contract.total_principal(), pv);
 
     // Advance another period — NOW yield accrues on the 1M principal
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
