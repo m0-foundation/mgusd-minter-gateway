@@ -4,11 +4,18 @@
 //! The index represents cumulative growth: Index(t) = Index(t₀) × e^(r × Δt)
 //!
 //! Two accumulators track token supply:
-//! - `total_principal`: yield-earning base (mints - burns, excludes claimed yield)
+//! - `total_principal`: yield-earning base in present-value terms (PV of mints - PV of burns)
 //! - `total_supply`: total outstanding tokens (principal + cumulative claimed yield)
 //!
 //! Yield accrues on `total_principal` only, not on `total_supply`.
 //! This prevents compounding of claimed yield.
+//!
+//! # Present Value Conversion
+//!
+//! When tokens are minted or burned, the nominal amount is converted to present
+//! value before adjusting `total_principal`: `pv = amount × INDEX_SCALE / latest_index`.
+//! This ensures principal is always denominated in "base index units", making yield
+//! calculations correct regardless of when mints/burns occur relative to index growth.
 //!
 //! # Rounding Policy
 //!
@@ -89,26 +96,39 @@ pub fn increase_total_supply(env: &Env, amount: i128) {
     write_yield_state(env, &state);
 }
 
-/// Increases both total_principal and total_supply by the same amount.
+/// Increases both total_principal and total_supply.
 /// Used by mint (direct SAC mint).
 /// Must call update_index first to finalize yield at current principal.
+///
+/// `total_principal` is adjusted by the present value of the amount
+/// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
+/// by the nominal amount.
 pub fn increase_both_accumulators(env: &Env, amount: i128) {
     let mut state = read_yield_state(env);
-    state.total_principal = state.total_principal.checked_add(amount).unwrap();
+    let pv_amount = amount
+        .fixed_mul_floor(INDEX_SCALE, state.latest_index)
+        .unwrap();
+    state.total_principal = state.total_principal.checked_add(pv_amount).unwrap();
     state.total_supply = state.total_supply.checked_add(amount).unwrap();
     write_yield_state(env, &state);
 }
 
-/// Decreases both total_principal and total_supply by the same amount.
+/// Decreases both total_principal and total_supply.
 /// Used by burn.
 /// Must call update_index first to finalize yield at current principal.
-/// Returns error if amount exceeds total_principal — you cannot burn more than was minted.
+///
+/// `total_principal` is adjusted by the present value of the amount
+/// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
+/// by the nominal amount. Returns error if PV amount exceeds total_principal.
 pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), YieldTokenError> {
     let mut state = read_yield_state(env);
-    if amount > state.total_principal {
+    let pv_amount = amount
+        .fixed_mul_floor(INDEX_SCALE, state.latest_index)
+        .unwrap();
+    if pv_amount > state.total_principal {
         return Err(YieldTokenError::BurnExceedsPrincipal);
     }
-    state.total_principal = state.total_principal.checked_sub(amount).unwrap();
+    state.total_principal = state.total_principal.checked_sub(pv_amount).unwrap();
     state.total_supply = state.total_supply.checked_sub(amount).unwrap();
     write_yield_state(env, &state);
     Ok(())

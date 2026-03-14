@@ -20,22 +20,26 @@ fn test_second_mint_snapshots_yield() {
     // Step 2: Advance 1 year — yield accrues on 1M
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    // Step 3: Mint another 1M — update_index finalizes first year yield
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
-    assert_eq!(s.contract.total_principal(), 2 * one_million);
+    // Pre-compute index values for assertions
+    let index_1yr = current_index(INDEX_SCALE, 500, SECONDS_PER_YEAR as u64);
+    let index_2yr = current_index(index_1yr, 500, SECONDS_PER_YEAR as u64);
 
-    // Step 4: Advance another year — yield accrues on 2M
+    // Step 3: Mint another 1M — update_index finalizes first year yield
+    // PV conversion: pv = 1M * INDEX_SCALE / index_1yr
+    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    let pv_second_mint = one_million * INDEX_SCALE / index_1yr;
+    assert_eq!(s.contract.total_principal(), one_million + pv_second_mint);
+
+    // Step 4: Advance another year — yield accrues on PV principal
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Step 5: Claim total yield
     let claimed = s.contract.claim_yield(&s.yield_recipient);
 
-    // Expected: first_year yield on 1M + second_year yield on 2M
-    let index_1yr = current_index(INDEX_SCALE, 500, SECONDS_PER_YEAR as u64);
-    let index_2yr = current_index(index_1yr, 500, SECONDS_PER_YEAR as u64);
-
+    // Expected: first_year yield on 1M + second_year yield on PV principal
     let first_year_yield = one_million * (index_1yr - INDEX_SCALE) / INDEX_SCALE;
-    let second_year_yield = 2 * one_million * (index_2yr - index_1yr) / INDEX_SCALE;
+    let total_pv_principal = one_million + pv_second_mint;
+    let second_year_yield = total_pv_principal * (index_2yr - index_1yr) / INDEX_SCALE;
     let expected = first_year_yield + second_year_yield;
 
     assert_eq!(claimed, expected);
@@ -61,11 +65,13 @@ fn test_rate_before_principal() {
 
     let claimed = s.contract.claim_yield(&s.yield_recipient);
 
-    // The index grew during year 1 (no principal), so year 2 yield is computed
-    // on a higher index base: yield = 1M × (index_2yr − index_1yr) / INDEX_SCALE
+    // The index grew during year 1 (no principal), so mint at year 1 uses PV conversion:
+    // pv_principal = 1M × INDEX_SCALE / index_1yr
+    // yield = pv_principal × (index_2yr − index_1yr) / INDEX_SCALE
     let index_1yr = current_index(INDEX_SCALE, 500, SECONDS_PER_YEAR as u64);
     let index_2yr = current_index(index_1yr, 500, SECONDS_PER_YEAR as u64);
-    let expected = one_million * (index_2yr - index_1yr) / INDEX_SCALE;
+    let pv_principal = one_million * INDEX_SCALE / index_1yr;
+    let expected = pv_principal * (index_2yr - index_1yr) / INDEX_SCALE;
 
     assert_eq!(claimed, expected);
     assert!(claimed > 0);
