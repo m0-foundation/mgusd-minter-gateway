@@ -4,11 +4,18 @@
 //! The index represents cumulative growth: Index(t) = Index(t₀) × e^(r × Δt)
 //!
 //! Two accumulators track token supply:
-//! - `total_principal`: yield-earning base (mints - burns, excludes claimed yield)
+//! - `total_principal`: yield-earning base in present-value terms (PV of mints - PV of burns)
 //! - `total_supply`: total outstanding tokens (principal + cumulative claimed yield)
 //!
 //! Yield accrues on `total_principal` only, not on `total_supply`.
 //! This prevents compounding of claimed yield.
+//!
+//! # Present Value Conversion
+//!
+//! When tokens are minted or burned, the nominal amount is converted to present
+//! value before adjusting `total_principal`: `pv = amount × INDEX_SCALE / latest_index`.
+//! This ensures principal is always denominated in "base index units", making yield
+//! calculations correct regardless of when mints/burns occur relative to index growth.
 //!
 //! # Rounding Policy
 //!
@@ -16,6 +23,7 @@
 //! This is protocol-favorable — pays slightly less yield than mathematically exact.
 //! See `continuous_index` module for the full rounding policy of the index pipeline.
 
+use soroban_fixed_point_math::FixedPoint;
 use soroban_sdk::Env;
 
 use crate::continuous_index::{self, INDEX_SCALE};
@@ -48,7 +56,7 @@ pub fn write_yield_state(env: &Env, state: &YieldStateValue) {
 /// currentIndex = latestIndex × e^(rate × time_since_last_update)
 ///
 /// This is a view function that calculates the real-time index.
-pub fn get_current_index(env: &Env) -> u128 {
+pub fn get_current_index(env: &Env) -> i128 {
     let state = read_yield_state(env);
     let current_time = env.ledger().timestamp();
 
@@ -62,7 +70,7 @@ pub fn get_current_index(env: &Env) -> u128 {
 }
 
 /// Returns the stored (last updated) index.
-pub fn get_latest_index(env: &Env) -> u128 {
+pub fn get_latest_index(env: &Env) -> i128 {
     read_yield_state(env).latest_index
 }
 
@@ -88,26 +96,39 @@ pub fn increase_total_supply(env: &Env, amount: i128) {
     write_yield_state(env, &state);
 }
 
-/// Increases both total_principal and total_supply by the same amount.
+/// Increases both total_principal and total_supply.
 /// Used by mint (direct SAC mint).
 /// Must call update_index first to finalize yield at current principal.
+///
+/// `total_principal` is adjusted by the present value of the amount
+/// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
+/// by the nominal amount.
 pub fn increase_both_accumulators(env: &Env, amount: i128) {
     let mut state = read_yield_state(env);
-    state.total_principal = state.total_principal.checked_add(amount).unwrap();
+    let pv_amount = amount
+        .fixed_mul_floor(INDEX_SCALE, state.latest_index)
+        .unwrap();
+    state.total_principal = state.total_principal.checked_add(pv_amount).unwrap();
     state.total_supply = state.total_supply.checked_add(amount).unwrap();
     write_yield_state(env, &state);
 }
 
-/// Decreases both total_principal and total_supply by the same amount.
+/// Decreases both total_principal and total_supply.
 /// Used by burn.
 /// Must call update_index first to finalize yield at current principal.
-/// Returns error if amount exceeds total_principal — you cannot burn more than was minted.
+///
+/// `total_principal` is adjusted by the present value of the amount
+/// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
+/// by the nominal amount. Returns error if PV amount exceeds total_principal.
 pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), YieldTokenError> {
     let mut state = read_yield_state(env);
-    if amount > state.total_principal {
+    let pv_amount = amount
+        .fixed_mul_floor(INDEX_SCALE, state.latest_index)
+        .unwrap();
+    if pv_amount > state.total_principal {
         return Err(YieldTokenError::BurnExceedsPrincipal);
     }
-    state.total_principal = state.total_principal.checked_sub(amount).unwrap();
+    state.total_principal = state.total_principal.checked_sub(pv_amount).unwrap();
     state.total_supply = state.total_supply.checked_sub(amount).unwrap();
     write_yield_state(env, &state);
     Ok(())
@@ -143,16 +164,12 @@ pub fn update_index(env: &Env) {
 
             // yield = principal × index_delta / INDEX_SCALE
             // Rounding: DOWN (truncation). Protocol-favorable — pays slightly less yield.
-            let yield_amount = (state.total_principal as u128)
-                .checked_mul(index_delta)
-                .unwrap()
-                .checked_div(INDEX_SCALE)
+            let yield_amount = state
+                .total_principal
+                .fixed_mul_floor(index_delta, INDEX_SCALE)
                 .unwrap();
 
-            state.accrued_yield = state
-                .accrued_yield
-                .checked_add(yield_amount as i128)
-                .unwrap();
+            state.accrued_yield = state.accrued_yield.checked_add(yield_amount).unwrap();
         }
 
         state.latest_index = new_index;
@@ -183,13 +200,12 @@ pub fn get_accrued_yield(env: &Env) -> i128 {
         if new_index > state.latest_index {
             let index_delta = new_index - state.latest_index;
             // Rounding: DOWN (truncation). Protocol-favorable — same as update_index.
-            let pending_yield = (state.total_principal as u128)
-                .checked_mul(index_delta)
-                .unwrap()
-                .checked_div(INDEX_SCALE)
+            let pending_yield = state
+                .total_principal
+                .fixed_mul_floor(index_delta, INDEX_SCALE)
                 .unwrap();
 
-            total_yield = total_yield.checked_add(pending_yield as i128).unwrap();
+            total_yield = total_yield.checked_add(pending_yield).unwrap();
         }
     }
 

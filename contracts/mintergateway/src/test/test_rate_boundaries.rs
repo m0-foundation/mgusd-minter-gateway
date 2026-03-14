@@ -129,8 +129,7 @@ fn test_yield_accuracy_at_max_rate() {
     // The exact Taylor value (at INDEX_SCALE precision):
     // index = exponent(1_000_000_000_000) computed via Taylor
     let index_1yr = current_index(INDEX_SCALE, 10_000, SECONDS_PER_YEAR as u64);
-    let expected_yield =
-        (one_million as u128 * (index_1yr - INDEX_SCALE) / INDEX_SCALE) as i128;
+    let expected_yield = one_million * (index_1yr - INDEX_SCALE) / INDEX_SCALE;
 
     assert_eq!(claimed, expected_yield);
     assert!(claimed > 0);
@@ -176,11 +175,14 @@ fn test_first_update_index_from_timestamp_zero() {
     );
 
     // Now mint — update_index finalizes the grown index
+    // PV conversion: principal = 1M * INDEX_SCALE / grown_index
+    let grown_index = s.contract.current_index();
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
 
     // Still no yield (principal was 0 during the entire growth period)
     assert_eq!(s.contract.accrued_yield(), 0);
-    assert_eq!(s.contract.total_principal(), one_million);
+    let pv_principal = one_million * INDEX_SCALE / grown_index;
+    assert_eq!(s.contract.total_principal(), pv_principal);
 
     // Advance another period — NOW yield accrues on the 1M principal
     advance_time(&s.env, SECONDS_PER_YEAR as u64);

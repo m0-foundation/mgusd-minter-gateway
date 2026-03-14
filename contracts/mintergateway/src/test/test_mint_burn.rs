@@ -71,12 +71,15 @@ fn test_burn_decreases_principal() {
     let yield_before_burn = s.contract.accrued_yield();
     assert!(yield_before_burn > 0);
 
-    // Burn half
+    // Burn half — PV conversion: pv_burn = burn_amount * INDEX_SCALE / current_index
+    // Use current_index because burn() calls update_index() which advances latest_index
     let burn_amount = 500_000_0000000i128;
+    let idx_at_burn = s.contract.current_index();
     s.contract.burn(&s.minter, &s.yield_recipient, &burn_amount);
 
-    // Principal reduced
-    assert_eq!(s.contract.total_principal(), initial - burn_amount);
+    // Principal reduced by PV of burn amount
+    let pv_burn = burn_amount * INDEX_SCALE / idx_at_burn;
+    assert_eq!(s.contract.total_principal(), initial - pv_burn);
 
     // Accrued yield should still be there (burn calls update_index first)
     assert!(s.contract.accrued_yield() > 0);
@@ -90,9 +93,11 @@ fn test_burn_decreases_principal() {
         second_year_yield < yield_before_burn,
         "Second year yield on half principal should be less than first year"
     );
+    // With PV conversion, burned PV < nominal burn amount, so more principal
+    // remains earning yield. The ratio is slightly above 0.5.
     let ratio = (second_year_yield as f64) / (yield_before_burn as f64);
     assert!(
-        ratio > 0.45 && ratio < 0.55,
+        ratio > 0.45 && ratio < 0.60,
         "Expected ~0.5 ratio, got {}",
         ratio
     );
@@ -110,11 +115,15 @@ fn test_burn_exactly_principal() {
 
     let claimed = s.contract.claim_yield(&s.yield_recipient);
 
-    // Burn exactly principal — succeeds
+    // After index growth, PV of `initial` < `initial` (index > INDEX_SCALE),
+    // so burning `initial` nominal tokens removes pv_burn < initial from principal.
+    let latest_idx = s.contract.latest_index();
+    let pv_burn = initial * INDEX_SCALE / latest_idx;
     s.contract.burn(&s.minter, &s.yield_recipient, &initial);
 
-    assert_eq!(s.contract.total_principal(), 0);
-    // total_supply still has the claimed yield portion
+    // Principal has a small residual from PV rounding
+    assert_eq!(s.contract.total_principal(), initial - pv_burn);
+    // total_supply = claimed yield portion (initial was subtracted from total_supply)
     assert_eq!(s.contract.total_supply(), claimed);
 }
 
@@ -125,8 +134,9 @@ fn test_burn_exactly_principal() {
 #[test]
 fn test_burn_exceeding_principal_reverts() {
     let s = setup();
+    let initial = 1_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract.mint(&s.minter, &s.yield_recipient, &initial);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -135,11 +145,13 @@ fn test_burn_exceeding_principal_reverts() {
     let claimed = s.contract.claim_yield(&s.yield_recipient);
     assert!(claimed > 0);
 
-    // Try to burn more than principal — should fail
-    let total_sac_balance = s.sac_token.balance(&s.yield_recipient);
-    assert!(total_sac_balance > 1_000_0000000);
-
-    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &total_sac_balance);
+    // With PV conversion, we need to burn an amount whose PV exceeds total_principal.
+    // total_principal = initial (minted at INDEX_SCALE).
+    // After index growth, pv(amount) = amount * INDEX_SCALE / latest_index < amount.
+    // So we need a larger nominal amount to exceed principal in PV terms.
+    // Burn 2x the initial amount — pv(2*initial) > initial at 5% growth.
+    let excessive_amount = 2 * initial + claimed;
+    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &excessive_amount);
     assert!(result.is_err());
 }
 

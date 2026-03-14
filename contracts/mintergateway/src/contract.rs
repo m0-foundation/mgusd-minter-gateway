@@ -413,13 +413,13 @@ impl YieldToken {
     }
 
     /// Returns the current index (real-time, includes pending growth).
-    pub fn current_index(e: Env) -> u128 {
+    pub fn current_index(e: Env) -> i128 {
         extend_instance_ttl(&e);
         get_current_index(&e)
     }
 
     /// Returns the latest stored index (from last update).
-    pub fn latest_index(e: Env) -> u128 {
+    pub fn latest_index(e: Env) -> i128 {
         extend_instance_ttl(&e);
         get_latest_index(&e)
     }
