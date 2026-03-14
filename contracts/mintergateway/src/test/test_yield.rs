@@ -164,10 +164,10 @@ fn test_yield_no_compounding() {
     // Second claim is slightly larger than first because the index grew on a
     // higher base (index compounds), but it's only computed on the ORIGINAL
     // principal (1M), NOT on principal + first_claim.
-    let if_compounded = (principal + first_claim) as u128
-        * (s.contract.latest_index() - current_index(INDEX_SCALE, 500, half_year)) as u128
+    let if_compounded = (principal + first_claim)
+        * (s.contract.latest_index() - current_index(INDEX_SCALE, 500, half_year))
         / INDEX_SCALE;
-    assert!((second_claim as u128) < if_compounded + 1);
+    assert!(second_claim < if_compounded + 1);
     assert!(second_claim < first_claim + 10_000_0000000);
 }
 
@@ -193,14 +193,14 @@ fn test_multiple_claims_accumulate_correctly() {
         total_claimed += claimed;
     }
 
-    let expected_one_shot_yield = (principal as u128)
-        * (current_index(INDEX_SCALE, 1000, SECONDS_PER_YEAR as u64) - INDEX_SCALE) as u128
+    let expected_one_shot_yield = principal
+        * (current_index(INDEX_SCALE, 1000, SECONDS_PER_YEAR as u64) - INDEX_SCALE)
         / INDEX_SCALE;
 
-    let diff = if total_claimed as u128 > expected_one_shot_yield {
-        total_claimed as u128 - expected_one_shot_yield
+    let diff = if total_claimed > expected_one_shot_yield {
+        total_claimed - expected_one_shot_yield
     } else {
-        expected_one_shot_yield - total_claimed as u128
+        expected_one_shot_yield - total_claimed
     };
     let tolerance = expected_one_shot_yield / 10_000;
     assert!(

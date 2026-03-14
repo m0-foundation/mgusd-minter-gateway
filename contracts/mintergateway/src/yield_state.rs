@@ -16,6 +16,7 @@
 //! This is protocol-favorable — pays slightly less yield than mathematically exact.
 //! See `continuous_index` module for the full rounding policy of the index pipeline.
 
+use soroban_fixed_point_math::FixedPoint;
 use soroban_sdk::Env;
 
 use crate::continuous_index::{self, INDEX_SCALE};
@@ -48,7 +49,7 @@ pub fn write_yield_state(env: &Env, state: &YieldStateValue) {
 /// currentIndex = latestIndex × e^(rate × time_since_last_update)
 ///
 /// This is a view function that calculates the real-time index.
-pub fn get_current_index(env: &Env) -> u128 {
+pub fn get_current_index(env: &Env) -> i128 {
     let state = read_yield_state(env);
     let current_time = env.ledger().timestamp();
 
@@ -62,7 +63,7 @@ pub fn get_current_index(env: &Env) -> u128 {
 }
 
 /// Returns the stored (last updated) index.
-pub fn get_latest_index(env: &Env) -> u128 {
+pub fn get_latest_index(env: &Env) -> i128 {
     read_yield_state(env).latest_index
 }
 
@@ -143,16 +144,12 @@ pub fn update_index(env: &Env) {
 
             // yield = principal × index_delta / INDEX_SCALE
             // Rounding: DOWN (truncation). Protocol-favorable — pays slightly less yield.
-            let yield_amount = (state.total_principal as u128)
-                .checked_mul(index_delta)
-                .unwrap()
-                .checked_div(INDEX_SCALE)
+            let yield_amount = state
+                .total_principal
+                .fixed_mul_floor(index_delta, INDEX_SCALE)
                 .unwrap();
 
-            state.accrued_yield = state
-                .accrued_yield
-                .checked_add(yield_amount as i128)
-                .unwrap();
+            state.accrued_yield = state.accrued_yield.checked_add(yield_amount).unwrap();
         }
 
         state.latest_index = new_index;
@@ -183,13 +180,12 @@ pub fn get_accrued_yield(env: &Env) -> i128 {
         if new_index > state.latest_index {
             let index_delta = new_index - state.latest_index;
             // Rounding: DOWN (truncation). Protocol-favorable — same as update_index.
-            let pending_yield = (state.total_principal as u128)
-                .checked_mul(index_delta)
-                .unwrap()
-                .checked_div(INDEX_SCALE)
+            let pending_yield = state
+                .total_principal
+                .fixed_mul_floor(index_delta, INDEX_SCALE)
                 .unwrap();
 
-            total_yield = total_yield.checked_add(pending_yield as i128).unwrap();
+            total_yield = total_yield.checked_add(pending_yield).unwrap();
         }
     }
 

@@ -129,8 +129,7 @@ fn test_yield_accuracy_at_max_rate() {
     // The exact Taylor value (at INDEX_SCALE precision):
     // index = exponent(1_000_000_000_000) computed via Taylor
     let index_1yr = current_index(INDEX_SCALE, 10_000, SECONDS_PER_YEAR as u64);
-    let expected_yield =
-        (one_million as u128 * (index_1yr - INDEX_SCALE) / INDEX_SCALE) as i128;
+    let expected_yield = one_million * (index_1yr - INDEX_SCALE) / INDEX_SCALE;
 
     assert_eq!(claimed, expected_yield);
     assert!(claimed > 0);

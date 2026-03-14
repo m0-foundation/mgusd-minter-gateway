@@ -9,7 +9,7 @@ pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGE
 #[contracttype]
 pub struct YieldStateValue {
     pub rate_bps: u32,              // Current rate in basis points (10000 = 100%)
-    pub latest_index: u128,         // Last stored index (1.0 = 1e12)
+    pub latest_index: i128,         // Last stored index (1.0 = 1e12)
     pub last_update_timestamp: u64, // Unix timestamp of last index update
     pub accrued_yield: i128,        // Accumulated unclaimed yield
     pub total_principal: i128, // Yield-earning base (mints - burns, excludes claimed yield)

@@ -92,7 +92,7 @@ fn test_get_continuous_index_5pct_one_day() {
     let yearly_rate = convert_from_basis_points(500);
     let one_day = 86_400u64;
     let result = get_continuous_index(yearly_rate, one_day);
-    let exp = 50_000_000_000u128 * 86_400 / SECONDS_PER_YEAR;
+    let exp = 50_000_000_000i128 * 86_400 / SECONDS_PER_YEAR;
     let expected = exponent(exp);
     assert_eq!(result, expected);
 }
@@ -154,7 +154,7 @@ fn test_current_index_10pct_one_year() {
 
 #[test]
 fn test_current_index_from_non_unity_base() {
-    let base = 1_050_000_000_000u128;
+    let base = 1_050_000_000_000i128;
     let result = current_index(base, 500, SECONDS_PER_YEAR as u64);
     let delta = get_continuous_index(convert_from_basis_points(500), SECONDS_PER_YEAR as u64);
     let expected = multiply_indices_down(base, delta);

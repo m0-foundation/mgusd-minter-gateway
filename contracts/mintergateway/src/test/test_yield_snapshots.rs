@@ -34,10 +34,8 @@ fn test_second_mint_snapshots_yield() {
     let index_1yr = current_index(INDEX_SCALE, 500, SECONDS_PER_YEAR as u64);
     let index_2yr = current_index(index_1yr, 500, SECONDS_PER_YEAR as u64);
 
-    let first_year_yield =
-        (one_million as u128 * (index_1yr - INDEX_SCALE) / INDEX_SCALE) as i128;
-    let second_year_yield =
-        (2 * one_million as u128 * (index_2yr - index_1yr) / INDEX_SCALE) as i128;
+    let first_year_yield = one_million * (index_1yr - INDEX_SCALE) / INDEX_SCALE;
+    let second_year_yield = 2 * one_million * (index_2yr - index_1yr) / INDEX_SCALE;
     let expected = first_year_yield + second_year_yield;
 
     assert_eq!(claimed, expected);
@@ -67,7 +65,7 @@ fn test_rate_before_principal() {
     // on a higher index base: yield = 1M × (index_2yr − index_1yr) / INDEX_SCALE
     let index_1yr = current_index(INDEX_SCALE, 500, SECONDS_PER_YEAR as u64);
     let index_2yr = current_index(index_1yr, 500, SECONDS_PER_YEAR as u64);
-    let expected = (one_million as u128 * (index_2yr - index_1yr) / INDEX_SCALE) as i128;
+    let expected = one_million * (index_2yr - index_1yr) / INDEX_SCALE;
 
     assert_eq!(claimed, expected);
     assert!(claimed > 0);
