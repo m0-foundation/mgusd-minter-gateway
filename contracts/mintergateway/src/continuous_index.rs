@@ -31,10 +31,10 @@ pub use crate::constants::{INDEX_SCALE, RATE_SCALE, SECONDS_PER_YEAR};
 ///
 /// # Returns
 /// Rate scaled by RATE_SCALE (e.g., 500 bps → 50_000_000_000)
-pub fn convert_from_basis_points(bps: u32) -> u128 {
+pub fn convert_from_basis_points(bps: u32) -> i128 {
     // bps / 10000 * RATE_SCALE = bps * RATE_SCALE / 10000
     // Rounding: DOWN (truncation). Slightly underestimates the rate. Protocol-favorable.
-    (bps as u128) * RATE_SCALE / 10_000
+    (bps as i128) * RATE_SCALE / 10_000
 }
 
 /// Calculates e^x using a simplified Taylor series approximation.
@@ -53,7 +53,7 @@ pub fn convert_from_basis_points(bps: u32) -> u128 {
 ///
 /// # Returns
 /// e^x scaled by INDEX_SCALE
-pub fn exponent(x: u128) -> u128 {
+pub fn exponent(x: i128) -> i128 {
     if x == 0 {
         return INDEX_SCALE;
     }
@@ -74,7 +74,7 @@ pub fn exponent(x: u128) -> u128 {
     let term2 = x;
 
     // term3 = x² / (2 * 1e12)
-    // x can be up to ~1e12 (100% rate), so x² could be 1e24 which fits in u128
+    // x can be up to ~1e12 (100% rate), so x² could be 1e24 which fits in i128
     let x2 = x.checked_mul(x).unwrap();
     let term3 = x2 / (2 * INDEX_SCALE); // Rounding: DOWN
 
@@ -103,7 +103,7 @@ pub fn exponent(x: u128) -> u128 {
 ///
 /// # Returns
 /// Index growth factor (delta index) scaled by INDEX_SCALE
-pub fn get_continuous_index(yearly_rate: u128, time_elapsed: u64) -> u128 {
+pub fn get_continuous_index(yearly_rate: i128, time_elapsed: u64) -> i128 {
     if yearly_rate == 0 || time_elapsed == 0 {
         return INDEX_SCALE; // No growth, return 1.0
     }
@@ -111,7 +111,7 @@ pub fn get_continuous_index(yearly_rate: u128, time_elapsed: u64) -> u128 {
     // exponent = rate × time / SECONDS_PER_YEAR
     // Rounding: DOWN (truncation). Slightly underestimates the exponent. Protocol-favorable.
     let exp = yearly_rate
-        .checked_mul(time_elapsed as u128)
+        .checked_mul(time_elapsed as i128)
         .unwrap()
         .checked_div(SECONDS_PER_YEAR)
         .unwrap();
@@ -132,10 +132,8 @@ pub fn get_continuous_index(yearly_rate: u128, time_elapsed: u64) -> u128 {
 ///
 /// # Returns
 /// Compounded index scaled by INDEX_SCALE
-pub fn multiply_indices_up(index: u128, delta_index: u128) -> u128 {
-    (index as i128)
-        .fixed_mul_ceil(delta_index as i128, INDEX_SCALE as i128)
-        .unwrap() as u128
+pub fn multiply_indices_up(index: i128, delta_index: i128) -> i128 {
+    index.fixed_mul_ceil(delta_index, INDEX_SCALE).unwrap()
 }
 
 /// Multiplies two indices together (compounds them).
@@ -150,10 +148,8 @@ pub fn multiply_indices_up(index: u128, delta_index: u128) -> u128 {
 ///
 /// # Returns
 /// Compounded index scaled by INDEX_SCALE
-pub fn multiply_indices_down(index: u128, delta_index: u128) -> u128 {
-    (index as i128)
-        .fixed_mul_floor(delta_index as i128, INDEX_SCALE as i128)
-        .unwrap() as u128
+pub fn multiply_indices_down(index: i128, delta_index: i128) -> i128 {
+    index.fixed_mul_floor(delta_index, INDEX_SCALE).unwrap()
 }
 
 /// Calculates the current index given the last stored index, rate, and time elapsed.
@@ -167,7 +163,7 @@ pub fn multiply_indices_down(index: u128, delta_index: u128) -> u128 {
 ///
 /// # Returns
 /// Current index scaled by INDEX_SCALE
-pub fn current_index(latest_index: u128, rate_bps: u32, time_elapsed: u64) -> u128 {
+pub fn current_index(latest_index: i128, rate_bps: u32, time_elapsed: u64) -> i128 {
     if rate_bps == 0 || time_elapsed == 0 {
         return latest_index;
     }
@@ -249,7 +245,7 @@ mod tests {
         assert_eq!(multiply_indices_down(INDEX_SCALE, INDEX_SCALE), INDEX_SCALE);
 
         // 1.05 × 1.05 ≈ 1.1025
-        let idx = 1_050_000_000_000u128;
+        let idx = 1_050_000_000_000i128;
         let result = multiply_indices_down(idx, idx);
         assert!(result > 1_102_000_000_000);
         assert!(result < 1_103_000_000_000);
