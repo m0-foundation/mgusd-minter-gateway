@@ -40,7 +40,7 @@ pub fn convert_from_basis_points(bps: u32) -> i128 {
 /// Calculates e^x using a simplified Taylor series approximation.
 ///
 /// For small x (typical interest rate × time combinations), we use:
-/// e^x ≈ 1 + x + x²/2! + x³/3! + x⁴/4!
+/// e^x ≈ 1 + x + x²/2 + x³/6 + x⁴/24
 ///
 /// Uses the recurrence: term_n = term_{n-1} * x / n, computed via
 /// `fixed_mul_floor` (i.e., mulDivDown) to minimize truncation points.
@@ -61,12 +61,13 @@ pub fn exponent(x: i128) -> i128 {
         return INDEX_SCALE;
     }
 
-    // Taylor series: e^x = 1 + x + x²/2! + x³/3! + x⁴/4!
-    // Each term builds on the previous: term_n = mulDivDown(term_{n-1}, x, n * SCALE)
-    let first_term = x;
-    let second_term = first_term.fixed_mul_floor(first_term, 2 * INDEX_SCALE).unwrap();
-    let third_term = second_term.fixed_mul_floor(first_term, 3 * INDEX_SCALE).unwrap();
-    let fourth_term = third_term.fixed_mul_floor(first_term, 4 * INDEX_SCALE).unwrap();
+    // Taylor series: e^x = 1 + x + x²/2 + x³/6 + x⁴/24
+    // Each term builds on the previous: term_n = term_{n-1} * x / n
+    // The factorial is absorbed incrementally (e.g., /2 then /3 = /6, then /4 = /24).
+    let first_term = x; // x
+    let second_term = first_term.fixed_mul_floor(first_term, 2 * INDEX_SCALE).unwrap(); // x * x / 2 = x²/2
+    let third_term = second_term.fixed_mul_floor(first_term, 3 * INDEX_SCALE).unwrap(); // x²/2 * x / 3 = x³/6
+    let fourth_term = third_term.fixed_mul_floor(first_term, 4 * INDEX_SCALE).unwrap(); // x³/6 * x / 4 = x⁴/24
 
     INDEX_SCALE
         .checked_add(first_term)
