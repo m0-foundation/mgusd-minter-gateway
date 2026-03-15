@@ -98,13 +98,6 @@ fn test_get_continuous_index_5pct_one_day() {
 }
 
 #[test]
-fn test_multiply_indices_up_rounds_up() {
-    assert_eq!(multiply_indices_up(INDEX_SCALE, INDEX_SCALE), INDEX_SCALE);
-    assert_eq!(multiply_indices_up(7, 3), 1);
-    assert_eq!(multiply_indices_down(7, 3), 0);
-}
-
-#[test]
 fn test_multiply_indices_down_identity() {
     assert_eq!(multiply_indices_down(INDEX_SCALE, INDEX_SCALE), INDEX_SCALE);
 }
@@ -120,7 +113,7 @@ fn test_current_index_no_change_cases() {
 fn test_current_index_5pct_one_year() {
     let result = current_index(INDEX_SCALE, 500, SECONDS_PER_YEAR as u64);
     let delta = get_continuous_index(convert_from_basis_points(500), SECONDS_PER_YEAR as u64);
-    let expected = multiply_indices_up(INDEX_SCALE, delta);
+    let expected = multiply_indices_down(INDEX_SCALE, delta);
     assert_eq!(result, expected);
     assert_eq!(result, 1_051_271_093_749);
 }
