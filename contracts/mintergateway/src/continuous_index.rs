@@ -42,10 +42,13 @@ pub fn convert_from_basis_points(bps: u32) -> i128 {
 /// For small x (typical interest rate × time combinations), we use:
 /// e^x ≈ 1 + x + x²/2 + x³/6 + x⁴/24
 ///
+/// Uses the recurrence: term_n = term_{n-1} * x / n, computed via
+/// `fixed_mul_floor` (i.e., mulDivDown) to minimize truncation points.
+///
 /// This is accurate for x < 0.2 (20% per year) which covers all realistic rates.
 ///
 /// # Rounding
-/// Every division in the Taylor series rounds DOWN (truncation), so the result
+/// Every term division rounds DOWN (via `fixed_mul_floor`), so the result
 /// underestimates the true e^x. This is protocol-favorable — accrues less yield.
 ///
 /// # Arguments
@@ -58,39 +61,20 @@ pub fn exponent(x: i128) -> i128 {
         return INDEX_SCALE;
     }
 
-    // Taylor series: e^x = 1 + x + x²/2! + x³/3! + x⁴/4! + ...
-    // All terms need to be at the same scale (INDEX_SCALE = 1e12)
-    //
-    // Since x is scaled by 1e12:
-    // - x represents x_real * 1e12
-    // - x² = x_real² * 1e24 → need to divide by 1e12 to get back to scale
-    // - x³ = x_real³ * 1e36 → need to divide by 1e24 to get back to scale
-    // - x⁴ = x_real⁴ * 1e48 → need to divide by 1e36 to get back to scale
+    // Taylor series: e^x = 1 + x + x²/2 + x³/6 + x⁴/24
+    // Each term builds on the previous: term_n = term_{n-1} * x / n
+    // The factorial is absorbed incrementally (e.g., /2 then /3 = /6, then /4 = /24).
+    let first_term = x; // x
+    let second_term = first_term.fixed_mul_floor(first_term, 2 * INDEX_SCALE).unwrap(); // x * x / 2 = x²/2
+    let third_term = second_term.fixed_mul_floor(first_term, 3 * INDEX_SCALE).unwrap(); // x²/2 * x / 3 = x³/6
+    let fourth_term = third_term.fixed_mul_floor(first_term, 4 * INDEX_SCALE).unwrap(); // x³/6 * x / 4 = x⁴/24
 
-    // term1 = 1.0 * 1e12
-    let term1 = INDEX_SCALE;
-
-    // term2 = x (already at 1e12 scale)
-    let term2 = x;
-
-    // term3 = x² / (2 * 1e12)
-    // x can be up to ~1e12 (100% rate), so x² could be 1e24 which fits in i128
-    let x2 = x.checked_mul(x).unwrap();
-    let term3 = x2 / (2 * INDEX_SCALE); // Rounding: DOWN
-
-    // term4 = x³ / (6 * 1e24)
-    // x³ could overflow, so we do: (x² / 1e12) * x / 6 / 1e12
-    let x2_scaled = x2 / INDEX_SCALE; // Rounding: DOWN (intermediate scaling)
-    let x3_scaled = x2_scaled.checked_mul(x).unwrap() / INDEX_SCALE; // Rounding: DOWN (intermediate scaling)
-    let term4 = x3_scaled / 6; // Rounding: DOWN
-
-    // term5 = x⁴ / (24 * 1e36)
-    // (x³_scaled / 1e12) * x / 24 / 1e12
-    let x4_scaled = x3_scaled.checked_mul(x).unwrap() / INDEX_SCALE; // Rounding: DOWN (intermediate scaling)
-    let term5 = x4_scaled / 24; // Rounding: DOWN
-
-    // Sum all terms
-    term1 + term2 + term3 + term4 + term5
+    INDEX_SCALE
+        .checked_add(first_term)
+        .and_then(|s| s.checked_add(second_term))
+        .and_then(|s| s.checked_add(third_term))
+        .and_then(|s| s.checked_add(fourth_term))
+        .unwrap()
 }
 
 /// Calculates the continuous index growth factor for a given rate and time period.
