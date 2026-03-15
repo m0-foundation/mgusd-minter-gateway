@@ -9,7 +9,7 @@ use soroban_sdk::testutils::Address as _;
 #[allow(unused_imports)]
 pub use crate::continuous_index::{
     convert_from_basis_points, current_index, exponent, get_continuous_index,
-    multiply_indices_down, multiply_indices_up, INDEX_SCALE, SECONDS_PER_YEAR,
+    multiply_indices_down, INDEX_SCALE, SECONDS_PER_YEAR,
 };
 pub use crate::contract::{YieldToken, YieldTokenClient};
 

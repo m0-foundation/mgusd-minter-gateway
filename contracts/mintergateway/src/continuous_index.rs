@@ -12,12 +12,8 @@
 //! This is the protocol-favorable direction: yield calculations slightly underestimate,
 //! which is the safe/conservative behavior.
 //!
-//! **Exception**: `multiply_indices_up` uses `fixed_mul_ceil` to round **UP**, preventing
-//! cumulative index underestimation across successive compounding steps.
-//!
-//! Net effect: the index pipeline is conservative in every step except the final
-//! index multiplication, which rounds up to ensure the index never drifts below
-//! the mathematically exact value.
+//! Net effect: the index pipeline is conservative at every step, slightly
+//! underestimating cumulative growth. This is the safe/conservative behavior.
 
 use soroban_fixed_point_math::FixedPoint;
 
@@ -101,23 +97,6 @@ pub fn get_continuous_index(yearly_rate: i128, time_elapsed: u64) -> i128 {
         .unwrap();
 
     exponent(exp)
-}
-
-/// Multiplies two indices together (compounds them).
-///
-/// result = (index × delta_index) / INDEX_SCALE
-///
-/// Rounding: UP (`fixed_mul_ceil`). Favors the yield recipient — ensures the
-/// index never underestimates cumulative growth.
-///
-/// # Arguments
-/// * `index` - Base index scaled by INDEX_SCALE
-/// * `delta_index` - Growth factor scaled by INDEX_SCALE
-///
-/// # Returns
-/// Compounded index scaled by INDEX_SCALE
-pub fn multiply_indices_up(index: i128, delta_index: i128) -> i128 {
-    index.fixed_mul_ceil(delta_index, INDEX_SCALE).unwrap()
 }
 
 /// Multiplies two indices together (compounds them).
