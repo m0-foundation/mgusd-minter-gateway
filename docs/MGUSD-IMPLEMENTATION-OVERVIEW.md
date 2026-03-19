@@ -318,7 +318,7 @@ On classic Stellar, sending tokens to the **issuer address** burns them automati
 - The wrapper contract's `total_principal` and `total_supply` are **never updated**
 - Yield keeps accruing on phantom principal — breaking the yield invariant
 
-### Mitigation: AUTH_REQUIRED + Whitelist Model
+### Mitigation: Whitelist Model + reconcile_burn
 
 The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by default.
 
@@ -326,7 +326,9 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 2. The issuer account has no trustline for its own asset and cannot be frozen or unfrozen
 3. Frozen accounts hold tokens but cannot move them (including to the issuer)
 
-**Important caveat:** The issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level. This means authorized (unfrozen) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. The whitelist model reduces accidental issuer burns by limiting who can transact, but does not eliminate the possibility entirely. When tokens are sent to the issuer, Admin can call `reconcile_burn(amount, treasury_address)` to sync the contract's accumulators with actual circulating supply and release the corresponding RD collateral to the treasury. See the [Issuer Burn Prevention section in the README](../README.md#issuer-burn-prevention) and Note 2 for details.
+**Important caveat:** The issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level. This means authorized (unfrozen) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. The whitelist model reduces accidental issuer burns by limiting who can transact, but does not eliminate the possibility entirely.
+
+When tokens are sent to the issuer, Admin can call `reconcile_burn(amount, treasury_address)` to restore consistency. This decreases `total_principal` by the burned amount, which **stops yield from accruing on the destroyed tokens** — without reconciliation, the yield index would continue computing interest on phantom principal, inflating `accrued_yield` beyond what is actually owed. `reconcile_burn` also decreases `total_supply` and releases the corresponding locked RD collateral to the specified treasury address. See the [Issuer Burn Prevention section in the README](../README.md#issuer-burn-prevention) and Note 2 for details.
 
 ---
 
@@ -378,17 +380,22 @@ The SDK exposes dedicated methods for Minter actions and queries:
 
 | SDK Method | Contract Function | Parameters |
 |------------|-------------------|------------|
-| `mint()` | `mint(caller, to, amount)` | `contractId`, `to: string`, `amount: bigint` |
-| `burn()` | `burn(caller, from, amount)` | `contractId`, `from: string`, `amount: bigint` |
-| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `rateBps: number` |
-| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter: string` |
+| `mint()` | `mint(caller, to, amount)` | `contractId`, `caller`, `to`, `amount: bigint` |
+| `burn()` | `burn(caller, from, amount)` | `contractId`, `caller`, `from`, `amount: bigint` |
+| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `caller`, `rateBps: number` |
+| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter` |
+| `reconcileBurn()` | `reconcile_burn(amount, collateral_to)` | `contractId`, `amount: bigint`, `collateralTo` |
+| `setCollateralToken()` | `set_collateral_token(collateral_token)` | `contractId`, `collateralToken` |
 | `queryAdmin()` | `admin()` | `contractId` |
 | `querySacToken()` | `sac_token()` | `contractId` |
-| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `wasm` |
+| `queryCollateralToken()` | `collateral_token()` | `contractId` |
+| `queryCollateralBalance()` | `collateral_balance()` | `contractId` → `QueryI128Result` |
+| `queryCollateralDeficit()` | `collateral_deficit()` | `contractId` → `QueryI128Result` |
+| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `assetIssuer`, `wasm`, `collateralToken`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `distributor` |
 
 Other functions are available through the generic `invokeContract({ contractId, method: "..." })` interface.
 
-> **Collateral note:** The SDK's `mint()` call triggers collateral locking on-chain — the caller (Fireblocks vault) must hold sufficient RD and have approved the wrapper contract. No separate `collateral_from` parameter is needed; the minter address is the collateral source.
+> **Collateral note:** The SDK's `mint()` call triggers collateral locking on-chain — the caller (Fireblocks vault) must hold sufficient RD and have approved the wrapper contract. No separate `collateral_from` parameter is needed; the minter address is the collateral source. The `queryCollateralBalance()` and `queryCollateralDeficit()` views can be used to check reserve status before calling `claim_yield`.
 
 ### Scripts
 
