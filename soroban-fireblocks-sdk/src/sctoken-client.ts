@@ -1,13 +1,16 @@
 import { Address } from "@stellar/stellar-sdk";
 import { SorobanFireblocksClient } from "./client";
-import { addressToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
+import { addressToScVal, i128ToScVal, scValToI128, u32ToScVal } from "./scval-helpers";
 import {
   BurnParams,
   DeployFullParams,
   DeployFullResult,
   MintParams,
   QueryAddressResult,
+  QueryI128Result,
   QueryParams,
+  ReconcileBurnParams,
+  SetCollateralTokenParams,
   SetMinterParams,
   SetRateParams,
 } from "./sctoken-types";
@@ -84,6 +87,75 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     };
   }
 
+  async reconcileBurn(params: ReconcileBurnParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "reconcile_burn",
+      args: [i128ToScVal(params.amount), addressToScVal(params.collateralTo)],
+    });
+  }
+
+  async setCollateralToken(params: SetCollateralTokenParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "set_collateral_token",
+      args: [addressToScVal(params.collateralToken)],
+    });
+  }
+
+  async queryCollateralToken(params: QueryParams): Promise<QueryAddressResult> {
+    const result = await this.invokeContract({
+      contractId: params.contractId,
+      method: "collateral_token",
+    });
+
+    if (!result.returnValue) {
+      throw new Error(`queryCollateralToken returned no value (tx status: ${result.status})`);
+    }
+
+    const address = Address.fromScVal(result.returnValue).toString();
+
+    return {
+      address,
+      txHash: result.txHash,
+      ledger: result.ledger,
+    };
+  }
+
+  async queryCollateralBalance(params: QueryParams): Promise<QueryI128Result> {
+    const result = await this.invokeContract({
+      contractId: params.contractId,
+      method: "collateral_balance",
+    });
+
+    if (!result.returnValue) {
+      throw new Error(`queryCollateralBalance returned no value (tx status: ${result.status})`);
+    }
+
+    return {
+      value: scValToI128(result.returnValue),
+      txHash: result.txHash,
+      ledger: result.ledger,
+    };
+  }
+
+  async queryCollateralDeficit(params: QueryParams): Promise<QueryI128Result> {
+    const result = await this.invokeContract({
+      contractId: params.contractId,
+      method: "collateral_deficit",
+    });
+
+    if (!result.returnValue) {
+      throw new Error(`queryCollateralDeficit returned no value (tx status: ${result.status})`);
+    }
+
+    return {
+      value: scValToI128(result.returnValue),
+      txHash: result.txHash,
+      ledger: result.ledger,
+    };
+  }
+
   async deployFull(params: DeployFullParams): Promise<DeployFullResult> {
     // Step 1: Configure issuer flags (AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED — clawback enabled is required for burn)
     console.log("Step 1/5: Configuring issuer flags...");
@@ -112,17 +184,19 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     }
     console.log(`  WASM uploaded: ${wasmResult.wasmHash}`);
 
-    // Step 4: Deploy wrapper contract with all 6 constructor args
+    // Step 4: Deploy wrapper contract with all 8 constructor args
     console.log("Step 4/5: Deploying wrapper contract...");
     const deployResult = await this.deployContract({
       wasmHash: Buffer.from(wasmResult.wasmHash, "hex"),
       constructorArgs: [
         addressToScVal(sacResult.sacContractId),
+        addressToScVal(params.collateralToken),
         addressToScVal(params.admin),
         addressToScVal(params.minter),
         addressToScVal(params.yieldRecipientManager),
         addressToScVal(params.yieldRecipient),
         addressToScVal(params.forcedTransferManager),
+        addressToScVal(params.distributor),
       ],
     });
     if (deployResult.status !== "SUCCESS" || !deployResult.contractId) {

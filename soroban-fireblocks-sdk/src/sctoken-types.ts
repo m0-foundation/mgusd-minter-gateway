@@ -50,6 +50,31 @@ export interface QueryAddressResult {
   ledger: number;
 }
 
+export interface ReconcileBurnParams {
+  /** Contract ID (C...) */
+  contractId: string;
+  /** Amount to reconcile (as bigint for i128 safety) */
+  amount: bigint;
+  /** Address to return collateral to (G... or C...) */
+  collateralTo: string;
+}
+
+export interface SetCollateralTokenParams {
+  /** Contract ID (C...) */
+  contractId: string;
+  /** Collateral token address (C...) */
+  collateralToken: string;
+}
+
+export interface QueryI128Result {
+  /** Decoded i128 value */
+  value: bigint;
+  /** Transaction hash */
+  txHash: string;
+  /** Ledger the transaction was included in */
+  ledger: number;
+}
+
 export interface DeployFullParams {
   /** Asset code (e.g., TMGUSD) */
   assetCode: string;
@@ -57,6 +82,8 @@ export interface DeployFullParams {
   assetIssuer: string;
   /** Compiled WASM bytecode */
   wasm: Buffer;
+  /** Collateral token address (C...) */
+  collateralToken: string;
   /** Admin address for the wrapper contract (G... or C...) */
   admin: string;
   /** Minter address (G... or C...) */
@@ -67,6 +94,8 @@ export interface DeployFullParams {
   yieldRecipient: string;
   /** Forced transfer manager address (G... or C...) */
   forcedTransferManager: string;
+  /** Distributor address (G... or C...) */
+  distributor: string;
 }
 
 export interface DeployFullResult {

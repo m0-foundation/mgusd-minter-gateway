@@ -1,5 +1,5 @@
 import { Address, Keypair, nativeToScVal, xdr } from "@stellar/stellar-sdk";
-import { addressToScVal, i128ToScVal } from "../../src/scval-helpers";
+import { addressToScVal, i128ToScVal, scValToI128 } from "../../src/scval-helpers";
 
 describe("addressToScVal", () => {
   it("converts a G... public key to ScVal and round-trips back", () => {
@@ -61,5 +61,30 @@ describe("i128ToScVal", () => {
 
     expect(restored.switch().name).toBe("scvI128");
     expect(restored.toXDR("base64")).toBe(scVal.toXDR("base64"));
+  });
+});
+
+describe("scValToI128", () => {
+  it("decodes 0n from ScVal", () => {
+    const scVal = i128ToScVal(0n);
+    expect(scValToI128(scVal)).toBe(0n);
+  });
+
+  it("decodes a positive bigint from ScVal", () => {
+    const amount = 1_000_000_000n;
+    const scVal = i128ToScVal(amount);
+    expect(scValToI128(scVal)).toBe(amount);
+  });
+
+  it("decodes a large bigint (> 2^64) from ScVal", () => {
+    const large = 2n ** 100n;
+    const scVal = i128ToScVal(large);
+    expect(scValToI128(scVal)).toBe(large);
+  });
+
+  it("round-trips i128 → ScVal → i128", () => {
+    const amount = 42_000_000_000n;
+    const scVal = i128ToScVal(amount);
+    expect(scValToI128(scVal)).toBe(amount);
   });
 });

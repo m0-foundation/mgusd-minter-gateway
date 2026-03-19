@@ -34,7 +34,7 @@ export type {
 
 // SCToken extensions
 export { SctokenFireblocksClient } from "./sctoken-client";
-export { addressToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
+export { addressToScVal, i128ToScVal, u32ToScVal, scValToI128 } from "./scval-helpers";
 export type {
   MintParams,
   BurnParams,
@@ -42,6 +42,9 @@ export type {
   SetMinterParams,
   QueryParams,
   QueryAddressResult,
+  QueryI128Result,
+  ReconcileBurnParams,
+  SetCollateralTokenParams,
   DeployFullParams,
   DeployFullResult,
 } from "./sctoken-types";

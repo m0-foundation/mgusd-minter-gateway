@@ -262,6 +262,163 @@ describe("SctokenFireblocksClient", () => {
     });
   });
 
+  describe("reconcileBurn", () => {
+    it("calls invokeContract with method 'reconcile_burn' and correct args", async () => {
+      setupMocks();
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+      const collateralTo = Keypair.random().publicKey();
+
+      const result = await client.reconcileBurn({
+        contractId: CONTRACT_ID,
+        amount: 500_000_000n,
+        collateralTo,
+      });
+
+      expect(result.status).toBe("SUCCESS");
+
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      const params = buildCall[2];
+      expect(params.method).toBe("reconcile_burn");
+      expect(params.args).toHaveLength(2);
+
+      // Verify first arg is an i128 ScVal
+      const amountScVal = params.args![0];
+      expect(amountScVal.switch().name).toBe("scvI128");
+
+      // Verify second arg is the collateralTo Address ScVal
+      const addrScVal = params.args![1];
+      const decodedAddr = Address.fromScVal(addrScVal).toString();
+      expect(decodedAddr).toBe(collateralTo);
+    });
+  });
+
+  describe("setCollateralToken", () => {
+    it("calls invokeContract with method 'set_collateral_token' and correct args", async () => {
+      setupMocks();
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+      const collateralToken = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
+
+      const result = await client.setCollateralToken({
+        contractId: CONTRACT_ID,
+        collateralToken,
+      });
+
+      expect(result.status).toBe("SUCCESS");
+
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      const params = buildCall[2];
+      expect(params.method).toBe("set_collateral_token");
+      expect(params.args).toHaveLength(1);
+
+      const addrScVal = params.args![0];
+      const decodedAddr = Address.fromScVal(addrScVal).toString();
+      expect(decodedAddr).toBe(collateralToken);
+    });
+  });
+
+  describe("queryCollateralToken", () => {
+    it("decodes returned Address from returnValue", async () => {
+      const collateralToken = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
+      const colScVal = new Address(collateralToken).toScVal();
+      setupMocks(colScVal);
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      const result = await client.queryCollateralToken({ contractId: CONTRACT_ID });
+
+      expect(result.address).toBe(collateralToken);
+      expect(result.txHash).toBeDefined();
+      expect(result.ledger).toBe(100);
+
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      const params = buildCall[2];
+      expect(params.method).toBe("collateral_token");
+      expect(params.args).toBeUndefined();
+    });
+
+    it("throws when returnValue is undefined", async () => {
+      setupMocks(undefined);
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      await expect(client.queryCollateralToken({ contractId: CONTRACT_ID })).rejects.toThrow(
+        "queryCollateralToken returned no value",
+      );
+    });
+  });
+
+  describe("queryCollateralBalance", () => {
+    it("decodes returned i128 from returnValue", async () => {
+      const { nativeToScVal } = require("@stellar/stellar-sdk");
+      const balanceScVal = nativeToScVal(5_000_000_000n, { type: "i128" });
+      setupMocks(balanceScVal);
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      const result = await client.queryCollateralBalance({ contractId: CONTRACT_ID });
+
+      expect(result.value).toBe(5_000_000_000n);
+      expect(result.txHash).toBeDefined();
+      expect(result.ledger).toBe(100);
+
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      const params = buildCall[2];
+      expect(params.method).toBe("collateral_balance");
+      expect(params.args).toBeUndefined();
+    });
+
+    it("throws when returnValue is undefined", async () => {
+      setupMocks(undefined);
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      await expect(client.queryCollateralBalance({ contractId: CONTRACT_ID })).rejects.toThrow(
+        "queryCollateralBalance returned no value",
+      );
+    });
+  });
+
+  describe("queryCollateralDeficit", () => {
+    it("decodes returned i128 from returnValue", async () => {
+      const { nativeToScVal } = require("@stellar/stellar-sdk");
+      const deficitScVal = nativeToScVal(1_000_000n, { type: "i128" });
+      setupMocks(deficitScVal);
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      const result = await client.queryCollateralDeficit({ contractId: CONTRACT_ID });
+
+      expect(result.value).toBe(1_000_000n);
+      expect(result.txHash).toBeDefined();
+      expect(result.ledger).toBe(100);
+
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      const params = buildCall[2];
+      expect(params.method).toBe("collateral_deficit");
+      expect(params.args).toBeUndefined();
+    });
+
+    it("throws when returnValue is undefined", async () => {
+      setupMocks(undefined);
+
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      await expect(client.queryCollateralDeficit({ contractId: CONTRACT_ID })).rejects.toThrow(
+        "queryCollateralDeficit returned no value",
+      );
+    });
+  });
+
   describe("deployFull", () => {
     it("orchestrates the full 5-step deploy pipeline", async () => {
       const fakeHash = Buffer.from("a".repeat(64), "hex");
@@ -341,15 +498,18 @@ describe("SctokenFireblocksClient", () => {
       const client = new SctokenFireblocksClient(config);
 
       const customIssuer = Keypair.random().publicKey();
+      const collateralToken = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
       const result = await client.deployFull({
         assetCode: "TMGUSD",
         assetIssuer: customIssuer,
         wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+        collateralToken,
         admin: config.sourcePublicKey,
         minter: config.sourcePublicKey,
         yieldRecipientManager: config.sourcePublicKey,
         yieldRecipient: config.sourcePublicKey,
         forcedTransferManager: config.sourcePublicKey,
+        distributor: config.sourcePublicKey,
       });
 
       expect(result.sacContractId).toBe(sacContractId);
@@ -411,11 +571,13 @@ describe("SctokenFireblocksClient", () => {
           assetCode: "TMGUSD",
           assetIssuer: config.sourcePublicKey,
           wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+          collateralToken: CONTRACT_ID,
           admin: config.sourcePublicKey,
           minter: config.sourcePublicKey,
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
+          distributor: config.sourcePublicKey,
         }),
       ).rejects.toThrow("configureIssuer failed");
 
@@ -463,11 +625,13 @@ describe("SctokenFireblocksClient", () => {
           assetCode: "TMGUSD",
           assetIssuer: config.sourcePublicKey,
           wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+          collateralToken: CONTRACT_ID,
           admin: config.sourcePublicKey,
           minter: config.sourcePublicKey,
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
+          distributor: config.sourcePublicKey,
         }),
       ).rejects.toThrow("deploySac failed");
 
@@ -524,11 +688,13 @@ describe("SctokenFireblocksClient", () => {
           assetCode: "TMGUSD",
           assetIssuer: config.sourcePublicKey,
           wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+          collateralToken: CONTRACT_ID,
           admin: config.sourcePublicKey,
           minter: config.sourcePublicKey,
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
+          distributor: config.sourcePublicKey,
         }),
       ).rejects.toThrow("uploadWasm failed");
 
@@ -593,11 +759,13 @@ describe("SctokenFireblocksClient", () => {
           assetCode: "TMGUSD",
           assetIssuer: config.sourcePublicKey,
           wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+          collateralToken: CONTRACT_ID,
           admin: config.sourcePublicKey,
           minter: config.sourcePublicKey,
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
+          distributor: config.sourcePublicKey,
         }),
       ).rejects.toThrow("deployContract failed");
 
@@ -670,11 +838,13 @@ describe("SctokenFireblocksClient", () => {
           assetCode: "TMGUSD",
           assetIssuer: config.sourcePublicKey,
           wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+          collateralToken: CONTRACT_ID,
           admin: config.sourcePublicKey,
           minter: config.sourcePublicKey,
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
+          distributor: config.sourcePublicKey,
         }),
       ).rejects.toThrow("set_admin failed");
 
