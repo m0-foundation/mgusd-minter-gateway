@@ -5,7 +5,7 @@ use soroban_sdk::{
     Address, Env,
 };
 
-use super::setup::{dummy_issuer, setup};
+use super::setup::{dummy_issuer, setup, give_collateral, deposit_reserves, advance_time};
 
 // =============================================================================
 // SEND-TO-ISSUER TESTS
@@ -42,7 +42,8 @@ fn test_send_to_issuer_destroys_tokens() {
     let issuer = &s.issuer;
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &user, &amount);
     assert_eq!(s.sac_token.balance(&user), amount);
 
     // Issuer balance is always i64::MAX (Stellar convention for infinite supply)
@@ -74,7 +75,8 @@ fn test_frozen_user_cannot_send_to_issuer() {
     let issuer = &s.issuer;
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &user, &amount);
 
     // Freeze the user
     s.contract.freeze_account(&s.admin, &user);
@@ -171,7 +173,8 @@ fn test_issuer_cannot_be_frozen_to_block_send_to_issuer() {
 
     // Setup: authorize user, mint tokens
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &user, &amount);
 
     // We CANNOT freeze the issuer to block the bypass
     let freeze_result = s.contract.try_freeze_account(&s.admin, issuer);
@@ -200,14 +203,19 @@ fn test_operations_work_after_failed_issuer_freeze() {
 
     // Minting still works
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &user, &amount);
     assert_eq!(s.sac_token.balance(&user), amount);
 
     // Set rate and advance time for yield
     s.contract.set_rate(&s.minter, &500); // 5% APY
-    super::setup::advance_time(&s.env, 365 * 24 * 3600);
+    advance_time(&s.env, 365 * 24 * 3600);
 
-    // Claim yield still works
+    // Pre-deposit collateral reserves for claim_yield
+    let accrued = s.contract.accrued_yield();
+    deposit_reserves(&s, &s.minter, accrued);
+
+    // Claim yield still works — distributes RD tokens, not MGUSD
     let claimed = s.contract.claim_yield(&s.yield_recipient);
     assert!(claimed > 0);
 
@@ -378,7 +386,8 @@ fn test_authorized_user_can_send_to_issuer_to_burn() {
 
     // Authorize user and mint tokens
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &user, &amount);
     assert_eq!(s.sac_token.balance(&user), amount);
     assert!(s.contract.is_authorized(&user));
 
@@ -407,7 +416,8 @@ fn test_authorized_user_can_send_full_balance_to_issuer() {
     let amount = 1_000_0000000i128;
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &user, &amount);
 
     // Send entire balance to issuer
     s.sac_token.transfer(&user, &s.issuer, &amount);
@@ -438,7 +448,8 @@ fn test_direct_sac_transfer_blocked_for_deauthorized_recipient() {
 
     // Authorize alice and mint tokens to her
     s.contract.unfreeze_account(&s.admin, &alice);
-    s.contract.mint(&s.minter, &alice, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
     assert_eq!(s.sac_token.balance(&alice), amount);
 
     // Bob is NOT authorized (never called unfreeze_account)
@@ -464,7 +475,8 @@ fn test_direct_sac_transfer_succeeds_between_authorized_accounts() {
     // Authorize both accounts and mint to alice
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
-    s.contract.mint(&s.minter, &alice, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
 
     // Alice calls SAC transfer directly — bypassing our contract entirely
     s.sac_token.transfer(&alice, &bob, &transfer_amount);
@@ -494,7 +506,8 @@ fn test_direct_sac_approve_and_transfer_from_bypass() {
     // Authorize alice and bob, mint to alice
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
-    s.contract.mint(&s.minter, &alice, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
 
     // Alice approves a spender directly on the SAC
     s.sac_token.approve(&alice, &spender, &allowance_amount, &1000);
@@ -520,7 +533,8 @@ fn test_direct_sac_transfer_from_blocked_for_deauthorized_recipient() {
     let amount = 1_000_0000000i128;
 
     s.contract.unfreeze_account(&s.admin, &alice);
-    s.contract.mint(&s.minter, &alice, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
 
     // Alice approves spender on the SAC
     s.sac_token.approve(&alice, &spender, &amount, &1000);
@@ -610,7 +624,8 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     let amount = 1_000_0000000i128;
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &user, &amount);
 
     // Contract address was never authorized — blocked by RequiredFlag
     assert!(!s.contract.is_authorized(&contract_addr));

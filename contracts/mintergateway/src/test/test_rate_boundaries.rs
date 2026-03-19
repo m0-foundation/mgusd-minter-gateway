@@ -35,7 +35,8 @@ fn test_set_rate_to_zero_stops_accrual() {
     let principal = 1_000_000_0000000i128;
 
     // Mint and set 5% rate
-    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
+    give_collateral(&s, &s.minter, principal);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     // Advance 1 year — yield accrues
@@ -57,7 +58,8 @@ fn test_set_rate_zero_to_nonzero() {
     let principal = 1_000_000_0000000i128;
 
     // Rate starts at 0 (default), mint with zero rate
-    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
+    give_collateral(&s, &s.minter, principal);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
 
     // Advance 1 year at rate 0 — no yield
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -81,7 +83,8 @@ fn test_set_rate_to_zero_finalizes_pending() {
     let s = setup();
     let principal = 1_000_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
+    give_collateral(&s, &s.minter, principal);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -95,6 +98,9 @@ fn test_set_rate_to_zero_finalizes_pending() {
 
     // Stored yield equals what was pending
     assert_eq!(s.contract.accrued_yield(), pending);
+
+    // Pre-deposit collateral reserves so claim_yield can distribute RD tokens
+    deposit_reserves(&s, &s.minter, pending);
 
     // Claim to verify the stored yield is claimable
     let claimed = s.contract.claim_yield(&s.yield_recipient);
@@ -115,11 +121,17 @@ fn test_yield_accuracy_at_max_rate() {
     let one_million = 1_000_000_0000000i128;
 
     // Mint 1M and set rate to 100% (10000 bps)
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
     s.contract.set_rate(&s.minter, &10_000);
 
     // Advance 1 year
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    // Pre-deposit collateral reserves for claim
+    let index_1yr_pre = current_index(INDEX_SCALE, 10_000, SECONDS_PER_YEAR as u64);
+    let expected_yield_pre = one_million * (index_1yr_pre - INDEX_SCALE) / INDEX_SCALE;
+    deposit_reserves(&s, &s.minter, expected_yield_pre);
 
     // Claim yield
     let claimed = s.contract.claim_yield(&s.yield_recipient);
@@ -177,7 +189,8 @@ fn test_first_update_index_from_timestamp_zero() {
     // Now mint — update_index finalizes the grown index
     // PV conversion: principal = 1M * INDEX_SCALE / grown_index
     let grown_index = s.contract.current_index();
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
 
     // Still no yield (principal was 0 during the entire growth period)
     assert_eq!(s.contract.accrued_yield(), 0);

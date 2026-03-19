@@ -14,4 +14,6 @@ pub enum YieldTokenError {
     BurnExceedsPrincipal = 100,
     RateExceedsMax = 101,
     BatchTooLargeError = 102,
+    CollateralTokenNotSet = 103,
+    InsufficientCollateralReserves = 104,
 }

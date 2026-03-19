@@ -90,7 +90,8 @@ fn test_admin_can_mint() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.admin, &user, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.admin, &s.minter, &user, &1_000_0000000);
 
     assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
     assert_eq!(s.contract.total_principal(), 1_000_0000000);
@@ -102,7 +103,8 @@ fn test_admin_can_burn() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &user, &1_000_0000000);
 
     s.contract.burn(&s.admin, &user, &400_0000000);
 
@@ -124,17 +126,24 @@ fn test_admin_can_claim_yield() {
     let s = setup();
     let principal = 1_000_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
+    give_collateral(&s, &s.minter, principal);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    // Admin calls claim_yield — tokens minted to yield_recipient (not admin)
+    // Pre-deposit collateral reserves for claim_yield
+    let accrued = s.contract.accrued_yield();
+    deposit_reserves(&s, &s.minter, accrued);
+
+    // Admin calls claim_yield — RD tokens distributed to yield_recipient (not admin)
     let claimed = s.contract.claim_yield(&s.admin);
     assert!(claimed > 0);
 
-    // Tokens go to yield_recipient, not admin
-    assert_eq!(s.sac_token.balance(&s.yield_recipient), principal + claimed);
+    // MGUSD balance stays at principal (claim_yield no longer mints MGUSD)
+    assert_eq!(s.sac_token.balance(&s.yield_recipient), principal);
+    // Collateral (RD) tokens go to yield_recipient
+    assert_eq!(s.collateral_token.balance(&s.yield_recipient), claimed);
 }
 
 #[test]

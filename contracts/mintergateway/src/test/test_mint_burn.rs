@@ -14,7 +14,8 @@ fn test_mint_increases_both_accumulators_and_sac_balance() {
 
     // Authorize recipient before mint (AUTH_REQUIRED mode)
     s.contract.unfreeze_account(&s.admin, &recipient);
-    s.contract.mint(&s.minter, &recipient, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &recipient, &amount);
 
     assert_eq!(s.contract.total_principal(), amount);
     assert_eq!(s.contract.total_supply(), amount);
@@ -29,8 +30,10 @@ fn test_mint_multiple_recipients() {
 
     s.contract.unfreeze_account(&s.admin, &user_a);
     s.contract.unfreeze_account(&s.admin, &user_b);
-    s.contract.mint(&s.minter, &user_a, &500_0000000);
-    s.contract.mint(&s.minter, &user_b, &300_0000000);
+    give_collateral(&s, &s.minter, 500_0000000);
+    s.contract.mint(&s.minter, &s.minter, &user_a, &500_0000000);
+    give_collateral(&s, &s.minter, 300_0000000);
+    s.contract.mint(&s.minter, &s.minter, &user_b, &300_0000000);
 
     assert_eq!(s.contract.total_principal(), 800_0000000);
     assert_eq!(s.contract.total_supply(), 800_0000000);
@@ -48,7 +51,8 @@ fn test_burn_decreases_both_accumulators_and_sac_balance() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &user, &1_000_0000000);
     s.contract.burn(&s.minter, &user, &400_0000000);
 
     assert_eq!(s.contract.total_principal(), 600_0000000);
@@ -61,7 +65,8 @@ fn test_burn_decreases_principal() {
     let s = setup();
     let initial = 1_000_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &initial);
+    give_collateral(&s, &s.minter, initial);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &initial);
     assert_eq!(s.contract.total_principal(), initial);
 
     s.contract.set_rate(&s.minter, &500);
@@ -87,6 +92,10 @@ fn test_burn_decreases_principal() {
     // Now yield accrues on reduced principal
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
+    // Deposit collateral reserves to back yield claim
+    let yield_reserves_amount = s.contract.accrued_yield() + s.contract.total_supply();
+    deposit_reserves(&s, &s.admin, yield_reserves_amount);
+
     let claimed = s.contract.claim_yield(&s.yield_recipient);
     let second_year_yield = claimed - yield_before_burn;
     assert!(
@@ -108,12 +117,21 @@ fn test_burn_exactly_principal() {
     let s = setup();
     let initial = 1_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &initial);
+    give_collateral(&s, &s.minter, initial);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &initial);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
+    // Deposit collateral reserves to back yield claim
+    let yield_reserves_amount = s.contract.accrued_yield() + s.contract.total_supply();
+    deposit_reserves(&s, &s.admin, yield_reserves_amount);
+
+    let total_supply_before_claim = s.contract.total_supply();
     let claimed = s.contract.claim_yield(&s.yield_recipient);
+
+    // claim_yield distributes RD (collateral) tokens, NOT MGUSD — total_supply unchanged
+    assert_eq!(s.contract.total_supply(), total_supply_before_claim);
 
     // After index growth, PV of `initial` < `initial` (index > INDEX_SCALE),
     // so burning `initial` nominal tokens removes pv_burn < initial from principal.
@@ -123,8 +141,8 @@ fn test_burn_exactly_principal() {
 
     // Principal has a small residual from PV rounding
     assert_eq!(s.contract.total_principal(), initial - pv_burn);
-    // total_supply = claimed yield portion (initial was subtracted from total_supply)
-    assert_eq!(s.contract.total_supply(), claimed);
+    // total_supply = total_supply_before_claim - initial (claim_yield no longer increases total_supply)
+    assert_eq!(s.contract.total_supply(), total_supply_before_claim - initial);
 }
 
 // =============================================================================
@@ -136,10 +154,15 @@ fn test_burn_exceeding_principal_reverts() {
     let s = setup();
     let initial = 1_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &initial);
+    give_collateral(&s, &s.minter, initial);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &initial);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    // Deposit collateral reserves to back yield claim
+    let yield_reserves_amount = s.contract.accrued_yield() + s.contract.total_supply();
+    deposit_reserves(&s, &s.admin, yield_reserves_amount);
 
     // Claim yield so yield_recipient has more SAC tokens than principal
     let claimed = s.contract.claim_yield(&s.yield_recipient);
@@ -160,14 +183,16 @@ fn test_mint_after_burn_to_zero() {
     let s = setup();
     let amount = 1_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &amount);
     s.contract.burn(&s.minter, &s.yield_recipient, &amount);
     assert_eq!(s.contract.total_principal(), 0);
     assert_eq!(s.contract.total_supply(), 0);
     assert_eq!(s.sac_token.balance(&s.yield_recipient), 0);
 
     // Mint again
-    s.contract.mint(&s.minter, &s.yield_recipient, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &amount);
     assert_eq!(s.contract.total_principal(), amount);
     assert_eq!(s.contract.total_supply(), amount);
     assert_eq!(s.sac_token.balance(&s.yield_recipient), amount);
@@ -180,7 +205,7 @@ fn test_mint_after_burn_to_zero() {
 #[test]
 fn test_mint_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
-    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    let result = s.contract.try_mint(&s.minter, &s.minter, &s.yield_recipient, &1_000_0000000);
     assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
 }
 
@@ -204,7 +229,8 @@ fn test_unauthorized_account_cannot_receive_mint() {
     assert!(!s.contract.is_authorized(&user));
 
     // Minting to unauthorized account should fail
-    let result = s.contract.try_mint(&s.minter, &user, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    let result = s.contract.try_mint(&s.minter, &s.minter, &user, &1_000_0000000);
     assert!(result.is_err());
 }
 
@@ -218,7 +244,8 @@ fn test_authorized_account_can_receive_mint() {
     assert!(s.contract.is_authorized(&user));
 
     // Minting to authorized account succeeds
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &user, &1_000_0000000);
     assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
 }
 
@@ -230,9 +257,10 @@ fn test_authorized_account_can_receive_mint() {
 fn test_yield_recipient_manager_cannot_mint() {
     let s = setup();
 
+    give_collateral(&s, &s.yield_recipient_manager, 1_000_0000000);
     let result = s
         .contract
-        .try_mint(&s.yield_recipient_manager, &s.yield_recipient, &1_000_0000000);
+        .try_mint(&s.yield_recipient_manager, &s.yield_recipient_manager, &s.yield_recipient, &1_000_0000000);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -240,9 +268,10 @@ fn test_yield_recipient_manager_cannot_mint() {
 fn test_yield_recipient_cannot_mint() {
     let s = setup();
 
+    give_collateral(&s, &s.yield_recipient, 1_000_0000000);
     let result = s
         .contract
-        .try_mint(&s.yield_recipient, &s.yield_recipient, &1_000_0000000);
+        .try_mint(&s.yield_recipient, &s.yield_recipient, &s.yield_recipient, &1_000_0000000);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -250,9 +279,10 @@ fn test_yield_recipient_cannot_mint() {
 fn test_forced_transfer_manager_cannot_mint() {
     let s = setup();
 
+    give_collateral(&s, &s.forced_transfer_manager, 1_000_0000000);
     let result = s
         .contract
-        .try_mint(&s.forced_transfer_manager, &s.yield_recipient, &1_000_0000000);
+        .try_mint(&s.forced_transfer_manager, &s.forced_transfer_manager, &s.yield_recipient, &1_000_0000000);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -261,9 +291,10 @@ fn test_random_cannot_mint() {
     let s = setup();
     let random = Address::generate(&s.env);
 
+    give_collateral(&s, &random, 1_000_0000000);
     let result = s
         .contract
-        .try_mint(&random, &s.yield_recipient, &1_000_0000000);
+        .try_mint(&random, &random, &s.yield_recipient, &1_000_0000000);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 

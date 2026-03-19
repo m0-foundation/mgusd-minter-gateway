@@ -88,14 +88,6 @@ pub fn get_total_supply(env: &Env) -> i128 {
     read_yield_state(env).total_supply
 }
 
-/// Increases total_supply only (used by claim_yield — claimed yield doesn't earn more yield).
-/// Must call update_index first.
-pub fn increase_total_supply(env: &Env, amount: i128) {
-    let mut state = read_yield_state(env);
-    state.total_supply = state.total_supply.checked_add(amount).unwrap();
-    write_yield_state(env, &state);
-}
-
 /// Increases both total_principal and total_supply.
 /// Used by mint (direct SAC mint).
 /// Must call update_index first to finalize yield at current principal.

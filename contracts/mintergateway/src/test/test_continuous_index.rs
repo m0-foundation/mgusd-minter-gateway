@@ -180,7 +180,8 @@ fn test_current_index_returns_stored_when_no_time_elapsed() {
 fn test_index_unchanged_with_zero_rate() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &10_000_0000000);
+    give_collateral(&s, &s.minter, 10_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &10_000_0000000);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -207,7 +208,8 @@ fn test_index_grows_after_mint_and_rate_set() {
     let s = setup();
     let one_million = 1_000_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -220,7 +222,8 @@ fn test_index_grows_after_mint_and_rate_set() {
 fn test_index_stored_after_state_change() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &1_000_0000000);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -228,6 +231,10 @@ fn test_index_stored_after_state_change() {
     let current = s.contract.current_index();
     let latest_before = s.contract.latest_index();
     assert_eq!(latest_before, INDEX_SCALE); // hasn't been stored yet
+
+    // Pre-deposit collateral reserves for claim_yield
+    let accrued = s.contract.accrued_yield();
+    deposit_reserves(&s, &s.minter, accrued);
 
     // Trigger state change via claim_yield -> calls update_index
     s.contract.claim_yield(&s.yield_recipient);
@@ -240,7 +247,8 @@ fn test_index_stored_after_state_change() {
 fn test_index_growth_1_day() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &1_000_0000000);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, 86_400);
@@ -254,7 +262,8 @@ fn test_index_growth_1_day() {
 fn test_index_growth_1_hour() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &1_000_0000000);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, 3_600);

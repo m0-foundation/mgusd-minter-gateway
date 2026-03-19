@@ -13,7 +13,8 @@ fn test_freeze_account_prevents_transfer() {
     let recipient = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &user, &1_000_0000000);
 
     s.contract.freeze_account(&s.admin, &user);
     assert!(!s.contract.is_authorized(&user));
@@ -30,7 +31,8 @@ fn test_unfreeze_account_restores_transfer() {
     let recipient = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &user, &1_000_0000000);
 
     s.contract.freeze_account(&s.admin, &user);
     assert!(!s.contract.is_authorized(&user));
@@ -61,7 +63,8 @@ fn test_freeze_idempotent() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &user, &1_000_0000000);
 
     // Freezing twice doesn't panic
     s.contract.freeze_account(&s.admin, &user);
@@ -154,7 +157,8 @@ fn test_compliance_flow_freeze_burn_unfreeze() {
 
     // Step 1: Mint tokens
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &principal);
+    give_collateral(&s, &s.minter, principal);
+    s.contract.mint(&s.minter, &s.minter, &user, &principal);
     assert_eq!(s.sac_token.balance(&user), principal);
     assert!(s.contract.is_authorized(&user));
 
@@ -189,7 +193,8 @@ fn test_freeze_blocks_subsequent_direct_sac_transfer() {
     // Authorize both and mint
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
-    s.contract.mint(&s.minter, &alice, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
 
     // Direct SAC transfer works while both are authorized
     s.sac_token.transfer(&alice, &bob, &100_0000000);

@@ -19,6 +19,8 @@ pub struct TestSetup<'a> {
     pub env: Env,
     pub contract: YieldTokenClient<'a>,
     pub sac_token: TokenClient<'a>,
+    pub collateral_token: TokenClient<'a>,
+    pub collateral_sac: StellarAssetClient<'a>,
     pub admin: Address,
     pub issuer: Address,
     pub minter: Address,
@@ -51,6 +53,12 @@ pub fn setup() -> TestSetup<'static> {
     let sac_token = TokenClient::new(&env, &sac_addr);
     let sac_admin_client = StellarAssetClient::new(&env, &sac_addr);
 
+    // Register collateral SAC token (e.g. RD)
+    let collateral_sac_reg = env.register_stellar_asset_contract_v2(admin.clone());
+    let collateral_addr = collateral_sac_reg.address();
+    let collateral_token = TokenClient::new(&env, &collateral_addr);
+    let collateral_sac = StellarAssetClient::new(&env, &collateral_addr);
+
     // Register the yield token contract
     let contract_addr = env.register(
         YieldToken,
@@ -69,6 +77,9 @@ pub fn setup() -> TestSetup<'static> {
     // Set yield contract as SAC admin (so it can mint/clawback)
     sac_admin_client.set_admin(&contract_addr);
 
+    // Set collateral token on the contract
+    contract.set_collateral_token(&collateral_addr);
+
     // Authorize yield_recipient so claim_yield can mint to it (AUTH_REQUIRED mode)
     contract.unfreeze_account(&admin, &yield_recipient);
 
@@ -76,6 +87,8 @@ pub fn setup() -> TestSetup<'static> {
         env,
         contract,
         sac_token,
+        collateral_token,
+        collateral_sac,
         admin,
         issuer,
         minter,
@@ -105,6 +118,18 @@ pub fn auth_error() -> soroban_sdk::Error {
 pub fn advance_time(env: &Env, seconds: u64) {
     let current = env.ledger().timestamp();
     env.ledger().set_timestamp(current + seconds);
+}
+
+/// Mints collateral (RD) tokens to the given address for use as mint collateral.
+pub fn give_collateral(s: &TestSetup, to: &Address, amount: i128) {
+    s.collateral_sac.mint(to, &amount);
+}
+
+/// Deposits collateral reserves into the contract (for yield backing).
+pub fn deposit_reserves(s: &TestSetup, from: &Address, amount: i128) {
+    s.collateral_sac.mint(from, &amount);
+    s.collateral_token
+        .transfer(from, &s.contract.address, &amount);
 }
 
 pub mod dummy_issuer {

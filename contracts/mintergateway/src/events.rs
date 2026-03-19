@@ -14,6 +14,9 @@ const SET_FTM: Symbol = symbol_short!("set_ftmr");
 const SET_DIST: Symbol = symbol_short!("set_dist");
 const FORCE_TX: Symbol = symbol_short!("force_tx");
 const UPGRADED: Symbol = symbol_short!("upgraded");
+const SET_COL: Symbol = symbol_short!("set_col");
+const COL_LOCK: Symbol = symbol_short!("col_lock");
+const COL_UNLK: Symbol = symbol_short!("col_unlk");
 
 pub fn emit_set_admin(env: &Env, admin: Address, new_admin: Address) {
     env.events().publish((SET_ADMIN,), (admin, new_admin));
@@ -66,4 +69,16 @@ pub fn emit_force_transfer(env: &Env, from: Address, to: Address, amount: i128) 
 
 pub fn emit_upgraded(env: &Env, by: Address, new_wasm_hash: BytesN<32>) {
     env.events().publish((UPGRADED,), (by, new_wasm_hash));
+}
+
+pub fn emit_collateral_token_set(env: &Env, new: Address) {
+    env.events().publish((SET_COL,), new);
+}
+
+pub fn emit_collateral_locked(env: &Env, from: Address, amount: i128) {
+    env.events().publish((COL_LOCK,), (from, amount));
+}
+
+pub fn emit_collateral_unlocked(env: &Env, to: Address, amount: i128) {
+    env.events().publish((COL_UNLK,), (to, amount));
 }

@@ -43,4 +43,5 @@ pub enum DataKey {
     YieldRecipient,        // Instance: Address (can claim yield)
     ForcedTransferManager, // Instance: Address (can authorize + transfer tokens)
     Distributor,           // Instance: Address (can batch freeze/unfreeze accounts)
+    CollateralToken,       // Instance: Address (the collateral SAC token, e.g. RD)
 }

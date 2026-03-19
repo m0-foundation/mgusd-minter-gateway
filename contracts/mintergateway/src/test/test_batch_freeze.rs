@@ -258,8 +258,10 @@ fn test_batch_freeze_blocks_transfers() {
     let users: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
     s.contract.batch_unfreeze_accounts(&s.admin, &users);
-    s.contract.mint(&s.minter, &alice, &1_000_0000000);
-    s.contract.mint(&s.minter, &bob, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &alice, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &bob, &1_000_0000000);
 
     // Batch freeze alice and bob
     let to_freeze: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
@@ -285,8 +287,10 @@ fn test_batch_unfreeze_restores_transfers() {
     let all: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
     s.contract.batch_unfreeze_accounts(&s.admin, &all);
-    s.contract.mint(&s.minter, &alice, &1_000_0000000);
-    s.contract.mint(&s.minter, &bob, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &alice, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000_0000000);
+    s.contract.mint(&s.minter, &s.minter, &bob, &1_000_0000000);
 
     let users: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
     s.contract.batch_freeze_accounts(&s.admin, &users);

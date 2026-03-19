@@ -9,28 +9,31 @@ fn test_total_supply_increases_on_mint() {
     let s = setup();
     let amount = 1_000_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &amount);
 
     assert_eq!(s.contract.total_principal(), amount);
     assert_eq!(s.contract.total_supply(), amount);
 }
 
 #[test]
-fn test_total_supply_increases_on_claim_yield() {
+fn test_total_supply_unchanged_on_claim_yield() {
     let s = setup();
     let principal = 1_000_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
+    give_collateral(&s, &s.minter, principal);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
+    deposit_reserves(&s, &s.admin, principal);
     let claimed = s.contract.claim_yield(&s.yield_recipient);
     assert!(claimed > 0);
 
-    // total_supply = principal + claimed, total_principal unchanged
+    // total_supply unchanged (claim distributes RD, not MGUSD), total_principal unchanged
     assert_eq!(s.contract.total_principal(), principal);
-    assert_eq!(s.contract.total_supply(), principal + claimed);
+    assert_eq!(s.contract.total_supply(), principal);
 }
 
 #[test]
@@ -39,7 +42,8 @@ fn test_burn_decreases_both_accumulators() {
     let amount = 1_000_000_0000000i128;
     let burn = 400_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &amount);
+    give_collateral(&s, &s.minter, amount);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &amount);
 
     assert_eq!(s.contract.total_principal(), amount);
     assert_eq!(s.contract.total_supply(), amount);
@@ -55,16 +59,18 @@ fn test_total_supply_invariant() {
     let s = setup();
     let principal = 1_000_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
+    give_collateral(&s, &s.minter, principal);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
+    deposit_reserves(&s, &s.admin, principal);
     let claimed = s.contract.claim_yield(&s.yield_recipient);
     assert!(claimed > 0);
 
-    // Invariant: total_supply == total_principal + cumulative_claimed
-    assert_eq!(s.contract.total_supply(), s.contract.total_principal() + claimed);
+    // Invariant: total_supply == total_principal after claim (no MGUSD minted)
+    assert_eq!(s.contract.total_supply(), s.contract.total_principal());
 }
 
 // =============================================================================
@@ -84,14 +90,16 @@ fn test_mint_after_index_growth_stores_present_value_principal() {
     let one_million = 1_000_000_0000000i128;
 
     // First mint at index = INDEX_SCALE (PV == nominal here)
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
     s.contract.set_rate(&s.minter, &500); // 5%
 
     // Advance 1 year — index grows to ~1.0513
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Second mint triggers update_index, then adds to principal
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
 
     let index_at_mint2 = s.contract.latest_index();
     assert!(
@@ -121,13 +129,15 @@ fn test_yield_overestimation_after_mint_at_grown_index() {
     let one_million = 1_000_000_0000000i128;
 
     // Year 0: mint 1M, set 5% rate
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
     s.contract.set_rate(&s.minter, &500);
 
     // Year 1: index grows, mint another 1M (triggers update_index)
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     let index_yr1 = s.contract.current_index();
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
 
     // Snapshot yield after year 1 (before year 2 accrual)
     let yield_after_yr1 = s.contract.accrued_yield();
@@ -136,6 +146,7 @@ fn test_yield_overestimation_after_mint_at_grown_index() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Claim all yield (year1 + year2)
+    deposit_reserves(&s, &s.admin, 2 * one_million);
     let total_claimed = s.contract.claim_yield(&s.yield_recipient);
 
     // Compute correct year-2 yield using PV principal
@@ -164,7 +175,8 @@ fn test_burn_after_index_growth_stores_present_value_principal() {
     let burn_amount = 500_000_0000000i128;
 
     // Mint 2M at index = INDEX_SCALE
-    s.contract.mint(&s.minter, &s.yield_recipient, &two_million);
+    give_collateral(&s, &s.minter, two_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &two_million);
     s.contract.set_rate(&s.minter, &500); // 5%
 
     // Advance 1 year — index grows
@@ -201,7 +213,8 @@ fn test_yield_underestimation_after_burn_at_grown_index() {
     let burn_amount = 500_000_0000000i128;
 
     // Year 0: mint 2M, set 5%
-    s.contract.mint(&s.minter, &s.yield_recipient, &two_million);
+    give_collateral(&s, &s.minter, two_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &two_million);
     s.contract.set_rate(&s.minter, &500);
 
     // Year 1: burn 500K (triggers update_index)
@@ -213,6 +226,7 @@ fn test_yield_underestimation_after_burn_at_grown_index() {
     // Year 2
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
+    deposit_reserves(&s, &s.admin, two_million);
     let total_claimed = s.contract.claim_yield(&s.yield_recipient);
 
     // Correct year-2 principal uses PV-adjusted burn
@@ -240,14 +254,16 @@ fn test_large_index_growth_amplifies_principal_error() {
     let one_million = 1_000_000_0000000i128;
 
     // Mint 1M, set 10% rate
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
     s.contract.set_rate(&s.minter, &1000); // 10%
 
     // Advance 3 years — index ~= e^0.3 ~= 1.3499
     advance_time(&s.env, 3 * SECONDS_PER_YEAR as u64);
 
     // Second mint triggers update_index
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
 
     let index_at_mint2 = s.contract.latest_index();
     let pv_of_mint2 = one_million * INDEX_SCALE / index_at_mint2;
@@ -273,17 +289,20 @@ fn test_sequential_mints_at_different_indices_accumulate_pv() {
     let one_million = 1_000_000_0000000i128;
 
     // Mint 1 at index = INDEX_SCALE
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
     s.contract.set_rate(&s.minter, &500); // 5%
 
     // Mint 2 after 1 year
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
     let index_yr1 = s.contract.latest_index();
 
     // Mint 3 after another year
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    give_collateral(&s, &s.minter, one_million);
+    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
     let index_yr2 = s.contract.latest_index();
 
     // Expected PV total: mint1 (at 1.0) + mint2 (at ~1.05) + mint3 (at ~1.10)
