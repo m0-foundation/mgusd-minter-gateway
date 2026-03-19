@@ -1,6 +1,7 @@
 #![no_std]
 
 mod admin;
+mod collateral_token;
 mod constants;
 mod continuous_index;
 mod contract;

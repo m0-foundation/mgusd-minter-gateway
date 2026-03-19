@@ -1,12 +1,14 @@
 use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
+use crate::collateral_token::{has_collateral_token, read_collateral_token, write_collateral_token};
 use crate::errors::YieldTokenError;
 use crate::events::{
-    emit_account_frozen, emit_account_unfrozen, emit_distributor_set,
-    emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set,
-    emit_minter_set, emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
-    emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_account_frozen, emit_account_unfrozen, emit_collateral_token_set,
+    emit_collateral_unlocked, emit_distributor_set, emit_force_transfer,
+    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set, emit_set_admin,
+    emit_supply_synced, emit_upgraded, emit_yield_claimed, emit_yield_recipient_manager_set,
+    emit_yield_recipient_set,
 };
 use crate::roles::{
     read_distributor, read_forced_transfer_manager, read_minter, read_yield_recipient,
@@ -135,6 +137,21 @@ impl YieldToken {
         write_distributor(&e, &new_distributor);
 
         emit_distributor_set(&e, old, new_distributor);
+    }
+
+    /// Sets the collateral (RD) token address. Admin only.
+    pub fn set_collateral_token(e: Env, collateral_token: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        let old = if has_collateral_token(&e) {
+            Some(read_collateral_token(&e))
+        } else {
+            None
+        };
+        write_collateral_token(&e, &collateral_token);
+
+        emit_collateral_token_set(&e, old, collateral_token);
     }
 
     // =========================================================================
@@ -291,6 +308,40 @@ impl YieldToken {
 
         let state = read_yield_state(&e);
         emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        Ok(())
+    }
+
+    /// Reconciles accumulators after tokens are destroyed by sending to the SAC issuer.
+    /// Decreases both accumulators and releases locked collateral (RD) to a treasury address.
+    /// Admin only — this is a reconciliation action, not normal operations.
+    pub fn reconcile_burn(
+        e: Env,
+        amount: i128,
+        collateral_to: Address,
+    ) -> Result<(), YieldTokenError> {
+        require_admin(&e);
+        check_positive_amount(amount)?;
+        extend_instance_ttl(&e);
+
+        if !has_collateral_token(&e) {
+            return Err(YieldTokenError::CollateralTokenNotSet);
+        }
+
+        // Update index before changing principal
+        update_index(&e);
+
+        // Decrease both accumulators (same PV logic as burn)
+        decrease_both_accumulators(&e, amount)?;
+
+        // Release collateral to the specified address (treasury)
+        let collateral_addr = read_collateral_token(&e);
+        let contract_addr = e.current_contract_address();
+        token::TokenClient::new(&e, &collateral_addr)
+            .transfer(&contract_addr, &collateral_to, &amount);
+
+        let state = read_yield_state(&e);
+        emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        emit_collateral_unlocked(&e, collateral_to, amount);
         Ok(())
     }
 
@@ -477,5 +528,11 @@ impl YieldToken {
     pub fn distributor(e: Env) -> Address {
         extend_instance_ttl(&e);
         read_distributor(&e)
+    }
+
+    /// Returns the collateral (RD) token address, if set.
+    pub fn collateral_token(e: Env) -> Address {
+        extend_instance_ttl(&e);
+        read_collateral_token(&e)
     }
 }
