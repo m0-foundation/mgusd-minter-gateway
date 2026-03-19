@@ -11,16 +11,15 @@ fn test_mint_locks_collateral() {
     let s = setup();
     let amount = 1_000_0000000i128;
     let recipient = Address::generate(&s.env);
-    let provider = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &recipient);
-    give_collateral(&s, &provider, amount);
+    give_collateral(&s, &s.minter, amount);
 
-    s.contract.mint(&s.minter, &provider, &recipient, &amount);
+    s.contract.mint(&s.minter, &recipient, &amount);
 
-    // Collateral transferred to contract
+    // Collateral transferred from caller (minter) to contract
     assert_eq!(s.collateral_token.balance(&s.contract.address), amount);
-    assert_eq!(s.collateral_token.balance(&provider), 0);
+    assert_eq!(s.collateral_token.balance(&s.minter), 0);
     // MGUSD minted to recipient
     assert_eq!(s.sac_token.balance(&recipient), amount);
 }
@@ -33,7 +32,7 @@ fn test_burn_returns_collateral() {
 
     s.contract.unfreeze_account(&s.admin, &user);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &user, &amount);
+    s.contract.mint(&s.minter, &user, &amount);
 
     s.contract.burn(&s.minter, &user, &amount);
 
@@ -53,7 +52,7 @@ fn test_mint_burn_round_trip() {
     s.contract.unfreeze_account(&s.admin, &user);
     give_collateral(&s, &s.minter, amount);
 
-    s.contract.mint(&s.minter, &s.minter, &user, &amount);
+    s.contract.mint(&s.minter, &user, &amount);
     assert_eq!(s.collateral_token.balance(&s.contract.address), amount);
 
     s.contract.burn(&s.minter, &user, &amount);
@@ -66,10 +65,10 @@ fn test_multiple_mints_accumulate_collateral() {
     let s = setup();
 
     give_collateral(&s, &s.minter, 500_0000000);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &500_0000000);
+    s.contract.mint(&s.minter, &s.yield_recipient, &500_0000000);
 
     give_collateral(&s, &s.minter, 300_0000000);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &300_0000000);
+    s.contract.mint(&s.minter, &s.yield_recipient, &300_0000000);
 
     assert_eq!(s.collateral_token.balance(&s.contract.address), 800_0000000);
 }
@@ -84,7 +83,7 @@ fn test_claim_yield_distributes_rd() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -110,7 +109,7 @@ fn test_claim_yield_no_mgusd_minted() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -132,7 +131,7 @@ fn test_claim_yield_fails_without_reserves() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -151,7 +150,7 @@ fn test_claim_yield_preserves_backing() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -208,14 +207,13 @@ fn test_set_collateral_token_changeable() {
 #[test]
 fn test_mint_fails_insufficient_collateral() {
     let s = setup();
-    let provider = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &recipient);
 
-    // Give provider only 500 but try to mint 1000
-    give_collateral(&s, &provider, 500_0000000);
-    let result = s.contract.try_mint(&s.minter, &provider, &recipient, &1_000_0000000);
+    // Give minter only 500 but try to mint 1000
+    give_collateral(&s, &s.minter, 500_0000000);
+    let result = s.contract.try_mint(&s.minter, &recipient, &1_000_0000000);
     assert!(result.is_err());
 }
 
@@ -232,7 +230,7 @@ fn test_collateral_deficit_view() {
     assert_eq!(s.contract.collateral_deficit(), 0);
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     // No deficit immediately after mint (collateral == total_supply, no yield yet)
@@ -262,7 +260,7 @@ fn test_collateral_balance_view() {
 
     let amount = 1_000_0000000i128;
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &amount);
+    s.contract.mint(&s.minter, &s.yield_recipient, &amount);
 
     assert_eq!(s.contract.collateral_balance(), amount);
 }
@@ -277,7 +275,7 @@ fn test_collateral_provider_must_authorize() {
 
     // Without mock auth, mint will fail because neither the minter's
     // nor the provider's auth is available
-    let result = s.contract.try_mint(&s.minter, &s.minter, &s.yield_recipient, &1_000_0000000);
+    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &1_000_0000000);
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort

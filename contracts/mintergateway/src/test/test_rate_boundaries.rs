@@ -36,7 +36,7 @@ fn test_set_rate_to_zero_stops_accrual() {
 
     // Mint and set 5% rate
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     // Advance 1 year — yield accrues
@@ -59,7 +59,7 @@ fn test_set_rate_zero_to_nonzero() {
 
     // Rate starts at 0 (default), mint with zero rate
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
 
     // Advance 1 year at rate 0 — no yield
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -84,7 +84,7 @@ fn test_set_rate_to_zero_finalizes_pending() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -122,7 +122,7 @@ fn test_yield_accuracy_at_max_rate() {
 
     // Mint 1M and set rate to 100% (10000 bps)
     give_collateral(&s, &s.minter, one_million);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
+    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
     s.contract.set_rate(&s.minter, &10_000);
 
     // Advance 1 year
@@ -190,7 +190,7 @@ fn test_first_update_index_from_timestamp_zero() {
     // PV conversion: principal = 1M * INDEX_SCALE / grown_index
     let grown_index = s.contract.current_index();
     give_collateral(&s, &s.minter, one_million);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
+    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
 
     // Still no yield (principal was 0 during the entire growth period)
     assert_eq!(s.contract.accrued_yield(), 0);

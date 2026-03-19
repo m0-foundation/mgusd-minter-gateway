@@ -16,7 +16,7 @@ fn test_force_transfer_moves_tokens() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     s.contract
         .force_transfer(&s.forced_transfer_manager, &alice, &bob, &500_0000000);
@@ -35,7 +35,7 @@ fn test_force_transfer_full_balance() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     s.contract
         .force_transfer(&s.forced_transfer_manager, &alice, &bob, &amount);
@@ -54,7 +54,7 @@ fn test_force_transfer_partial_balance() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     s.contract
         .force_transfer(&s.forced_transfer_manager, &alice, &bob, &100_0000000);
@@ -73,7 +73,7 @@ fn test_force_transfer_does_not_change_accumulators() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, mint_amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &mint_amount);
+    s.contract.mint(&s.minter, &alice, &mint_amount);
 
     let principal_before = s.contract.total_principal();
     let supply_before = s.contract.total_supply();
@@ -95,7 +95,7 @@ fn test_force_transfer_with_yield_accrued() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     // Set rate and advance time to accrue yield
     s.contract.set_rate(&s.minter, &500); // 5%
@@ -134,7 +134,7 @@ fn test_force_transfer_from_frozen_account() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     // Freeze alice
     s.contract.freeze_account(&s.admin, &alice);
@@ -158,7 +158,7 @@ fn test_force_transfer_admin_can_call() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     // Admin can also call force_transfer
     s.contract
@@ -178,7 +178,7 @@ fn test_force_transfer_manager_can_call() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     s.contract
         .force_transfer(&s.forced_transfer_manager, &alice, &bob, &500_0000000);
@@ -211,7 +211,7 @@ fn test_force_transfer_to_self() {
 
     s.contract.unfreeze_account(&s.admin, &alice);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     // Self-transfer — balance unchanged
     s.contract
@@ -244,7 +244,7 @@ fn test_force_transfer_works_when_amount_exceeds_principal() {
 
     // Mint to yield_recipient (already authorized in setup)
     give_collateral(&s, &s.minter, mint_amount);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &mint_amount);
+    s.contract.mint(&s.minter, &s.yield_recipient, &mint_amount);
 
     // Accrue yield: 50% rate, 1 year
     s.contract.set_rate(&s.minter, &5000);
@@ -283,11 +283,11 @@ fn test_force_transfer_exceeds_balance_reverts() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, 500_0000000);
-    s.contract.mint(&s.minter, &s.minter, &alice, &500_0000000);
+    s.contract.mint(&s.minter, &alice, &500_0000000);
 
     // Mint more to bob so total principal > alice's balance
     give_collateral(&s, &s.minter, 500_0000000);
-    s.contract.mint(&s.minter, &s.minter, &bob, &500_0000000);
+    s.contract.mint(&s.minter, &bob, &500_0000000);
 
     // Try to force transfer more than alice has (but within principal)
     let result = s.contract.try_force_transfer(
@@ -308,7 +308,7 @@ fn test_force_transfer_to_unauthorized_account_reverts() {
 
     s.contract.unfreeze_account(&s.admin, &alice);
     give_collateral(&s, &s.minter, 1_000_0000000);
-    s.contract.mint(&s.minter, &s.minter, &alice, &1_000_0000000);
+    s.contract.mint(&s.minter, &alice, &1_000_0000000);
 
     // Bob is unauthorized (AUTH_REQUIRED mode) — mint to bob will fail
     assert!(!s.contract.is_authorized(&bob));

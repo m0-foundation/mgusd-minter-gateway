@@ -12,7 +12,7 @@ fn test_yield_accrual_5pct_one_year() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -28,7 +28,7 @@ fn test_yield_accrual_10pct_half_year() {
     let principal = 10_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &1000);
 
     advance_time(&s.env, (SECONDS_PER_YEAR / 2) as u64);
@@ -42,7 +42,7 @@ fn test_yield_zero_when_no_time_elapsed() {
     let s = setup();
 
     give_collateral(&s, &s.minter, 1_000_0000000);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
     s.contract.set_rate(&s.minter, &500);
 
     assert_eq!(s.contract.accrued_yield(), 0);
@@ -53,7 +53,7 @@ fn test_yield_zero_when_no_rate() {
     let s = setup();
 
     give_collateral(&s, &s.minter, 1_000_0000000);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -81,7 +81,7 @@ fn test_claim_yield_mints_tokens_to_yield_recipient() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -106,7 +106,7 @@ fn test_claim_yield_principal_unchanged() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -124,7 +124,7 @@ fn test_claim_yield_resets_accrued() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -157,7 +157,7 @@ fn test_yield_no_compounding() {
     let half_year = (SECONDS_PER_YEAR / 2) as u64;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     // Deposit enough reserves for both claims
@@ -202,7 +202,7 @@ fn test_multiple_claims_accumulate_correctly() {
     let principal = 100_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &1000);
 
     // Deposit enough reserves for all 4 quarterly claims
@@ -249,7 +249,7 @@ fn test_rate_change_finalizes_yield_at_old_rate() {
     let half_year = (SECONDS_PER_YEAR / 2) as u64;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, half_year);
@@ -276,7 +276,7 @@ fn test_set_rate_noop_when_unchanged() {
     let s = setup();
 
     give_collateral(&s, &s.minter, 1_000_0000000);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -297,7 +297,7 @@ fn test_full_flow_mint_rate_claim() {
 
     // Step 1: Mint 1M SAC tokens directly to yield_recipient
     give_collateral(&s, &s.minter, one_million);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
+    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
     assert_eq!(s.contract.total_principal(), one_million);
     assert_eq!(s.contract.total_supply(), one_million);
     assert_eq!(s.sac_token.balance(&s.yield_recipient), one_million);
@@ -329,7 +329,7 @@ fn test_no_yield_accrues_after_principal_zero() {
     let amount = 1_000_0000000i128;
 
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &amount);
+    s.contract.mint(&s.minter, &s.yield_recipient, &amount);
     s.contract.set_rate(&s.minter, &500);
     s.contract.burn(&s.minter, &s.yield_recipient, &amount);
 

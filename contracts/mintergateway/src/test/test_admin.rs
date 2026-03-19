@@ -90,8 +90,8 @@ fn test_admin_can_mint() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    give_collateral(&s, &s.minter, 1_000_0000000);
-    s.contract.mint(&s.admin, &s.minter, &user, &1_000_0000000);
+    give_collateral(&s, &s.admin, 1_000_0000000);
+    s.contract.mint(&s.admin, &user, &1_000_0000000);
 
     assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
     assert_eq!(s.contract.total_principal(), 1_000_0000000);
@@ -104,7 +104,7 @@ fn test_admin_can_burn() {
 
     s.contract.unfreeze_account(&s.admin, &user);
     give_collateral(&s, &s.minter, 1_000_0000000);
-    s.contract.mint(&s.minter, &s.minter, &user, &1_000_0000000);
+    s.contract.mint(&s.minter, &user, &1_000_0000000);
 
     s.contract.burn(&s.admin, &user, &400_0000000);
 
@@ -127,7 +127,7 @@ fn test_admin_can_claim_yield() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);

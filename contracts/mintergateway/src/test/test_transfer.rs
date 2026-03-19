@@ -21,7 +21,7 @@ fn test_sac_transfer_full_balance() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     // Transfer entire balance
     s.sac_token.transfer(&alice, &bob, &amount);
@@ -46,7 +46,7 @@ fn test_sac_transfer_multiple_recipients() {
     s.contract.unfreeze_account(&s.admin, &recipient_a);
     s.contract.unfreeze_account(&s.admin, &recipient_b);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &treasury, &amount);
+    s.contract.mint(&s.minter, &treasury, &amount);
 
     // Distribute to multiple recipients
     s.sac_token.transfer(&treasury, &recipient_a, &400_0000000);
@@ -71,7 +71,7 @@ fn test_sac_transfer_zero_amount() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     // Transfer zero tokens
     s.sac_token.transfer(&alice, &bob, &0);
@@ -91,7 +91,7 @@ fn test_sac_transfer_insufficient_balance() {
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &alice, &amount);
+    s.contract.mint(&s.minter, &alice, &amount);
 
     // Try to transfer more than alice has
     let result = s.sac_token.try_transfer(&alice, &bob, &1_000_0000000);
@@ -112,7 +112,7 @@ fn test_sac_transfer_does_not_affect_yield() {
     s.contract.unfreeze_account(&s.admin, &treasury);
     s.contract.unfreeze_account(&s.admin, &recipient);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &treasury, &amount);
+    s.contract.mint(&s.minter, &treasury, &amount);
 
     // Set 5% rate and advance 1 year to accrue yield
     s.contract.set_rate(&s.minter, &500);
@@ -147,7 +147,7 @@ fn test_onboarding_flow() {
 
     // Mint to new user
     give_collateral(&s, &s.minter, mint_amount);
-    s.contract.mint(&s.minter, &s.minter, &new_user, &mint_amount);
+    s.contract.mint(&s.minter, &new_user, &mint_amount);
 
     // New user can freely transfer to existing user — no authorize_and_transfer needed
     s.sac_token.transfer(&new_user, &existing_user, &transfer_amount);
@@ -169,7 +169,7 @@ fn test_unauthorized_recipient_cannot_receive_transfer() {
     // Authorize and mint to sender
     s.contract.unfreeze_account(&s.admin, &sender);
     give_collateral(&s, &s.minter, 1_000_0000000);
-    s.contract.mint(&s.minter, &s.minter, &sender, &1_000_0000000);
+    s.contract.mint(&s.minter, &sender, &1_000_0000000);
     assert!(s.contract.is_authorized(&sender));
 
     // Recipient is NOT authorized (AUTH_REQUIRED default)
@@ -198,7 +198,7 @@ fn test_sac_transfer_to_contract_blocked_when_contract_not_authorized() {
     // Authorize user and mint tokens
     s.contract.unfreeze_account(&s.admin, &user);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &user, &amount);
+    s.contract.mint(&s.minter, &user, &amount);
 
     // Contract address is NOT authorized (never unfrozen) — transfer should fail
     let result = s.sac_token.try_transfer(&user, &contract_addr, &500_0000000);
@@ -219,7 +219,7 @@ fn test_sac_transfer_to_contract_succeeds_when_contract_authorized() {
     // Authorize user and mint tokens
     s.contract.unfreeze_account(&s.admin, &user);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &user, &amount);
+    s.contract.mint(&s.minter, &user, &amount);
 
     // Authorize the contract address itself
     s.contract.unfreeze_account(&s.admin, &contract_addr);
@@ -245,7 +245,7 @@ fn test_sac_transfer_full_balance_to_contract_locks_tokens() {
     s.contract.unfreeze_account(&s.admin, &user);
     s.contract.unfreeze_account(&s.admin, &contract_addr);
     give_collateral(&s, &s.minter, amount);
-    s.contract.mint(&s.minter, &s.minter, &user, &amount);
+    s.contract.mint(&s.minter, &user, &amount);
 
     // Send entire balance to the contract
     s.sac_token.transfer(&user, &contract_addr, &amount);

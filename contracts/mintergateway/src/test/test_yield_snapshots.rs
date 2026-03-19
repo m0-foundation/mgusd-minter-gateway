@@ -13,7 +13,7 @@ fn test_second_mint_snapshots_yield() {
 
     // Step 1: Mint 1M, set rate 5%
     give_collateral(&s, &s.minter, one_million);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
+    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
     s.contract.set_rate(&s.minter, &500);
 
     // Step 2: Advance 1 year — yield accrues on 1M
@@ -26,7 +26,7 @@ fn test_second_mint_snapshots_yield() {
     // Step 3: Mint another 1M — update_index finalizes first year yield
     // PV conversion: pv = 1M * INDEX_SCALE / index_1yr
     give_collateral(&s, &s.minter, one_million);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
+    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
     let pv_second_mint = one_million * INDEX_SCALE / index_1yr;
     assert_eq!(s.contract.total_principal(), one_million + pv_second_mint);
 
@@ -59,7 +59,7 @@ fn test_rate_before_principal() {
 
     // Now mint — update_index records grown index, but principal was 0 so no yield
     give_collateral(&s, &s.minter, one_million);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &one_million);
+    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
 
     // Advance another year — yield accrues on 1M from the higher index base
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -85,7 +85,7 @@ fn test_claim_then_claim_same_timestamp() {
     let principal = 1_000_000_0000000i128;
 
     give_collateral(&s, &s.minter, principal);
-    s.contract.mint(&s.minter, &s.minter, &s.yield_recipient, &principal);
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -110,7 +110,7 @@ fn test_claim_then_claim_same_timestamp() {
 fn test_mint_negative_amount() {
     let s = setup();
 
-    let result = s.contract.try_mint(&s.minter, &s.minter, &s.yield_recipient, &-1);
+    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &-1);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
 }
 
@@ -126,7 +126,7 @@ fn test_burn_negative_amount() {
 fn test_mint_zero_amount() {
     let s = setup();
 
-    let result = s.contract.try_mint(&s.minter, &s.minter, &s.yield_recipient, &0);
+    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &0);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
 }
 

@@ -264,12 +264,11 @@ impl YieldToken {
     // =========================================================================
 
     /// Mints SAC tokens directly to the recipient and updates accumulators.
-    /// Locks collateral (RD) 1:1 from `collateral_from` into the contract.
+    /// Locks collateral (RD) 1:1 from the caller into the contract.
     /// Minter or admin only.
     pub fn mint(
         e: Env,
         caller: Address,
-        collateral_from: Address,
         to: Address,
         amount: i128,
     ) -> Result<(), YieldTokenError> {
@@ -277,16 +276,11 @@ impl YieldToken {
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
-        // Lock collateral: transfer from collateral_from to this contract.
-        // Tie collateral_from's auth to this invocation (needed for sub-call auth).
-        // Skip if collateral_from == caller since caller is already authorized above.
-        if collateral_from != caller {
-            collateral_from.require_auth();
-        }
+        // Lock collateral: transfer from caller to this contract
         let collateral_addr = read_collateral_token(&e);
         let contract_addr = e.current_contract_address();
         token::TokenClient::new(&e, &collateral_addr)
-            .transfer(&collateral_from, &contract_addr, &amount);
+            .transfer(&caller, &contract_addr, &amount);
 
         // Update index before changing principal
         update_index(&e);
@@ -300,7 +294,7 @@ impl YieldToken {
 
         let state = read_yield_state(&e);
         emit_supply_synced(&e, amount, state.total_principal, state.total_supply);
-        emit_collateral_locked(&e, collateral_from, amount);
+        emit_collateral_locked(&e, caller, amount);
         Ok(())
     }
 
