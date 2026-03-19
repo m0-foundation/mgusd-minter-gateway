@@ -329,11 +329,12 @@ impl YieldToken {
     }
 
     /// Reconciles accumulators after tokens are destroyed by sending to the SAC issuer.
-    /// Decreases both accumulators to reflect the reduced supply.
+    /// Decreases both accumulators and releases locked collateral (RD) to a treasury address.
     /// Admin only — this is a reconciliation action, not normal operations.
     pub fn reconcile_burn(
         e: Env,
         amount: i128,
+        collateral_to: Address,
     ) -> Result<(), YieldTokenError> {
         require_admin(&e);
         check_positive_amount(amount)?;
@@ -345,8 +346,15 @@ impl YieldToken {
         // Decrease both accumulators (same PV logic as burn)
         decrease_both_accumulators(&e, amount)?;
 
+        // Release collateral to the specified address (treasury)
+        let collateral_addr = read_collateral_token(&e);
+        let contract_addr = e.current_contract_address();
+        token::TokenClient::new(&e, &collateral_addr)
+            .transfer(&contract_addr, &collateral_to, &amount);
+
         let state = read_yield_state(&e);
         emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        emit_collateral_unlocked(&e, collateral_to, amount);
         Ok(())
     }
 
