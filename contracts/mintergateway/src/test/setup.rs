@@ -59,11 +59,12 @@ pub fn setup() -> TestSetup<'static> {
     let collateral_token = TokenClient::new(&env, &collateral_addr);
     let collateral_sac = StellarAssetClient::new(&env, &collateral_addr);
 
-    // Register the yield token contract
+    // Register the yield token contract (collateral token set at deployment)
     let contract_addr = env.register(
         YieldToken,
         (
             &sac_addr,
+            &collateral_addr,
             &admin,
             &minter,
             &yield_recipient_manager,
@@ -76,9 +77,6 @@ pub fn setup() -> TestSetup<'static> {
 
     // Set yield contract as SAC admin (so it can mint/clawback)
     sac_admin_client.set_admin(&contract_addr);
-
-    // Set collateral token on the contract
-    contract.set_collateral_token(&collateral_addr);
 
     // Authorize yield_recipient so claim_yield can mint to it (AUTH_REQUIRED mode)
     contract.unfreeze_account(&admin, &yield_recipient);

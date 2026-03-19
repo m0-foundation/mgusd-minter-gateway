@@ -1,7 +1,7 @@
 use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
-use crate::collateral_token::{has_collateral_token, read_collateral_token, write_collateral_token};
+use crate::collateral_token::{read_collateral_token, write_collateral_token};
 use crate::errors::YieldTokenError;
 use crate::events::{
     emit_account_frozen, emit_account_unfrozen, emit_collateral_locked,
@@ -56,6 +56,7 @@ impl YieldToken {
     pub fn __constructor(
         e: Env,
         sac_token: Address,
+        collateral_token: Address,
         admin: Address,
         minter: Address,
         yield_recipient_manager: Address,
@@ -67,8 +68,9 @@ impl YieldToken {
             return Err(YieldTokenError::AlreadyInitializedError);
         }
 
-        // Store SAC token address
+        // Store token addresses
         write_sac_token(&e, &sac_token);
+        write_collateral_token(&e, &collateral_token);
 
         // Set all roles
         write_admin(&e, &admin);
@@ -281,9 +283,6 @@ impl YieldToken {
         if collateral_from != caller {
             collateral_from.require_auth();
         }
-        if !has_collateral_token(&e) {
-            return Err(YieldTokenError::CollateralTokenNotSet);
-        }
         let collateral_addr = read_collateral_token(&e);
         let contract_addr = e.current_contract_address();
         token::TokenClient::new(&e, &collateral_addr)
@@ -324,9 +323,6 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).clawback(&from, &amount);
 
         // Return collateral to the burner
-        if !has_collateral_token(&e) {
-            return Err(YieldTokenError::CollateralTokenNotSet);
-        }
         let collateral_addr = read_collateral_token(&e);
         let contract_addr = e.current_contract_address();
         token::TokenClient::new(&e, &collateral_addr)
@@ -447,9 +443,6 @@ impl YieldToken {
 
         if claimed > 0 {
             // Verify collateral reserves cover total_supply + claimed yield
-            if !has_collateral_token(&e) {
-                return Err(YieldTokenError::CollateralTokenNotSet);
-            }
             let collateral_addr = read_collateral_token(&e);
             let contract_addr = e.current_contract_address();
             let collateral_balance = token::TokenClient::new(&e, &collateral_addr)
@@ -568,9 +561,6 @@ impl YieldToken {
     /// Returns the contract's collateral token balance.
     pub fn collateral_balance(e: Env) -> i128 {
         extend_instance_ttl(&e);
-        if !has_collateral_token(&e) {
-            return 0;
-        }
         let collateral_addr = read_collateral_token(&e);
         let contract_addr = e.current_contract_address();
         token::TokenClient::new(&e, &collateral_addr).balance(&contract_addr)
@@ -580,9 +570,6 @@ impl YieldToken {
     /// deposited before `claim_yield` will succeed. Returns 0 if fully collateralized.
     pub fn collateral_deficit(e: Env) -> i128 {
         extend_instance_ttl(&e);
-        if !has_collateral_token(&e) {
-            return 0;
-        }
         let collateral_addr = read_collateral_token(&e);
         let contract_addr = e.current_contract_address();
         let balance = token::TokenClient::new(&e, &collateral_addr)

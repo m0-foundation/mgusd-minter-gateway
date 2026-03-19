@@ -20,10 +20,13 @@ fn test_double_initialization_returns_error() {
 
     // Re-invoke __constructor inside the contract's storage context
     // The admin already exists, so this should return AlreadyInitializedError
+    let col_addr = s.collateral_token.address.clone();
+
     let result = s.env.as_contract(&s.contract.address, || {
         YieldToken::__constructor(
             s.env.clone(),
             sac_addr,
+            col_addr,
             admin,
             minter,
             yrm,
@@ -54,14 +57,17 @@ fn test_upgrade_requires_admin_auth() {
     let forced_transfer_manager = Address::generate(&env);
     let distributor = Address::generate(&env);
 
-    // Register SAC — env.register* helpers don't need auth
+    // Register SAC and collateral — env.register* helpers don't need auth
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
     let sac_addr = sac.address();
+    let collateral = env.register_stellar_asset_contract_v2(admin.clone());
+    let col_addr = collateral.address();
 
     let contract_addr = env.register(
         YieldToken,
         (
             &sac_addr,
+            &col_addr,
             &admin,
             &minter,
             &yield_recipient_manager,
