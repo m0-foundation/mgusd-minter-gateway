@@ -294,6 +294,28 @@ impl YieldToken {
         Ok(())
     }
 
+    /// Reconciles accumulators after tokens are destroyed by sending to the SAC issuer.
+    /// Decreases both accumulators to reflect the reduced supply.
+    /// Admin only — this is a reconciliation action, not normal operations.
+    pub fn reconcile_burn(
+        e: Env,
+        amount: i128,
+    ) -> Result<(), YieldTokenError> {
+        require_admin(&e);
+        check_positive_amount(amount)?;
+        extend_instance_ttl(&e);
+
+        // Update index before changing principal
+        update_index(&e);
+
+        // Decrease both accumulators (same PV logic as burn)
+        decrease_both_accumulators(&e, amount)?;
+
+        let state = read_yield_state(&e);
+        emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        Ok(())
+    }
+
     /// Sets the interest rate in basis points (max 10000 = 100%). Minter or admin only.
     /// No-op if the new rate equals the current rate.
     pub fn set_rate(e: Env, caller: Address, rate_bps: u32) -> Result<(), YieldTokenError> {
