@@ -149,8 +149,8 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `sac_token` | `Address` | SAC token contract address |
 | `collateral_token` | `Address` | Collateral (RD) token address |
 | `interest_rate` | `u32` | Current rate in basis points |
-| `current_index` | `u128` | Real-time index (includes pending growth) |
-| `latest_index` | `u128` | Last stored index (from most recent update) |
+| `current_index` | `i128` | Real-time index (includes pending growth) |
+| `latest_index` | `i128` | Last stored index (from most recent update) |
 | `accrued_yield` | `i128` | Pending yield available to claim |
 | `total_principal` | `i128` | Yield-earning base (mints − burns) |
 | `total_supply` | `i128` | Total outstanding tokens (principal + claimed yield) |
@@ -172,9 +172,9 @@ mint(caller: Address, to: Address, amount: i128)
 
 1. Locks collateral: transfers `amount` RD from caller to contract
 2. Finalizes pending yield via `update_index()`
-3. Increases both `total_principal` and `total_supply` by `amount`
+3. Increases `total_supply` by `amount` and `total_principal` by the present value (`amount × INDEX_SCALE / latest_index`)
 4. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
-5. Emits `sup_sync` event with delta and new accumulator values
+5. Emits `sup_chg` event with delta and new accumulator values
 6. Emits `col_lock` event with caller and amount
 
 Recipient must already be authorized (unfrozen) on the SAC. Caller must have approved the contract to transfer RD.
@@ -186,13 +186,13 @@ burn(caller: Address, from: Address, amount: i128)
 ```
 
 1. Finalizes pending yield via `update_index()`
-2. Decreases both `total_principal` and `total_supply` by `amount`
+2. Decreases `total_supply` by `amount` and `total_principal` by the present value (`amount × INDEX_SCALE / latest_index`)
 3. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
 4. Returns collateral: transfers `amount` RD from contract to `from`
-5. Emits `sup_sync` event with negative delta
+5. Emits `sup_chg` event with negative delta
 6. Emits `col_unlk` event with `from` and amount
 
-Panics if `amount > total_principal` — you cannot burn more than was minted (prevents burning claimed yield). Does **not** require the target account's authorization.
+Returns `BurnExceedsPrincipal` if `PV(amount) > total_principal` — you cannot burn more than was minted (prevents burning claimed yield). Does **not** require the target account's authorization.
 
 ### Reconcile Burn
 
@@ -202,9 +202,9 @@ reconcile_burn(amount: i128, collateral_to: Address)
 
 1. Admin only — reconciliation action for tokens destroyed by sending to the SAC issuer
 2. Finalizes pending yield via `update_index()`
-3. Decreases both `total_principal` and `total_supply` by `amount` (same PV conversion as burn)
+3. Decreases `total_supply` by `amount` and `total_principal` by the present value (same PV conversion as burn)
 4. Transfers `amount` RD from contract to `collateral_to` (treasury)
-5. Emits `sup_sync` event with negative delta
+5. Emits `sup_chg` event with negative delta
 6. Emits `col_unlk` event with `collateral_to` and amount
 
 Key differences from `burn`: no SAC clawback (tokens were already destroyed at the SAC layer), and collateral goes to the specified treasury address rather than the original token holder.
@@ -217,7 +217,7 @@ set_rate(rate_bps: u32)
 
 1. No-op if rate is unchanged
 2. Calls `set_interest_rate()` which first updates the index at the old rate, then applies the new rate
-3. Emits `interest_rate_set` event
+3. Emits `int_rate` event
 
 Rate is in basis points: 100 = 1%, max 10,000 = 100%.
 
@@ -248,7 +248,7 @@ Administrative token movement that does not require the source account's authori
 - **No source authorization** — only the caller (Forced Transfer Manager or Admin) must authenticate; the `from` account does not need to sign
 - **Works on frozen accounts** — clawback bypasses the SAC's `AUTH_REQUIRED` freeze on the source
 - **Destination must be authorized** — the `to` account must be unfrozen to receive the minted tokens
-- **Dedicated event** — emits `force_tx`, not `sup_sync`, since supply doesn't change
+- **Dedicated event** — emits `force_tx`, not `sup_chg`, since supply doesn't change
 
 ---
 

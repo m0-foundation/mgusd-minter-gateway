@@ -42,7 +42,7 @@ pub fn emit_yield_recipient_set(env: &Env, old: Address, new: Address) {
     env.events().publish((SET_YIELD_RCPT,), (old, new));
 }
 
-pub fn emit_supply_synced(env: &Env, delta: i128, new_total_principal: i128, new_total_supply: i128) {
+pub fn emit_supply_changed(env: &Env, delta: i128, new_total_principal: i128, new_total_supply: i128) {
     env.events()
         .publish((SUP_CHG,), (delta, new_total_principal, new_total_supply));
 }

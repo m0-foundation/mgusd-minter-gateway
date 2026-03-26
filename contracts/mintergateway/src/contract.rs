@@ -7,7 +7,7 @@ use crate::events::{
     emit_account_frozen, emit_account_unfrozen, emit_collateral_locked,
     emit_collateral_token_set, emit_collateral_unlocked, emit_distributor_set,
     emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set,
-    emit_minter_set, emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
+    emit_minter_set, emit_set_admin, emit_supply_changed, emit_upgraded, emit_yield_claimed,
     emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
@@ -293,7 +293,7 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).mint(&to, &amount);
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, amount, state.total_principal, state.total_supply);
+        emit_supply_changed(&e, amount, state.total_principal, state.total_supply);
         emit_collateral_locked(&e, caller, amount);
         Ok(())
     }
@@ -323,7 +323,7 @@ impl YieldToken {
             .transfer(&contract_addr, &from, &amount);
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        emit_supply_changed(&e, -amount, state.total_principal, state.total_supply);
         emit_collateral_unlocked(&e, from, amount);
         Ok(())
     }
@@ -353,7 +353,7 @@ impl YieldToken {
             .transfer(&contract_addr, &collateral_to, &amount);
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        emit_supply_changed(&e, -amount, state.total_principal, state.total_supply);
         emit_collateral_unlocked(&e, collateral_to, amount);
         Ok(())
     }
