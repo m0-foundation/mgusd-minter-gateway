@@ -112,7 +112,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     }
     console.log(`  WASM uploaded: ${wasmResult.wasmHash}`);
 
-    // Step 4: Deploy wrapper contract with all 6 constructor args
+    // Step 4: Deploy wrapper contract with all 7 constructor args
     console.log("Step 4/5: Deploying wrapper contract...");
     const deployResult = await this.deployContract({
       wasmHash: Buffer.from(wasmResult.wasmHash, "hex"),
@@ -123,6 +123,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
         addressToScVal(params.yieldRecipientManager),
         addressToScVal(params.yieldRecipient),
         addressToScVal(params.forcedTransferManager),
+        addressToScVal(params.distributor),
       ],
     });
     if (deployResult.status !== "SUCCESS" || !deployResult.contractId) {
