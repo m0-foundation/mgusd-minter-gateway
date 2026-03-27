@@ -227,7 +227,7 @@ force_transfer(caller: Address, from: Address, to: Address, amount: i128)
 
 Administrative token movement that does not require the source account's authorization. Forced Transfer Manager or Admin only.
 
-1. Validates positive amount (zero is rejected) and caller role
+1. Validates positive amount and caller role
 2. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
 3. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
 4. Emits `force_tx` event with `(from, to, amount)`
