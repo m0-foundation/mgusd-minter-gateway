@@ -67,6 +67,8 @@ export interface DeployFullParams {
   yieldRecipient: string;
   /** Forced transfer manager address (G... or C...) */
   forcedTransferManager: string;
+  /** Distributor address (G... or C...) */
+  distributor: string;
 }
 
 export interface DeployFullResult {
