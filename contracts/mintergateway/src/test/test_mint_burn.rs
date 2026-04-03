@@ -231,7 +231,7 @@ fn test_unauthorized_account_cannot_receive_mint() {
     // Minting to unauthorized account should fail
     give_collateral(&s, &s.minter, 1_000_0000000);
     let result = s.contract.try_mint(&s.minter, &user, &1_000_0000000);
-    assert!(result.is_err());
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::RecipientFrozen)));
 }
 
 #[test]
