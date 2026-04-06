@@ -3,6 +3,8 @@ use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::collateral_token::{read_collateral_token, write_collateral_token};
 use crate::errors::YieldTokenError;
+use stellar_contract_utils::pausable::{self as pausable, Pausable};
+
 use crate::events::{
     emit_account_frozen, emit_account_unfrozen, emit_collateral_locked,
     emit_collateral_token_set, emit_collateral_unlocked, emit_distributor_set,
@@ -272,6 +274,7 @@ impl YieldToken {
         to: Address,
         amount: i128,
     ) -> Result<(), YieldTokenError> {
+        pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
@@ -302,6 +305,7 @@ impl YieldToken {
     /// Returns collateral (RD) 1:1 to the `from` address.
     /// Minter or admin only.
     pub fn burn(e: Env, caller: Address, from: Address, amount: i128) -> Result<(), YieldTokenError> {
+        pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
@@ -336,6 +340,7 @@ impl YieldToken {
         amount: i128,
         collateral_to: Address,
     ) -> Result<(), YieldTokenError> {
+        pausable::when_not_paused(&e);
         require_admin(&e);
         check_positive_amount(amount)?;
         extend_instance_ttl(&e);
@@ -389,6 +394,7 @@ impl YieldToken {
         to: Address,
         amount: i128,
     ) -> Result<(), YieldTokenError> {
+        pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_forced_transfer_manager(&e))?;
         extend_instance_ttl(&e);
@@ -437,6 +443,7 @@ impl YieldToken {
     /// Note: No new MGUSD is minted. `total_supply` is unchanged.
     /// Yield is always sent to the yield recipient, regardless of who calls.
     pub fn claim_yield(e: Env, caller: Address) -> Result<i128, YieldTokenError> {
+        pausable::when_not_paused(&e);
         let recipient = read_yield_recipient(&e);
         require_admin_or(&e, &caller, &recipient)?;
         extend_instance_ttl(&e);
@@ -584,5 +591,34 @@ impl YieldToken {
         } else {
             total_needed - balance
         }
+    }
+}
+
+// =============================================================================
+// Pausable (Admin only)
+// =============================================================================
+
+#[contractimpl]
+impl Pausable for YieldToken {
+    /// Returns `true` if the contract is currently paused.
+    fn paused(e: &Env) -> bool {
+        extend_instance_ttl(e);
+        pausable::paused(e)
+    }
+
+    /// Pauses the contract. Blocks mint, burn, reconcile_burn, force_transfer, claim_yield.
+    /// Admin only.
+    fn pause(e: &Env, _caller: Address) {
+        require_admin(e);
+        extend_instance_ttl(e);
+        pausable::pause(e);
+    }
+
+    /// Unpauses the contract, resuming all blocked operations.
+    /// Admin only.
+    fn unpause(e: &Env, _caller: Address) {
+        require_admin(e);
+        extend_instance_ttl(e);
+        pausable::unpause(e);
     }
 }
