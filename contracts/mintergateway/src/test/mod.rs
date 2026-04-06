@@ -15,3 +15,4 @@ mod test_yield_snapshots;
 mod test_force_transfer;
 mod test_reconcile_burn;
 mod test_collateral;
+mod test_pausable;
