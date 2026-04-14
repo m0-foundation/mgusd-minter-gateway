@@ -41,15 +41,6 @@ export interface QueryParams {
   contractId: string;
 }
 
-export interface QueryAddressResult {
-  /** Decoded Stellar address (G... or C...) */
-  address: string;
-  /** Transaction hash */
-  txHash: string;
-  /** Ledger the transaction was included in */
-  ledger: number;
-}
-
 export interface DeployFullParams {
   /** Asset code (e.g., TMGUSD) */
   assetCode: string;

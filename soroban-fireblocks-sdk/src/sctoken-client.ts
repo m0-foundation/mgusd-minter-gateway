@@ -1,4 +1,4 @@
-import { Address } from "@stellar/stellar-sdk";
+import { Address, scValToNative } from "@stellar/stellar-sdk";
 import { SorobanFireblocksClient } from "./client";
 import { addressToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
 import {
@@ -6,7 +6,6 @@ import {
   DeployFullParams,
   DeployFullResult,
   MintParams,
-  QueryAddressResult,
   QueryParams,
   SetMinterParams,
   SetRateParams,
@@ -46,46 +45,88 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     });
   }
 
-  async queryAdmin(params: QueryParams): Promise<QueryAddressResult> {
-    const result = await this.invokeContract({
-      contractId: params.contractId,
-      method: "admin",
-    });
+  // View functions — read-only, executed via simulation (no signing required)
 
-    if (!result.returnValue) {
-      throw new Error(`queryAdmin returned no value (tx status: ${result.status})`);
-    }
-
-    const address = Address.fromScVal(result.returnValue).toString();
-
-    return {
-      address,
-      txHash: result.txHash,
-      ledger: result.ledger,
-    };
+  async queryAdmin(params: QueryParams): Promise<string> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "admin" });
+    if (!retval) throw new Error("admin returned no value");
+    return Address.fromScVal(retval).toString();
   }
 
-  async querySacToken(params: QueryParams): Promise<QueryAddressResult> {
-    const result = await this.invokeContract({
-      contractId: params.contractId,
-      method: "sac_token",
-    });
+  async querySacToken(params: QueryParams): Promise<string> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "sac_token" });
+    if (!retval) throw new Error("sac_token returned no value");
+    return Address.fromScVal(retval).toString();
+  }
 
-    if (!result.returnValue) {
-      throw new Error(`querySacToken returned no value (tx status: ${result.status})`);
-    }
+  async queryMinter(params: QueryParams): Promise<string> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "minter" });
+    if (!retval) throw new Error("minter returned no value");
+    return Address.fromScVal(retval).toString();
+  }
 
-    const address = Address.fromScVal(result.returnValue).toString();
+  async queryYieldRecipient(params: QueryParams): Promise<string> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "yield_recipient" });
+    if (!retval) throw new Error("yield_recipient returned no value");
+    return Address.fromScVal(retval).toString();
+  }
 
-    return {
-      address,
-      txHash: result.txHash,
-      ledger: result.ledger,
-    };
+  async queryYieldRecipientManager(params: QueryParams): Promise<string> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "yield_recipient_manager" });
+    if (!retval) throw new Error("yield_recipient_manager returned no value");
+    return Address.fromScVal(retval).toString();
+  }
+
+  async queryForcedTransferManager(params: QueryParams): Promise<string> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "forced_transfer_manager" });
+    if (!retval) throw new Error("forced_transfer_manager returned no value");
+    return Address.fromScVal(retval).toString();
+  }
+
+  async queryDistributor(params: QueryParams): Promise<string> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "distributor" });
+    if (!retval) throw new Error("distributor returned no value");
+    return Address.fromScVal(retval).toString();
+  }
+
+  async queryTotalSupply(params: QueryParams): Promise<bigint> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "total_supply" });
+    if (!retval) throw new Error("total_supply returned no value");
+    return scValToNative(retval) as bigint;
+  }
+
+  async queryTotalPrincipal(params: QueryParams): Promise<bigint> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "total_principal" });
+    if (!retval) throw new Error("total_principal returned no value");
+    return scValToNative(retval) as bigint;
+  }
+
+  async queryAccruedYield(params: QueryParams): Promise<bigint> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "accrued_yield" });
+    if (!retval) throw new Error("accrued_yield returned no value");
+    return scValToNative(retval) as bigint;
+  }
+
+  async queryCurrentIndex(params: QueryParams): Promise<bigint> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "current_index" });
+    if (!retval) throw new Error("current_index returned no value");
+    return scValToNative(retval) as bigint;
+  }
+
+  async queryLatestIndex(params: QueryParams): Promise<bigint> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "latest_index" });
+    if (!retval) throw new Error("latest_index returned no value");
+    return scValToNative(retval) as bigint;
+  }
+
+  async queryInterestRate(params: QueryParams): Promise<number> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "interest_rate" });
+    if (!retval) throw new Error("interest_rate returned no value");
+    return scValToNative(retval) as number;
   }
 
   async deployFull(params: DeployFullParams): Promise<DeployFullResult> {
-    // Step 1: Configure issuer flags (AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED — clawback enabled is required for burn)
+    // Step 1: Configure issuer flags (AUTH_REQUIRED + AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED — clawback enabled is required for burn)
     console.log("Step 1/5: Configuring issuer flags...");
     const issuerResult = await this.configureIssuer();
     if (issuerResult.status !== "SUCCESS") {

@@ -41,7 +41,6 @@ export type {
   SetRateParams,
   SetMinterParams,
   QueryParams,
-  QueryAddressResult,
   DeployFullParams,
   DeployFullResult,
 } from "./sctoken-types";
