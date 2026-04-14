@@ -26,6 +26,8 @@ function makeConfig(): SorobanFireblocksConfig {
   };
 }
 
+let mockSimulateTransaction: jest.Mock;
+
 function setupMocks(returnValue?: xdr.ScVal): void {
   const fakeHash = Buffer.from("a".repeat(64), "hex");
   const mockTx = {
@@ -36,7 +38,16 @@ function setupMocks(returnValue?: xdr.ScVal): void {
     addSignature: jest.fn(),
   };
 
-  mockedTxBuilder.createRpcServer.mockReturnValue({} as rpc.Server);
+  // Mock server with simulateTransaction for view functions
+  mockSimulateTransaction = jest.fn().mockResolvedValue(
+    returnValue
+      ? { latestLedger: 100, minResourceFee: "0", transactionData: {}, result: { retval: returnValue, auth: [] }, events: [] }
+      : { latestLedger: 100, minResourceFee: "0", transactionData: {}, result: undefined, events: [] },
+  );
+  mockedTxBuilder.createRpcServer.mockReturnValue({
+    simulateTransaction: mockSimulateTransaction,
+  } as never);
+
   mockedFbSigner.createFireblocksClient.mockReturnValue({} as never);
 
   mockedTxBuilder.buildInvokeTransaction.mockResolvedValue(mockTx as never);
@@ -137,7 +148,7 @@ describe("SctokenFireblocksClient", () => {
   });
 
   describe("queryAdmin", () => {
-    it("decodes returned Address from returnValue", async () => {
+    it("returns admin address via simulation", async () => {
       const adminKp = Keypair.random();
       const adminScVal = new Address(adminKp.publicKey()).toScVal();
       setupMocks(adminScVal);
@@ -145,32 +156,34 @@ describe("SctokenFireblocksClient", () => {
       const config = makeConfig();
       const client = new SctokenFireblocksClient(config);
 
-      const result = await client.queryAdmin({ contractId: CONTRACT_ID });
+      const address = await client.queryAdmin({ contractId: CONTRACT_ID });
 
-      expect(result.address).toBe(adminKp.publicKey());
-      expect(result.txHash).toBeDefined();
-      expect(result.ledger).toBe(100);
+      expect(address).toBe(adminKp.publicKey());
+
+      // Simulation was called, not submitAndPoll or signHash
+      expect(mockSimulateTransaction).toHaveBeenCalledTimes(1);
+      expect(mockedTxBuilder.submitAndPoll).not.toHaveBeenCalled();
+      expect(mockedFbSigner.signHash).not.toHaveBeenCalled();
 
       const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
-      const params = buildCall[2];
-      expect(params.method).toBe("admin");
-      expect(params.args).toBeUndefined();
+      expect(buildCall[2].method).toBe("admin");
+      expect(buildCall[2].args).toBeUndefined();
     });
 
-    it("throws when returnValue is undefined", async () => {
+    it("throws when simulation returns no value", async () => {
       setupMocks(undefined);
 
       const config = makeConfig();
       const client = new SctokenFireblocksClient(config);
 
       await expect(client.queryAdmin({ contractId: CONTRACT_ID })).rejects.toThrow(
-        "queryAdmin returned no value",
+        "admin returned no value",
       );
     });
   });
 
   describe("querySacToken", () => {
-    it("decodes returned Address from returnValue", async () => {
+    it("returns SAC contract address via simulation", async () => {
       const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
       const sacScVal = new Address(sacContractId).toScVal();
       setupMocks(sacScVal);
@@ -178,26 +191,27 @@ describe("SctokenFireblocksClient", () => {
       const config = makeConfig();
       const client = new SctokenFireblocksClient(config);
 
-      const result = await client.querySacToken({ contractId: CONTRACT_ID });
+      const address = await client.querySacToken({ contractId: CONTRACT_ID });
 
-      expect(result.address).toBe(sacContractId);
-      expect(result.txHash).toBeDefined();
-      expect(result.ledger).toBe(100);
+      expect(address).toBe(sacContractId);
+
+      expect(mockSimulateTransaction).toHaveBeenCalledTimes(1);
+      expect(mockedTxBuilder.submitAndPoll).not.toHaveBeenCalled();
+      expect(mockedFbSigner.signHash).not.toHaveBeenCalled();
 
       const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
-      const params = buildCall[2];
-      expect(params.method).toBe("sac_token");
-      expect(params.args).toBeUndefined();
+      expect(buildCall[2].method).toBe("sac_token");
+      expect(buildCall[2].args).toBeUndefined();
     });
 
-    it("throws when returnValue is undefined", async () => {
+    it("throws when simulation returns no value", async () => {
       setupMocks(undefined);
 
       const config = makeConfig();
       const client = new SctokenFireblocksClient(config);
 
       await expect(client.querySacToken({ contractId: CONTRACT_ID })).rejects.toThrow(
-        "querySacToken returned no value",
+        "sac_token returned no value",
       );
     });
   });
