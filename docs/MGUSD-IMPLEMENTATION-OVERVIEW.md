@@ -153,7 +153,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `latest_index` | `i128` | Last stored index (from most recent update) |
 | `accrued_yield` | `i128` | Pending yield available to claim |
 | `total_principal` | `i128` | Yield-earning base (mints − burns) |
-| `total_supply` | `i128` | Total outstanding tokens (principal + claimed yield) |
+| `total_supply` | `i128` | Total outstanding MGUSD token supply |
 | `collateral_balance` | `i128` | Contract's RD balance |
 | `collateral_deficit` | `i128` | Additional RD needed before `claim_yield` succeeds (0 if fully collateralized) |
 | `is_authorized` | `bool` | Whether an account is unfrozen on the SAC |
