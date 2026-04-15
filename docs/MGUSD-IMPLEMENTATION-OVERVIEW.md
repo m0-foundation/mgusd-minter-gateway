@@ -275,7 +275,7 @@ The `e^x` approximation uses a 4th-order Taylor series: `1 + x + x²/2 + x³/6 +
 | Accumulator | Tracks | Modified By |
 |-------------|--------|-------------|
 | `total_principal` | Yield-earning base (mints − burns) | `mint`, `burn`, `reconcile_burn` |
-| `total_supply` | All outstanding tokens (principal + claimed yield) | `mint`, `burn`, `reconcile_burn` |
+| `total_supply` | Total outstanding MGUSD supply | `mint`, `burn`, `reconcile_burn` |
 
 ### Yield Accrual Formula
 
