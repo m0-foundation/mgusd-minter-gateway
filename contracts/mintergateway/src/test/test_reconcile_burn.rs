@@ -1,7 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::Address;
 
-use super::setup::{advance_time, give_collateral, setup, setup_no_mock_auth};
+use super::setup::{advance_time, give_collateral, setup, SECONDS_PER_YEAR};
 use crate::errors::YieldTokenError;
 
 // =============================================================================
@@ -166,9 +166,12 @@ fn test_reconcile_burn_rejects_exceeding_principal() {
 // ACCESS CONTROL — only admin can call reconcile_burn
 // =============================================================================
 
+/// `reconcile_burn` uses `require_admin()` (not `require_admin_or`), so it
+/// always demands admin auth regardless of caller. Verify that the call
+/// reverts when auth is disabled — even with real supply in the contract.
 #[test]
-fn test_minter_cannot_reconcile_burn() {
-    let s = setup();
+fn test_reconcile_burn_requires_admin_auth() {
+    let s = setup(); // mock_all_auths — allows mint setup
     let user = Address::generate(&s.env);
     let treasury = Address::generate(&s.env);
 
@@ -176,21 +179,15 @@ fn test_minter_cannot_reconcile_burn() {
     give_collateral(&s, &s.minter, 1_000_0000000);
     s.contract.mint(&s.minter, &user, &1_000_0000000);
 
-    // reconcile_burn uses require_admin, not require_admin_or — minter is NOT allowed.
-    // With mock_all_auths the call still succeeds; see auth test below for rejection.
-    s.contract.reconcile_burn(&100_0000000, &treasury);
-    assert_eq!(s.contract.total_principal(), 1_000_0000000 - 100_0000000);
-}
+    // Disable all auth — simulates a call without admin signature
+    s.env.mock_auths(&[]);
 
-#[test]
-fn test_reconcile_burn_reverts_without_admin_auth() {
-    let s = setup_no_mock_auth();
-    let treasury = Address::generate(&s.env);
-
-    // Can't even setup without auth in no-mock mode, so just try reconcile_burn directly
-    // The contract has no supply, but require_admin will fail first
     let result = s.contract.try_reconcile_burn(&100_0000000, &treasury);
-    assert!(result.is_err());
+    assert!(result.is_err(), "reconcile_burn should revert without admin auth");
+
+    // Accumulators unchanged
+    assert_eq!(s.contract.total_principal(), 1_000_0000000);
+    assert_eq!(s.contract.total_supply(), 1_000_0000000);
 }
 
 // =============================================================================
@@ -247,4 +244,43 @@ fn test_reconcile_burn_multiple_calls() {
     s.contract.reconcile_burn(&500_0000000, &treasury);
     assert_eq!(s.contract.total_principal(), 0);
     assert_eq!(s.contract.total_supply(), 0);
+}
+
+/// Regression test: when index > 1.0, PV conversion shrinks the amount
+/// (`pv = amount * INDEX_SCALE / latest_index < amount`). Without a nominal
+/// guard, an amount exceeding `total_supply` could pass the PV check and
+/// create negative `total_supply`. The `BurnExceedsSupply` guard prevents this.
+#[test]
+fn test_reconcile_burn_rejects_amount_exceeding_total_supply() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let mint_amount = 1_000_0000000i128; // 1000 tokens (7 decimals)
+
+    let treasury = Address::generate(&s.env);
+
+    s.contract.unfreeze_account(&s.admin, &user);
+
+    // Mint at index = 1.0 → total_principal = 1000, total_supply = 1000
+    give_collateral(&s, &s.minter, mint_amount);
+    s.contract.mint(&s.minter, &user, &mint_amount);
+    assert_eq!(s.contract.total_principal(), mint_amount);
+    assert_eq!(s.contract.total_supply(), mint_amount);
+
+    // Grow index via 5% rate for 1 year → index ≈ 1.0513
+    s.contract.set_rate(&s.minter, &500);
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    // reconcile_burn with amount = total_supply + 1
+    // PV ≈ 951 which is < 1000 (total_principal), so the PV guard alone would pass.
+    // The nominal guard must catch this before total_supply goes negative.
+    let overshoot = mint_amount + 1;
+    let result = s.contract.try_reconcile_burn(&overshoot, &treasury);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        YieldTokenError::BurnExceedsSupply,
+    );
+
+    // Accumulators unchanged
+    assert_eq!(s.contract.total_principal(), mint_amount);
+    assert_eq!(s.contract.total_supply(), mint_amount);
 }

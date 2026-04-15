@@ -178,6 +178,37 @@ fn test_burn_exceeding_principal_reverts() {
     assert!(result.is_err());
 }
 
+/// When index > 1.0, PV conversion shrinks the burn amount (pv < nominal).
+/// This means the PV guard in `decrease_both_accumulators` alone would allow
+/// burning more tokens than `total_supply`. The `checked_sub` on `total_supply`
+/// inside `decrease_both_accumulators` panics before SAC clawback even runs
+/// (accumulators are updated before clawback in `burn`).
+#[test]
+fn test_burn_exceeding_total_supply_reverts() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let mint_amount = 1_000_0000000i128;
+
+    s.contract.unfreeze_account(&s.admin, &user);
+    give_collateral(&s, &s.minter, mint_amount);
+    s.contract.mint(&s.minter, &user, &mint_amount);
+
+    // Grow index so PV conversion shrinks amounts
+    s.contract.set_rate(&s.minter, &500); // 5%
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    // Try to burn 1 more than total_supply.
+    // PV ≈ 951 which is < total_principal (1000), so the PV guard passes.
+    // But checked_sub on total_supply panics — amount > total_supply.
+    let overshoot = mint_amount + 1;
+    let result = s.contract.try_burn(&s.minter, &user, &overshoot);
+    assert!(result.is_err(), "checked_sub should panic when amount > total_supply");
+
+    // Accumulators unchanged — no state corruption
+    assert_eq!(s.contract.total_principal(), mint_amount);
+    assert_eq!(s.contract.total_supply(), mint_amount);
+}
+
 #[test]
 fn test_mint_after_burn_to_zero() {
     let s = setup();
