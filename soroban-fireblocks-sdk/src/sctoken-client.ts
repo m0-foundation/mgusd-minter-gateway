@@ -1,12 +1,17 @@
 import { Address, scValToNative } from "@stellar/stellar-sdk";
 import { SorobanFireblocksClient } from "./client";
-import { addressToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
+import { addressToScVal, addressVecToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
 import {
+  BatchFreezeAccountsParams,
   BurnParams,
+  ClaimYieldParams,
   DeployFullParams,
   DeployFullResult,
+  ForceTransferParams,
+  FreezeAccountParams,
   MintParams,
   QueryParams,
+  ReconcileBurnParams,
   SetMinterParams,
   SetRateParams,
 } from "./sctoken-types";
@@ -42,6 +47,67 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "set_minter",
       args: [addressToScVal(params.newMinter)],
+    });
+  }
+
+  async freezeAccount(params: FreezeAccountParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "freeze_account",
+      args: [addressToScVal(params.caller), addressToScVal(params.account)],
+    });
+  }
+
+  async unfreezeAccount(params: FreezeAccountParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "unfreeze_account",
+      args: [addressToScVal(params.caller), addressToScVal(params.account)],
+    });
+  }
+
+  async batchFreezeAccounts(params: BatchFreezeAccountsParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "batch_freeze_accounts",
+      args: [addressToScVal(params.caller), addressVecToScVal(params.accounts)],
+    });
+  }
+
+  async batchUnfreezeAccounts(params: BatchFreezeAccountsParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "batch_unfreeze_accounts",
+      args: [addressToScVal(params.caller), addressVecToScVal(params.accounts)],
+    });
+  }
+
+  async forceTransfer(params: ForceTransferParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "force_transfer",
+      args: [
+        addressToScVal(params.caller),
+        addressToScVal(params.from),
+        addressToScVal(params.to),
+        i128ToScVal(params.amount),
+      ],
+    });
+  }
+
+  async reconcileBurn(params: ReconcileBurnParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "reconcile_burn",
+      args: [i128ToScVal(params.amount)],
+    });
+  }
+
+  async claimYield(params: ClaimYieldParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "claim_yield",
+      args: [addressToScVal(params.caller)],
     });
   }
 

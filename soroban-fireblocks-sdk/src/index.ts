@@ -40,7 +40,13 @@ export type {
   BurnParams,
   SetRateParams,
   SetMinterParams,
+  FreezeAccountParams,
+  BatchFreezeAccountsParams,
+  ForceTransferParams,
+  ReconcileBurnParams,
+  ClaimYieldParams,
   QueryParams,
   DeployFullParams,
   DeployFullResult,
 } from "./sctoken-types";
+export { addressVecToScVal } from "./scval-helpers";
