@@ -124,6 +124,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
         addressToScVal(params.yieldRecipient),
         addressToScVal(params.forcedTransferManager),
         addressToScVal(params.distributor),
+        addressToScVal(params.pauser),
       ],
     });
     if (deployResult.status !== "SUCCESS" || !deployResult.contractId) {

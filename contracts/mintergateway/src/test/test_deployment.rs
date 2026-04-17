@@ -17,6 +17,7 @@ fn test_double_initialization_returns_error() {
     let yr = s.yield_recipient.clone();
     let ftm = s.forced_transfer_manager.clone();
     let dist = s.distributor.clone();
+    let pauser = s.pauser.clone();
 
     // Re-invoke __constructor inside the contract's storage context
     // The admin already exists, so this should return AlreadyInitializedError
@@ -30,6 +31,7 @@ fn test_double_initialization_returns_error() {
             yr,
             ftm,
             dist,
+            pauser,
         )
     });
 

@@ -1,17 +1,18 @@
-use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
+use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, BytesN, Env, Vec};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::errors::YieldTokenError;
+use stellar_contract_utils::pausable::{self as pausable, Pausable};
 use crate::events::{
     emit_account_frozen, emit_account_unfrozen, emit_distributor_set,
     emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set,
-    emit_minter_set, emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
-    emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_minter_set, emit_pauser_set, emit_set_admin, emit_supply_synced, emit_upgraded,
+    emit_yield_claimed, emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    read_distributor, read_forced_transfer_manager, read_minter, read_yield_recipient,
-    read_yield_recipient_manager, require_admin_or, write_distributor,
-    write_forced_transfer_manager, write_minter, write_yield_recipient,
+    read_distributor, read_forced_transfer_manager, read_minter, read_pauser,
+    read_yield_recipient, read_yield_recipient_manager, require_admin_or, write_distributor,
+    write_forced_transfer_manager, write_minter, write_pauser, write_yield_recipient,
     write_yield_recipient_manager,
 };
 use crate::constants::MAX_BATCH_SIZE;
@@ -52,6 +53,7 @@ impl YieldToken {
     /// * `yield_recipient` - Address that can claim yield
     /// * `forced_transfer_manager` - Address that can authorize accounts and transfer tokens
     /// * `distributor` - Address that can batch freeze/unfreeze accounts
+    /// * `pauser` - Address that can pause/unpause the contract
     pub fn __constructor(
         e: Env,
         sac_token: Address,
@@ -61,6 +63,7 @@ impl YieldToken {
         yield_recipient: Address,
         forced_transfer_manager: Address,
         distributor: Address,
+        pauser: Address,
     ) -> Result<(), YieldTokenError> {
         if has_admin(&e) {
             return Err(YieldTokenError::AlreadyInitializedError);
@@ -76,6 +79,7 @@ impl YieldToken {
         write_yield_recipient(&e, &yield_recipient);
         write_forced_transfer_manager(&e, &forced_transfer_manager);
         write_distributor(&e, &distributor);
+        write_pauser(&e, &pauser);
         Ok(())
     }
 
@@ -135,6 +139,17 @@ impl YieldToken {
         write_distributor(&e, &new_distributor);
 
         emit_distributor_set(&e, old, new_distributor);
+    }
+
+    /// Sets a new pauser address. Admin only.
+    pub fn set_pauser(e: Env, new_pauser: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        let old = read_pauser(&e);
+        write_pauser(&e, &new_pauser);
+
+        emit_pauser_set(&e, old, new_pauser);
     }
 
     // =========================================================================
@@ -253,6 +268,7 @@ impl YieldToken {
     /// Mints SAC tokens directly to the recipient and updates accumulators.
     /// Minter or admin only.
     pub fn mint(e: Env, caller: Address, to: Address, amount: i128) -> Result<(), YieldTokenError> {
+        pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
@@ -275,6 +291,7 @@ impl YieldToken {
     /// Burns SAC tokens from an account and updates accumulators.
     /// Minter or admin only.
     pub fn burn(e: Env, caller: Address, from: Address, amount: i128) -> Result<(), YieldTokenError> {
+        pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
@@ -301,6 +318,7 @@ impl YieldToken {
         e: Env,
         amount: i128,
     ) -> Result<(), YieldTokenError> {
+        pausable::when_not_paused(&e);
         require_admin(&e);
         check_positive_amount(amount)?;
         extend_instance_ttl(&e);
@@ -352,6 +370,7 @@ impl YieldToken {
         to: Address,
         amount: i128,
     ) -> Result<(), YieldTokenError> {
+        pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_forced_transfer_manager(&e))?;
         extend_instance_ttl(&e);
@@ -396,6 +415,7 @@ impl YieldToken {
     /// Note: Claimed yield is NOT added to principal — it does not earn more yield.
     /// Tokens are always minted to the yield recipient, regardless of who calls.
     pub fn claim_yield(e: Env, caller: Address) -> Result<i128, YieldTokenError> {
+        pausable::when_not_paused(&e);
         let recipient = read_yield_recipient(&e);
         require_admin_or(&e, &caller, &recipient)?;
         extend_instance_ttl(&e);
@@ -504,5 +524,46 @@ impl YieldToken {
     pub fn distributor(e: Env) -> Address {
         extend_instance_ttl(&e);
         read_distributor(&e)
+    }
+
+    /// Returns the pauser address.
+    pub fn pauser(e: Env) -> Address {
+        extend_instance_ttl(&e);
+        read_pauser(&e)
+    }
+}
+
+// =============================================================================
+// Pausable (Pauser or Admin)
+// =============================================================================
+
+#[contractimpl]
+impl Pausable for YieldToken {
+    /// Returns `true` if the contract is currently paused.
+    fn paused(e: &Env) -> bool {
+        extend_instance_ttl(e);
+        pausable::paused(e)
+    }
+
+    /// Pauses the contract. Blocks mint, burn, reconcile_burn, force_transfer, claim_yield.
+    /// Pauser only.
+    fn pause(e: &Env, caller: Address) {
+        caller.require_auth();
+        if caller != read_pauser(e) {
+            panic_with_error!(e, YieldTokenError::UnauthorizedError);
+        }
+        extend_instance_ttl(e);
+        pausable::pause(e);
+    }
+
+    /// Unpauses the contract, resuming all blocked operations.
+    /// Pauser only.
+    fn unpause(e: &Env, caller: Address) {
+        caller.require_auth();
+        if caller != read_pauser(e) {
+            panic_with_error!(e, YieldTokenError::UnauthorizedError);
+        }
+        extend_instance_ttl(e);
+        pausable::unpause(e);
     }
 }

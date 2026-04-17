@@ -69,6 +69,8 @@ export interface DeployFullParams {
   forcedTransferManager: string;
   /** Distributor address (G... or C...) */
   distributor: string;
+  /** Pauser address (G... or C...) */
+  pauser: string;
 }
 
 export interface DeployFullResult {

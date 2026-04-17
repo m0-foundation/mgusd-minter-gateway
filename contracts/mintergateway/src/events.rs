@@ -12,6 +12,7 @@ const FREEZE: Symbol = symbol_short!("freeze");
 const UNFREEZE: Symbol = symbol_short!("unfreeze");
 const SET_FTM: Symbol = symbol_short!("set_ftmr");
 const SET_DIST: Symbol = symbol_short!("set_dist");
+const SET_PAUSER: Symbol = symbol_short!("set_psr");
 const FORCE_TX: Symbol = symbol_short!("force_tx");
 const UPGRADED: Symbol = symbol_short!("upgraded");
 
@@ -66,4 +67,8 @@ pub fn emit_force_transfer(env: &Env, from: Address, to: Address, amount: i128) 
 
 pub fn emit_upgraded(env: &Env, by: Address, new_wasm_hash: BytesN<32>) {
     env.events().publish((UPGRADED,), (by, new_wasm_hash));
+}
+
+pub fn emit_pauser_set(env: &Env, old: Address, new: Address) {
+    env.events().publish((SET_PAUSER,), (old, new));
 }
