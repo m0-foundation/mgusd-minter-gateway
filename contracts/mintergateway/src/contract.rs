@@ -11,7 +11,7 @@ use crate::events::{
 };
 use crate::roles::{
     read_distributor, read_forced_transfer_manager, read_minter, read_pauser, read_yield_recipient,
-    read_yield_recipient_manager, require_admin_or, write_distributor,
+    read_yield_recipient_manager, require_role_holder, write_distributor,
     write_forced_transfer_manager, write_minter, write_pauser, write_yield_recipient,
     write_yield_recipient_manager,
 };
@@ -163,7 +163,7 @@ impl YieldToken {
         caller: Address,
         account: Address,
     ) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        require_role_holder(&e, &caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -180,7 +180,7 @@ impl YieldToken {
         caller: Address,
         account: Address,
     ) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        require_role_holder(&e, &caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -201,7 +201,7 @@ impl YieldToken {
         caller: Address,
         accounts: Vec<Address>,
     ) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        require_role_holder(&e, &caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         if accounts.len() > MAX_BATCH_SIZE {
@@ -226,7 +226,7 @@ impl YieldToken {
         caller: Address,
         accounts: Vec<Address>,
     ) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        require_role_holder(&e, &caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         if accounts.len() > MAX_BATCH_SIZE {
@@ -271,7 +271,7 @@ impl YieldToken {
     pub fn mint(e: Env, caller: Address, to: Address, amount: i128) -> Result<(), YieldTokenError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
-        require_admin_or(&e, &caller, &read_minter(&e))?;
+        require_role_holder(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -299,7 +299,7 @@ impl YieldToken {
     ) -> Result<(), YieldTokenError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
-        require_admin_or(&e, &caller, &read_minter(&e))?;
+        require_role_holder(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -345,7 +345,7 @@ impl YieldToken {
     /// Sets the interest rate in basis points (max 10000 = 100%). Minter or admin only.
     /// No-op if the new rate equals the current rate.
     pub fn set_rate(e: Env, caller: Address, rate_bps: u32) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_minter(&e))?;
+        require_role_holder(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
         // Early return if rate unchanged
@@ -375,7 +375,8 @@ impl YieldToken {
     ) -> Result<(), YieldTokenError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
-        require_admin_or(&e, &caller, &read_forced_transfer_manager(&e))?;
+        require_role_holder(&e, &caller, &read_forced_transfer_manager(&e))?;
+
         extend_instance_ttl(&e);
 
         // SAC operations: clawback from source, mint to destination
@@ -392,13 +393,13 @@ impl YieldToken {
     // Yield Recipient Manager Functions
     // =========================================================================
 
-    /// Sets a new yield recipient address. Yield recipient manager or admin only.
+    /// Sets a new yield recipient address. Yield recipient manager.
     pub fn set_yield_recipient(
         e: Env,
         caller: Address,
         new_yield_recipient: Address,
     ) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_yield_recipient_manager(&e))?;
+        require_role_holder(&e, &caller, &read_yield_recipient_manager(&e))?;
         extend_instance_ttl(&e);
 
         let old = read_yield_recipient(&e);
@@ -420,7 +421,8 @@ impl YieldToken {
     pub fn claim_yield(e: Env, caller: Address) -> Result<i128, YieldTokenError> {
         pausable::when_not_paused(&e);
         let recipient = read_yield_recipient(&e);
-        require_admin_or(&e, &caller, &recipient)?;
+        require_role_holder(&e, &caller, &recipient)?;
+
         extend_instance_ttl(&e);
 
         let claimed = claim_accrued_yield(&e);

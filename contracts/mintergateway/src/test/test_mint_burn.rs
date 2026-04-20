@@ -13,7 +13,7 @@ fn test_mint_increases_both_accumulators_and_sac_balance() {
     let recipient = Address::generate(&s.env);
 
     // Authorize recipient before mint (AUTH_REQUIRED mode)
-    s.contract.unfreeze_account(&s.admin, &recipient);
+    s.contract.unfreeze_account(&s.distributor, &recipient);
     s.contract.mint(&s.minter, &recipient, &amount);
 
     assert_eq!(s.contract.total_principal(), amount);
@@ -27,8 +27,8 @@ fn test_mint_multiple_recipients() {
     let user_a = Address::generate(&s.env);
     let user_b = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user_a);
-    s.contract.unfreeze_account(&s.admin, &user_b);
+    s.contract.unfreeze_account(&s.distributor, &user_a);
+    s.contract.unfreeze_account(&s.distributor, &user_b);
     s.contract.mint(&s.minter, &user_a, &(500 * DECIMALS));
     s.contract.mint(&s.minter, &user_b, &(300 * DECIMALS));
 
@@ -47,7 +47,7 @@ fn test_burn_decreases_both_accumulators_and_sac_balance() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.burn(&s.minter, &user, &(400 * DECIMALS));
 
@@ -168,7 +168,7 @@ fn test_burn_exceeding_total_supply_reverts() {
     let user = Address::generate(&s.env);
     let mint_amount = 1_000 * DECIMALS;
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &mint_amount);
 
     // Grow index so PV conversion shrinks amounts
@@ -259,7 +259,7 @@ fn test_authorized_account_can_receive_mint() {
     let user = Address::generate(&s.env);
 
     // Authorize via unfreeze_account (allowlist)
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     assert!(s.contract.is_authorized(&user));
 
     // Minting to authorized account succeeds

@@ -88,70 +88,53 @@ fn test_set_distributor() {
 }
 
 // =============================================================================
-// ADMIN SUPER-ROLE — admin bypasses role gates
+// ADMIN IS NOT A SUPER-ROLE — admin cannot bypass role gates
 // =============================================================================
 
 #[test]
-fn test_admin_can_mint() {
+fn test_admin_cannot_mint() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.admin, &user, &(1_000 * DECIMALS));
-
-    assert_eq!(s.sac_token.balance(&user), 1_000 * DECIMALS);
-    assert_eq!(s.contract.total_principal(), 1_000 * DECIMALS);
+    let result = s.contract.try_mint(&s.admin, &user, &(1_000 * DECIMALS));
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 #[test]
-fn test_admin_can_burn() {
+fn test_admin_cannot_burn() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
-    s.contract.burn(&s.admin, &user, &(400 * DECIMALS));
-
-    assert_eq!(s.sac_token.balance(&user), 600 * DECIMALS);
-    assert_eq!(s.contract.total_principal(), 600 * DECIMALS);
+    let result = s.contract.try_burn(&s.admin, &user, &(400 * DECIMALS));
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 #[test]
-fn test_admin_can_set_rate() {
+fn test_admin_cannot_set_rate() {
     let s = setup();
 
-    s.contract.set_rate(&s.admin, &500);
-
-    assert_eq!(s.contract.interest_rate(), 500);
+    let result = s.contract.try_set_rate(&s.admin, &500);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 #[test]
-fn test_admin_can_claim_yield() {
+fn test_admin_cannot_claim_yield() {
     let s = setup();
-    let principal = 1_000_000 * DECIMALS;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
-
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-
-    // Admin calls claim_yield — tokens minted to yield_recipient (not admin)
-    let claimed = s.contract.claim_yield(&s.admin);
-    assert!(claimed > 0);
-
-    // Tokens go to yield_recipient, not admin
-    assert_eq!(s.sac_token.balance(&s.yield_recipient), principal + claimed);
+    let result = s.contract.try_claim_yield(&s.admin);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 #[test]
-fn test_admin_can_set_yield_recipient() {
+fn test_admin_cannot_set_yield_recipient() {
     let s = setup();
     let new_yr = Address::generate(&s.env);
 
-    s.contract.set_yield_recipient(&s.admin, &new_yr);
-
-    assert_eq!(s.contract.yield_recipient(), new_yr);
+    let result = s.contract.try_set_yield_recipient(&s.admin, &new_yr);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 // =============================================================================

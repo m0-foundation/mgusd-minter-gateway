@@ -19,6 +19,19 @@ pub fn require_admin_or(
     Ok(())
 }
 
+/// Verifies that `caller` has authorized this invocation and is the specified role holder.
+pub fn require_role_holder(
+    env: &Env,
+    caller: &Address,
+    role_holder: &Address,
+) -> Result<(), YieldTokenError> {
+    caller.require_auth();
+    if *caller != *role_holder {
+        return Err(YieldTokenError::UnauthorizedError);
+    }
+    Ok(())
+}
+
 // =============================================================================
 // Minter - Can mint/burn tokens and set rate
 // =============================================================================
