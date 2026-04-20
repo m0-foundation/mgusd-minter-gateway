@@ -8,6 +8,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "clippy.toml"
+      - "rust-toolchain.toml"
       - ".github/workflows/contract.yml"
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "clippy.toml"
+      - "rust-toolchain.toml"
       - ".github/workflows/contract.yml"
 
 env:
@@ -27,11 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust nightly
+      - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: nightly
-          target: wasm32-unknown-unknown
+          toolchain: stable
+          target: wasm32v1-none
 
       - name: Run tests
         run: cargo test --package mintergateway
@@ -42,11 +44,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust nightly
+      - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: nightly
-          target: wasm32-unknown-unknown
+          toolchain: stable
+          target: wasm32v1-none
 
       - name: Install stellar CLI
         run: cargo install --locked stellar-cli --features opt
@@ -58,20 +60,20 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mintergateway-wasm
-          path: target/wasm32-unknown-unknown/release/mintergateway.wasm
+          path: target/wasm32v1-none/release/mintergateway.wasm
 
-  clippy-fmt-tests:
-    name: Clippy
+  clippy-fmt:
+    name: Clippy & fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust nightly
+      - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: nightly
-          components: clippy,rustfmt
-          target: wasm32-unknown-unknown
+          toolchain: stable
+          components: clippy, rustfmt
+          target: wasm32v1-none
 
       - name: Check format
         run: cargo fmt --all -- --check
