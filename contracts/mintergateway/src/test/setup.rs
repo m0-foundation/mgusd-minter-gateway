@@ -74,7 +74,7 @@ pub fn setup() -> TestSetup<'static> {
     sac_admin_client.set_admin(&contract_addr);
 
     // Authorize yield_recipient so claim_yield can mint to it (AUTH_REQUIRED mode)
-    contract.unfreeze_account(&admin, &yield_recipient);
+    contract.unfreeze_account(&distributor, &yield_recipient);
 
     TestSetup {
         env,

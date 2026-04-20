@@ -52,42 +52,21 @@ fn test_batch_freeze_by_distributor() {
 }
 
 #[test]
-fn test_batch_unfreeze_by_admin() {
+fn test_batch_unfreeze_admin_unauthorized() {
     let s = setup();
-    let accounts: Vec<Address> = Vec::from_array(
-        &s.env,
-        [
-            Address::generate(&s.env),
-            Address::generate(&s.env),
-            Address::generate(&s.env),
-        ],
-    );
+    let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
-    s.contract.batch_unfreeze_accounts(&s.admin, &accounts);
-
-    for account in accounts.iter() {
-        assert!(s.contract.is_authorized(&account));
-    }
+    let result = s.contract.try_batch_unfreeze_accounts(&s.admin, &accounts);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 #[test]
-fn test_batch_freeze_by_admin() {
+fn test_batch_freeze_admin_unauthorized() {
     let s = setup();
-    let accounts: Vec<Address> = Vec::from_array(
-        &s.env,
-        [
-            Address::generate(&s.env),
-            Address::generate(&s.env),
-            Address::generate(&s.env),
-        ],
-    );
+    let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
-    s.contract.batch_unfreeze_accounts(&s.admin, &accounts);
-    s.contract.batch_freeze_accounts(&s.admin, &accounts);
-
-    for account in accounts.iter() {
-        assert!(!s.contract.is_authorized(&account));
-    }
+    let result = s.contract.try_batch_freeze_accounts(&s.admin, &accounts);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 // =============================================================================
@@ -240,7 +219,7 @@ fn test_batch_freeze_blocks_transfers() {
     // Authorize and mint to both users
     let users: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
-    s.contract.batch_unfreeze_accounts(&s.admin, &users);
+    s.contract.batch_unfreeze_accounts(&s.distributor, &users);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 
@@ -270,12 +249,12 @@ fn test_batch_unfreeze_restores_transfers() {
     // Authorize, mint, then freeze
     let all: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
-    s.contract.batch_unfreeze_accounts(&s.admin, &all);
+    s.contract.batch_unfreeze_accounts(&s.distributor, &all);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 
     let users: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
-    s.contract.batch_freeze_accounts(&s.admin, &users);
+    s.contract.batch_freeze_accounts(&s.distributor, &users);
 
     // Batch unfreeze
     s.contract.batch_unfreeze_accounts(&s.distributor, &users);

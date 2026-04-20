@@ -11,7 +11,7 @@ use crate::events::{
 };
 use crate::roles::{
     read_distributor, read_forced_transfer_manager, read_minter, read_pauser, read_yield_recipient,
-    read_yield_recipient_manager, require_admin_or, write_distributor,
+    read_yield_recipient_manager, require_role_holder, write_distributor,
     write_forced_transfer_manager, write_minter, write_pauser, write_yield_recipient,
     write_yield_recipient_manager,
 };
@@ -153,17 +153,17 @@ impl YieldToken {
     }
 
     // =========================================================================
-    // Compliance Functions (Admin or Distributor)
+    // Compliance Functions (Distributor)
     // =========================================================================
 
     /// Freezes an account, preventing it from sending or receiving SAC tokens.
-    /// Admin or distributor only.
+    /// Distributor only.
     pub fn freeze_account(
         e: Env,
         caller: Address,
         account: Address,
     ) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        require_role_holder(&caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -174,13 +174,13 @@ impl YieldToken {
     }
 
     /// Unfreezes an account, restoring its ability to send and receive SAC tokens.
-    /// Admin or distributor only.
+    /// Distributor only.
     pub fn unfreeze_account(
         e: Env,
         caller: Address,
         account: Address,
     ) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        require_role_holder(&caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -191,17 +191,17 @@ impl YieldToken {
     }
 
     // =========================================================================
-    // Batch Compliance Functions (Admin or Distributor)
+    // Batch Compliance Functions (Distributor)
     // =========================================================================
 
     /// Freezes multiple accounts in a single transaction.
-    /// Admin or distributor only. Max 20 accounts per call.
+    /// Distributor only. Max 20 accounts per call.
     pub fn batch_freeze_accounts(
         e: Env,
         caller: Address,
         accounts: Vec<Address>,
     ) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        require_role_holder(&caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         if accounts.len() > MAX_BATCH_SIZE {
@@ -220,13 +220,13 @@ impl YieldToken {
     }
 
     /// Unfreezes multiple accounts in a single transaction.
-    /// Admin or distributor only. Max 20 accounts per call.
+    /// Distributor only. Max 20 accounts per call.
     pub fn batch_unfreeze_accounts(
         e: Env,
         caller: Address,
         accounts: Vec<Address>,
     ) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_distributor(&e))?;
+        require_role_holder(&caller, &read_distributor(&e))?;
         extend_instance_ttl(&e);
 
         if accounts.len() > MAX_BATCH_SIZE {
@@ -267,11 +267,11 @@ impl YieldToken {
     // =========================================================================
 
     /// Mints SAC tokens directly to the recipient and updates accumulators.
-    /// Minter or admin only.
+    /// Minter only.
     pub fn mint(e: Env, caller: Address, to: Address, amount: i128) -> Result<(), YieldTokenError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
-        require_admin_or(&e, &caller, &read_minter(&e))?;
+        require_role_holder(&caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -290,7 +290,7 @@ impl YieldToken {
     }
 
     /// Burns SAC tokens from an account and updates accumulators.
-    /// Minter or admin only.
+    /// Minter only.
     pub fn burn(
         e: Env,
         caller: Address,
@@ -299,7 +299,7 @@ impl YieldToken {
     ) -> Result<(), YieldTokenError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
-        require_admin_or(&e, &caller, &read_minter(&e))?;
+        require_role_holder(&caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -342,10 +342,10 @@ impl YieldToken {
         Ok(())
     }
 
-    /// Sets the interest rate in basis points (max 10000 = 100%). Minter or admin only.
+    /// Sets the interest rate in basis points (max 10000 = 100%). Minter only.
     /// No-op if the new rate equals the current rate.
     pub fn set_rate(e: Env, caller: Address, rate_bps: u32) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_minter(&e))?;
+        require_role_holder(&caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
 
         // Early return if rate unchanged
@@ -364,7 +364,7 @@ impl YieldToken {
     // =========================================================================
 
     /// Forces a transfer of SAC tokens from one account to another.
-    /// Forced transfer manager or admin only. Does not require source authorization.
+    /// Forced transfer manager only. Does not require source authorization.
     /// Implemented as clawback + mint. Accumulators are NOT touched — supply is unchanged.
     pub fn force_transfer(
         e: Env,
@@ -375,7 +375,8 @@ impl YieldToken {
     ) -> Result<(), YieldTokenError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
-        require_admin_or(&e, &caller, &read_forced_transfer_manager(&e))?;
+        require_role_holder(&caller, &read_forced_transfer_manager(&e))?;
+
         extend_instance_ttl(&e);
 
         // SAC operations: clawback from source, mint to destination
@@ -392,13 +393,13 @@ impl YieldToken {
     // Yield Recipient Manager Functions
     // =========================================================================
 
-    /// Sets a new yield recipient address. Yield recipient manager or admin only.
+    /// Sets a new yield recipient address. Yield recipient manager.
     pub fn set_yield_recipient(
         e: Env,
         caller: Address,
         new_yield_recipient: Address,
     ) -> Result<(), YieldTokenError> {
-        require_admin_or(&e, &caller, &read_yield_recipient_manager(&e))?;
+        require_role_holder(&caller, &read_yield_recipient_manager(&e))?;
         extend_instance_ttl(&e);
 
         let old = read_yield_recipient(&e);
@@ -420,7 +421,8 @@ impl YieldToken {
     pub fn claim_yield(e: Env, caller: Address) -> Result<i128, YieldTokenError> {
         pausable::when_not_paused(&e);
         let recipient = read_yield_recipient(&e);
-        require_admin_or(&e, &caller, &recipient)?;
+        require_role_holder(&caller, &recipient)?;
+
         extend_instance_ttl(&e);
 
         let claimed = claim_accrued_yield(&e);

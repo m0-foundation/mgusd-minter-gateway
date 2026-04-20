@@ -15,7 +15,7 @@ fn test_reconcile_burn_decreases_both_accumulators() {
     let mint_amount = 1_000 * DECIMALS;
     let reconcile_amount = 400 * DECIMALS;
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &mint_amount);
 
     // Simulate accidental token destruction (send to issuer)
@@ -39,7 +39,7 @@ fn test_reconcile_burn_after_yield_accrual() {
     let user = Address::generate(&s.env);
     let mint_amount = 1_000 * DECIMALS;
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &mint_amount);
 
     // Set 5% rate and advance 1 year
@@ -64,7 +64,7 @@ fn test_reconcile_burn_full_amount_to_zero() {
     let user = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Reconcile entire amount
@@ -86,7 +86,7 @@ fn test_reconcile_burn_real_world_send_to_issuer_flow() {
     let amount = 1_000 * DECIMALS;
     let destroyed = 600 * DECIMALS;
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // User accidentally sends tokens to issuer — tokens are destroyed
@@ -114,7 +114,7 @@ fn test_reconcile_burn_rejects_zero_amount() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_reconcile_burn(&0);
@@ -129,7 +129,7 @@ fn test_reconcile_burn_rejects_negative_amount() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_reconcile_burn(&-100);
@@ -145,7 +145,7 @@ fn test_reconcile_burn_rejects_exceeding_principal() {
     let user = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Try to reconcile more than principal
@@ -157,15 +157,15 @@ fn test_reconcile_burn_rejects_exceeding_principal() {
 // ACCESS CONTROL — only admin can call reconcile_burn
 // =============================================================================
 
-/// `reconcile_burn` uses `require_admin()` (not `require_admin_or`), so it
-/// always demands admin auth regardless of caller. Verify that the call
-/// reverts when auth is disabled — even with real supply in the contract.
+/// `reconcile_burn` uses `require_admin()` directly, so it always demands
+/// admin auth regardless of caller. Verify that the call reverts when auth
+/// is disabled — even with real supply in the contract.
 #[test]
 fn test_reconcile_burn_requires_admin_auth() {
     let s = setup(); // mock_all_auths — allows mint setup
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     // Disable all auth — simulates a call without admin signature
@@ -192,7 +192,7 @@ fn test_reconcile_burn_does_not_touch_sac_tokens() {
     let user = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     let balance_before = s.sac_token.balance(&user);
@@ -210,7 +210,7 @@ fn test_reconcile_burn_multiple_calls() {
     let user = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Multiple reconcile burns
@@ -235,7 +235,7 @@ fn test_reconcile_burn_rejects_amount_exceeding_total_supply() {
     let user = Address::generate(&s.env);
     let mint_amount = 1_000 * DECIMALS; // 1000 tokens (7 decimals)
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
 
     // Mint at index = 1.0 → total_principal = 1000, total_supply = 1000
     s.contract.mint(&s.minter, &user, &mint_amount);

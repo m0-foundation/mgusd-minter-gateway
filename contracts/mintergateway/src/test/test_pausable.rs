@@ -53,7 +53,7 @@ fn test_mint_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.pause(&s.pauser);
 
     assert!(s
@@ -71,7 +71,7 @@ fn test_burn_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
@@ -90,7 +90,7 @@ fn test_reconcile_burn_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
@@ -107,8 +107,8 @@ fn test_force_transfer_blocked_when_paused_resumes_after_unpause() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &alice);
-    s.contract.unfreeze_account(&s.admin, &bob);
+    s.contract.unfreeze_account(&s.distributor, &alice);
+    s.contract.unfreeze_account(&s.distributor, &bob);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
@@ -149,13 +149,13 @@ fn test_freeze_unfreeze_work_when_paused() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     s.contract.pause(&s.pauser);
 
-    s.contract.freeze_account(&s.admin, &user);
+    s.contract.freeze_account(&s.distributor, &user);
     assert!(!s.contract.is_authorized(&user));
 
-    s.contract.unfreeze_account(&s.admin, &user);
+    s.contract.unfreeze_account(&s.distributor, &user);
     assert!(s.contract.is_authorized(&user));
 }
 
