@@ -11,7 +11,7 @@ use super::setup::*;
 #[test]
 fn test_second_mint_snapshots_yield() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     // Step 1: Mint 1M, set rate 5%
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
@@ -50,7 +50,7 @@ fn test_second_mint_snapshots_yield() {
 #[test]
 fn test_rate_before_principal() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     // Set rate with no principal — index grows but no yield earned
     s.contract.set_rate(&s.minter, &500);
@@ -80,7 +80,7 @@ fn test_rate_before_principal() {
 #[test]
 fn test_claim_then_claim_same_timestamp() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);

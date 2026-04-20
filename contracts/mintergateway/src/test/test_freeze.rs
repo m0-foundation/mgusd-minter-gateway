@@ -13,13 +13,13 @@ fn test_freeze_account_prevents_transfer() {
     let recipient = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     s.contract.freeze_account(&s.admin, &user);
     assert!(!s.contract.is_authorized(&user));
 
     // Frozen user cannot transfer
-    let result = s.sac_token.try_transfer(&user, &recipient, &100_0000000);
+    let result = s.sac_token.try_transfer(&user, &recipient, &(100 * DECIMALS));
     assert!(result.is_err());
 }
 
@@ -30,7 +30,7 @@ fn test_unfreeze_account_restores_transfer() {
     let recipient = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     s.contract.freeze_account(&s.admin, &user);
     assert!(!s.contract.is_authorized(&user));
@@ -42,8 +42,8 @@ fn test_unfreeze_account_restores_transfer() {
     s.contract.unfreeze_account(&s.admin, &recipient);
 
     // Unfrozen user can transfer again
-    s.sac_token.transfer(&user, &recipient, &100_0000000);
-    assert_eq!(s.sac_token.balance(&recipient), 100_0000000);
+    s.sac_token.transfer(&user, &recipient, &(100 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&recipient), 100 * DECIMALS);
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn test_freeze_idempotent() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     // Freezing twice doesn't panic
     s.contract.freeze_account(&s.admin, &user);
@@ -156,7 +156,7 @@ fn test_distributor_can_unfreeze_account() {
 fn test_compliance_flow_freeze_burn_unfreeze() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let principal = 1_000_0000000i128;
+    let principal = 1_000 * DECIMALS;
 
     // Step 1: Mint tokens
     s.contract.unfreeze_account(&s.admin, &user);
@@ -181,8 +181,8 @@ fn test_compliance_flow_freeze_burn_unfreeze() {
     // Step 5: User can transfer remaining balance
     let recipient = Address::generate(&s.env);
     s.contract.unfreeze_account(&s.admin, &recipient); // Authorize recipient (AUTH_REQUIRED mode)
-    s.sac_token.transfer(&user, &recipient, &100_0000000);
-    assert_eq!(s.sac_token.balance(&recipient), 100_0000000);
+    s.sac_token.transfer(&user, &recipient, &(100 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&recipient), 100 * DECIMALS);
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn test_freeze_blocks_subsequent_direct_sac_transfer() {
     let s = setup();
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     // Authorize both and mint
     s.contract.unfreeze_account(&s.admin, &alice);
@@ -198,16 +198,16 @@ fn test_freeze_blocks_subsequent_direct_sac_transfer() {
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Direct SAC transfer works while both are authorized
-    s.sac_token.transfer(&alice, &bob, &100_0000000);
-    assert_eq!(s.sac_token.balance(&bob), 100_0000000);
+    s.sac_token.transfer(&alice, &bob, &(100 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&bob), 100 * DECIMALS);
 
     // Admin freezes alice via our contract
     s.contract.freeze_account(&s.admin, &alice);
 
     // Alice tries another direct SAC transfer — BLOCKED
-    let result = s.sac_token.try_transfer(&alice, &bob, &100_0000000);
+    let result = s.sac_token.try_transfer(&alice, &bob, &(100 * DECIMALS));
     assert!(result.is_err());
 
     // Alice's remaining balance is locked
-    assert_eq!(s.sac_token.balance(&alice), amount - 100_0000000);
+    assert_eq!(s.sac_token.balance(&alice), amount - 100 * DECIMALS);
 }

@@ -241,18 +241,18 @@ fn test_batch_freeze_blocks_transfers() {
     let users: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
     s.contract.batch_unfreeze_accounts(&s.admin, &users);
-    s.contract.mint(&s.minter, &alice, &1_000_0000000);
-    s.contract.mint(&s.minter, &bob, &1_000_0000000);
+    s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
+    s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 
     // Batch freeze alice and bob
     let to_freeze: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
     s.contract.batch_freeze_accounts(&s.distributor, &to_freeze);
 
     // Neither can transfer
-    let result_alice = s.sac_token.try_transfer(&alice, &recipient, &100_0000000);
+    let result_alice = s.sac_token.try_transfer(&alice, &recipient, &(100 * DECIMALS));
     assert!(result_alice.is_err());
 
-    let result_bob = s.sac_token.try_transfer(&bob, &recipient, &100_0000000);
+    let result_bob = s.sac_token.try_transfer(&bob, &recipient, &(100 * DECIMALS));
     assert!(result_bob.is_err());
 }
 
@@ -267,8 +267,8 @@ fn test_batch_unfreeze_restores_transfers() {
     let all: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
     s.contract.batch_unfreeze_accounts(&s.admin, &all);
-    s.contract.mint(&s.minter, &alice, &1_000_0000000);
-    s.contract.mint(&s.minter, &bob, &1_000_0000000);
+    s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
+    s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 
     let users: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
     s.contract.batch_freeze_accounts(&s.admin, &users);
@@ -277,9 +277,9 @@ fn test_batch_unfreeze_restores_transfers() {
     s.contract.batch_unfreeze_accounts(&s.distributor, &users);
 
     // Both can now transfer
-    s.sac_token.transfer(&alice, &recipient, &100_0000000);
-    assert_eq!(s.sac_token.balance(&recipient), 100_0000000);
+    s.sac_token.transfer(&alice, &recipient, &(100 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&recipient), 100 * DECIMALS);
 
-    s.sac_token.transfer(&bob, &recipient, &100_0000000);
-    assert_eq!(s.sac_token.balance(&recipient), 200_0000000);
+    s.sac_token.transfer(&bob, &recipient, &(100 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&recipient), 200 * DECIMALS);
 }

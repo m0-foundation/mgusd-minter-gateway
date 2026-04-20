@@ -58,12 +58,12 @@ fn test_mint_blocked_when_paused_resumes_after_unpause() {
 
     assert!(s
         .contract
-        .try_mint(&s.minter, &user, &1_000_0000000)
+        .try_mint(&s.minter, &user, &(1_000 * DECIMALS))
         .is_err());
 
     s.contract.unpause(&s.pauser);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
-    assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&user), 1_000 * DECIMALS);
 }
 
 #[test]
@@ -72,14 +72,14 @@ fn test_burn_blocked_when_paused_resumes_after_unpause() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
-    assert!(s.contract.try_burn(&s.minter, &user, &500_0000000).is_err());
+    assert!(s.contract.try_burn(&s.minter, &user, &(500 * DECIMALS)).is_err());
 
     s.contract.unpause(&s.pauser);
-    s.contract.burn(&s.minter, &user, &500_0000000);
-    assert_eq!(s.sac_token.balance(&user), 500_0000000);
+    s.contract.burn(&s.minter, &user, &(500 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&user), 500 * DECIMALS);
 }
 
 #[test]
@@ -88,14 +88,14 @@ fn test_reconcile_burn_blocked_when_paused_resumes_after_unpause() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
-    assert!(s.contract.try_reconcile_burn(&500_0000000).is_err());
+    assert!(s.contract.try_reconcile_burn(&(500 * DECIMALS)).is_err());
 
     s.contract.unpause(&s.pauser);
-    s.contract.reconcile_burn(&500_0000000);
-    assert_eq!(s.contract.total_principal(), 500_0000000);
+    s.contract.reconcile_burn(&(500 * DECIMALS));
+    assert_eq!(s.contract.total_principal(), 500 * DECIMALS);
 }
 
 #[test]
@@ -106,18 +106,18 @@ fn test_force_transfer_blocked_when_paused_resumes_after_unpause() {
 
     s.contract.unfreeze_account(&s.admin, &alice);
     s.contract.unfreeze_account(&s.admin, &bob);
-    s.contract.mint(&s.minter, &alice, &1_000_0000000);
+    s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
     assert!(s
         .contract
-        .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &500_0000000)
+        .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &(500 * DECIMALS))
         .is_err());
 
     s.contract.unpause(&s.pauser);
     s.contract
-        .force_transfer(&s.forced_transfer_manager, &alice, &bob, &500_0000000);
-    assert_eq!(s.sac_token.balance(&bob), 500_0000000);
+        .force_transfer(&s.forced_transfer_manager, &alice, &bob, &(500 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&bob), 500 * DECIMALS);
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn test_claim_yield_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
 
     s.contract
-        .mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+        .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     s.contract.set_rate(&s.minter, &500);
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     s.contract.pause(&s.pauser);
@@ -161,11 +161,11 @@ fn test_view_functions_work_when_paused() {
     let s = setup();
 
     s.contract
-        .mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+        .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
-    assert_eq!(s.contract.total_supply(), 1_000_0000000);
-    assert_eq!(s.contract.total_principal(), 1_000_0000000);
+    assert_eq!(s.contract.total_supply(), 1_000 * DECIMALS);
+    assert_eq!(s.contract.total_principal(), 1_000 * DECIMALS);
     assert!(s.contract.current_index() > 0);
     assert!(s.contract.paused());
 }

@@ -7,7 +7,7 @@ use super::setup::*;
 #[test]
 fn test_total_supply_increases_on_mint() {
     let s = setup();
-    let amount = 1_000_000_0000000i128;
+    let amount = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &amount);
 
@@ -18,7 +18,7 @@ fn test_total_supply_increases_on_mint() {
 #[test]
 fn test_total_supply_increases_on_claim_yield() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
@@ -36,8 +36,8 @@ fn test_total_supply_increases_on_claim_yield() {
 #[test]
 fn test_burn_decreases_both_accumulators() {
     let s = setup();
-    let amount = 1_000_000_0000000i128;
-    let burn = 400_000_0000000i128;
+    let amount = 1_000_000 * DECIMALS;
+    let burn = 400_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &amount);
 
@@ -53,7 +53,7 @@ fn test_burn_decreases_both_accumulators() {
 #[test]
 fn test_total_supply_invariant() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
@@ -84,7 +84,7 @@ fn test_total_supply_invariant() {
 #[test]
 fn test_mint_after_index_growth_stores_present_value_principal() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     // First mint at index = INDEX_SCALE (PV == nominal here)
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
@@ -121,7 +121,7 @@ fn test_mint_after_index_growth_stores_present_value_principal() {
 #[test]
 fn test_yield_overestimation_after_mint_at_grown_index() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     // Year 0: mint 1M, set 5% rate
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
@@ -164,8 +164,8 @@ fn test_yield_overestimation_after_mint_at_grown_index() {
 #[test]
 fn test_burn_after_index_growth_stores_present_value_principal() {
     let s = setup();
-    let two_million = 2_000_000_0000000i128;
-    let burn_amount = 500_000_0000000i128;
+    let two_million = 2_000_000 * DECIMALS;
+    let burn_amount = 500_000 * DECIMALS;
 
     // Mint 2M at index = INDEX_SCALE
     s.contract.mint(&s.minter, &s.yield_recipient, &two_million);
@@ -201,8 +201,8 @@ fn test_burn_after_index_growth_stores_present_value_principal() {
 #[test]
 fn test_yield_underestimation_after_burn_at_grown_index() {
     let s = setup();
-    let two_million = 2_000_000_0000000i128;
-    let burn_amount = 500_000_0000000i128;
+    let two_million = 2_000_000 * DECIMALS;
+    let burn_amount = 500_000 * DECIMALS;
 
     // Year 0: mint 2M, set 5%
     s.contract.mint(&s.minter, &s.yield_recipient, &two_million);
@@ -242,7 +242,7 @@ fn test_yield_underestimation_after_burn_at_grown_index() {
 #[test]
 fn test_large_index_growth_amplifies_principal_error() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     // Mint 1M, set 10% rate
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
@@ -276,7 +276,7 @@ fn test_large_index_growth_amplifies_principal_error() {
 #[test]
 fn test_sequential_mints_at_different_indices_accumulate_pv() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     // Mint 1 at index = INDEX_SCALE
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
