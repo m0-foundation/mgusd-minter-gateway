@@ -48,5 +48,6 @@ export type {
   QueryParams,
   DeployFullParams,
   DeployFullResult,
+  MAX_BATCH_SIZE,
 } from "./sctoken-types";
 export { addressVecToScVal } from "./scval-helpers";

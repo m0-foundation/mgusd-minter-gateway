@@ -2,6 +2,7 @@ import { Address, scValToNative } from "@stellar/stellar-sdk";
 import { SorobanFireblocksClient } from "./client";
 import { addressToScVal, addressVecToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
 import {
+  MAX_BATCH_SIZE,
   BatchFreezeAccountsParams,
   BurnParams,
   ClaimYieldParams,
@@ -67,6 +68,12 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
   }
 
   async batchFreezeAccounts(params: BatchFreezeAccountsParams): Promise<InvokeContractResult> {
+    if (params.accounts.length === 0) {
+      throw new Error("batchFreezeAccounts: accounts array must not be empty");
+    }
+    if (params.accounts.length > MAX_BATCH_SIZE) {
+      throw new Error(`batchFreezeAccounts: accounts array exceeds MAX_BATCH_SIZE (${MAX_BATCH_SIZE})`);
+    }
     return this.invokeContract({
       contractId: params.contractId,
       method: "batch_freeze_accounts",
@@ -75,6 +82,12 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
   }
 
   async batchUnfreezeAccounts(params: BatchFreezeAccountsParams): Promise<InvokeContractResult> {
+    if (params.accounts.length === 0) {
+      throw new Error("batchUnfreezeAccounts: accounts array must not be empty");
+    }
+    if (params.accounts.length > MAX_BATCH_SIZE) {
+      throw new Error(`batchUnfreezeAccounts: accounts array exceeds MAX_BATCH_SIZE (${MAX_BATCH_SIZE})`);
+    }
     return this.invokeContract({
       contractId: params.contractId,
       method: "batch_unfreeze_accounts",
