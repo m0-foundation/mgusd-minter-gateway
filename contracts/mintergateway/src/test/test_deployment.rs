@@ -1,6 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::yield_state::read_yield_state;
 
 // =============================================================================
 // INITIALIZATION TESTS
@@ -36,6 +37,22 @@ fn test_double_initialization_returns_error() {
     });
 
     assert_eq!(result, Err(crate::YieldTokenError::AlreadyInitializedError));
+}
+
+#[test]
+fn test_yield_state_defaults_to_zero_on_fresh_contract() {
+    let s = setup();
+
+    let state = s.env.as_contract(&s.contract.address, || {
+        read_yield_state(&s.env)
+    });
+
+    assert_eq!(state.total_principal, 0);
+    assert_eq!(state.total_supply, 0);
+    assert_eq!(state.accrued_yield, 0);
+    assert_eq!(state.rate_bps, 0);
+    assert_eq!(state.latest_index, INDEX_SCALE);
+    assert_eq!(state.last_update_timestamp, 0);
 }
 
 // =============================================================================
