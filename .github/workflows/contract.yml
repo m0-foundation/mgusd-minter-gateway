@@ -1,0 +1,82 @@
+name: Contract
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "contracts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "clippy.toml"
+      - "rust-toolchain.toml"
+      - ".github/workflows/contract.yml"
+  pull_request:
+    paths:
+      - "contracts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "clippy.toml"
+      - "rust-toolchain.toml"
+      - ".github/workflows/contract.yml"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32v1-none
+
+      - name: Run tests
+        run: cargo test --package mintergateway
+
+  build:
+    name: Build WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32v1-none
+
+      - name: Install stellar CLI
+        run: curl -fsSL https://github.com/stellar/stellar-cli/raw/main/install.sh | sh
+
+      - name: Build contract
+        run: stellar contract build
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mintergateway-wasm
+          path: target/wasm32v1-none/release/mintergateway.wasm
+
+  clippy-fmt:
+    name: Clippy & fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+          target: wasm32v1-none
+
+      - name: Check format
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --release --locked --all-targets -- -D warnings
