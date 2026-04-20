@@ -118,7 +118,10 @@ fn test_reconcile_burn_rejects_zero_amount() {
     s.contract.mint(&s.minter, &user, &1_000_0000000);
 
     let result = s.contract.try_reconcile_burn(&0);
-    assert_eq!(result.unwrap_err().unwrap(), YieldTokenError::InvalidAmountError);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        YieldTokenError::InvalidAmountError
+    );
 }
 
 #[test]
@@ -130,7 +133,10 @@ fn test_reconcile_burn_rejects_negative_amount() {
     s.contract.mint(&s.minter, &user, &1_000_0000000);
 
     let result = s.contract.try_reconcile_burn(&-100);
-    assert_eq!(result.unwrap_err().unwrap(), YieldTokenError::InvalidAmountError);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        YieldTokenError::InvalidAmountError
+    );
 }
 
 #[test]
@@ -166,7 +172,10 @@ fn test_reconcile_burn_requires_admin_auth() {
     s.env.mock_auths(&[]);
 
     let result = s.contract.try_reconcile_burn(&100_0000000);
-    assert!(result.is_err(), "reconcile_burn should revert without admin auth");
+    assert!(
+        result.is_err(),
+        "reconcile_burn should revert without admin auth"
+    );
 
     // Accumulators unchanged
     assert_eq!(s.contract.total_principal(), 1_000_0000000);

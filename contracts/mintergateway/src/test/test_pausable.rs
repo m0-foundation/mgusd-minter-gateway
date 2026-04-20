@@ -56,7 +56,10 @@ fn test_mint_blocked_when_paused_resumes_after_unpause() {
     s.contract.unfreeze_account(&s.admin, &user);
     s.contract.pause(&s.pauser);
 
-    assert!(s.contract.try_mint(&s.minter, &user, &1_000_0000000).is_err());
+    assert!(s
+        .contract
+        .try_mint(&s.minter, &user, &1_000_0000000)
+        .is_err());
 
     s.contract.unpause(&s.pauser);
     s.contract.mint(&s.minter, &user, &1_000_0000000);
@@ -112,7 +115,8 @@ fn test_force_transfer_blocked_when_paused_resumes_after_unpause() {
         .is_err());
 
     s.contract.unpause(&s.pauser);
-    s.contract.force_transfer(&s.forced_transfer_manager, &alice, &bob, &500_0000000);
+    s.contract
+        .force_transfer(&s.forced_transfer_manager, &alice, &bob, &500_0000000);
     assert_eq!(s.sac_token.balance(&bob), 500_0000000);
 }
 
@@ -120,7 +124,8 @@ fn test_force_transfer_blocked_when_paused_resumes_after_unpause() {
 fn test_claim_yield_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &1_000_0000000);
     s.contract.set_rate(&s.minter, &500);
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     s.contract.pause(&s.pauser);
@@ -155,7 +160,8 @@ fn test_freeze_unfreeze_work_when_paused() {
 fn test_view_functions_work_when_paused() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &1_000_0000000);
     s.contract.pause(&s.pauser);
 
     assert_eq!(s.contract.total_supply(), 1_000_0000000);

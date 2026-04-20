@@ -190,7 +190,8 @@ pub fn get_accrued_yield(env: &Env) -> i128 {
     let mut total_yield = state.accrued_yield;
 
     // Add pending yield from index growth (on principal only)
-    if current_time > state.last_update_timestamp && state.total_principal > 0 && state.rate_bps > 0 {
+    if current_time > state.last_update_timestamp && state.total_principal > 0 && state.rate_bps > 0
+    {
         let new_index = continuous_index::current_index(
             state.latest_index,
             state.rate_bps,

@@ -102,4 +102,3 @@ pub fn write_pauser(env: &Env, addr: &Address) {
     let key = DataKey::Pauser;
     env.storage().instance().set(&key, addr);
 }
-

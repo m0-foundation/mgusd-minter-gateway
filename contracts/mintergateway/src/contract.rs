@@ -1,21 +1,20 @@
 use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, BytesN, Env, Vec};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
+use crate::constants::MAX_BATCH_SIZE;
 use crate::errors::YieldTokenError;
-use stellar_contract_utils::pausable::{self as pausable, Pausable};
 use crate::events::{
-    emit_account_frozen, emit_account_unfrozen, emit_distributor_set,
-    emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set,
-    emit_minter_set, emit_pauser_set, emit_set_admin, emit_supply_synced, emit_upgraded,
-    emit_yield_claimed, emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_account_frozen, emit_account_unfrozen, emit_distributor_set, emit_force_transfer,
+    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set, emit_pauser_set,
+    emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
+    emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    read_distributor, read_forced_transfer_manager, read_minter, read_pauser,
-    read_yield_recipient, read_yield_recipient_manager, require_admin_or, write_distributor,
+    read_distributor, read_forced_transfer_manager, read_minter, read_pauser, read_yield_recipient,
+    read_yield_recipient_manager, require_admin_or, write_distributor,
     write_forced_transfer_manager, write_minter, write_pauser, write_yield_recipient,
     write_yield_recipient_manager,
 };
-use crate::constants::MAX_BATCH_SIZE;
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
 use crate::yield_state::{
@@ -24,6 +23,7 @@ use crate::yield_state::{
     increase_both_accumulators, increase_total_supply, read_yield_state, set_interest_rate,
     update_index,
 };
+use stellar_contract_utils::pausable::{self as pausable, Pausable};
 
 pub(crate) fn check_positive_amount(amount: i128) -> Result<(), YieldTokenError> {
     if amount <= 0 {
@@ -256,7 +256,8 @@ impl YieldToken {
         let admin = require_admin(&e);
         extend_instance_ttl(&e);
 
-        e.deployer().update_current_contract_wasm(new_wasm_hash.clone());
+        e.deployer()
+            .update_current_contract_wasm(new_wasm_hash.clone());
 
         emit_upgraded(&e, admin, new_wasm_hash);
     }
@@ -290,7 +291,12 @@ impl YieldToken {
 
     /// Burns SAC tokens from an account and updates accumulators.
     /// Minter or admin only.
-    pub fn burn(e: Env, caller: Address, from: Address, amount: i128) -> Result<(), YieldTokenError> {
+    pub fn burn(
+        e: Env,
+        caller: Address,
+        from: Address,
+        amount: i128,
+    ) -> Result<(), YieldTokenError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
@@ -314,10 +320,7 @@ impl YieldToken {
     /// Reconciles accumulators after tokens are destroyed by sending to the SAC issuer.
     /// Decreases both accumulators to reflect the reduced supply.
     /// Admin only — this is a reconciliation action, not normal operations.
-    pub fn reconcile_burn(
-        e: Env,
-        amount: i128,
-    ) -> Result<(), YieldTokenError> {
+    pub fn reconcile_burn(e: Env, amount: i128) -> Result<(), YieldTokenError> {
         pausable::when_not_paused(&e);
         require_admin(&e);
         check_positive_amount(amount)?;

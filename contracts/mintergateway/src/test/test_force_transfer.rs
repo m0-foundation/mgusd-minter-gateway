@@ -240,7 +240,10 @@ fn test_force_transfer_works_when_amount_exceeds_principal() {
     let claimed = s.contract.claim_yield(&s.yield_recipient);
     assert!(claimed > 0);
     let total_balance = s.sac_token.balance(&s.yield_recipient);
-    assert!(total_balance > mint_amount, "should hold more than principal");
+    assert!(
+        total_balance > mint_amount,
+        "should hold more than principal"
+    );
 
     // Force transfer the full balance — exceeds total_principal but should succeed
     s.contract.unfreeze_account(&s.admin, &bob);
@@ -269,12 +272,9 @@ fn test_force_transfer_exceeds_balance_reverts() {
     s.contract.mint(&s.minter, &bob, &500_0000000);
 
     // Try to force transfer more than alice has (but within principal)
-    let result = s.contract.try_force_transfer(
-        &s.forced_transfer_manager,
-        &alice,
-        &bob,
-        &600_0000000,
-    );
+    let result =
+        s.contract
+            .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &600_0000000);
     // SAC clawback will fail — alice only has 500
     assert!(result.is_err());
 }
@@ -290,12 +290,9 @@ fn test_force_transfer_to_unauthorized_account_reverts() {
 
     // Bob is unauthorized (AUTH_REQUIRED mode) — mint to bob will fail
     assert!(!s.contract.is_authorized(&bob));
-    let result = s.contract.try_force_transfer(
-        &s.forced_transfer_manager,
-        &alice,
-        &bob,
-        &500_0000000,
-    );
+    let result =
+        s.contract
+            .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &500_0000000);
     assert!(result.is_err());
 }
 
@@ -309,9 +306,9 @@ fn test_force_transfer_reverts_without_caller_auth() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
 
-    let result = s
-        .contract
-        .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &1_000_0000000);
+    let result =
+        s.contract
+            .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &1_000_0000000);
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort
@@ -352,9 +349,9 @@ fn test_yield_recipient_manager_cannot_force_transfer() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
 
-    let result = s
-        .contract
-        .try_force_transfer(&s.yield_recipient_manager, &alice, &bob, &1_000_0000000);
+    let result =
+        s.contract
+            .try_force_transfer(&s.yield_recipient_manager, &alice, &bob, &1_000_0000000);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 

@@ -151,7 +151,9 @@ fn test_burn_exceeding_principal_reverts() {
     // So we need a larger nominal amount to exceed principal in PV terms.
     // Burn 2x the initial amount — pv(2*initial) > initial at 5% growth.
     let excessive_amount = 2 * initial + claimed;
-    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &excessive_amount);
+    let result = s
+        .contract
+        .try_burn(&s.minter, &s.yield_recipient, &excessive_amount);
     assert!(result.is_err());
 }
 
@@ -178,7 +180,10 @@ fn test_burn_exceeding_total_supply_reverts() {
     // But checked_sub on total_supply panics — amount > total_supply.
     let overshoot = mint_amount + 1;
     let result = s.contract.try_burn(&s.minter, &user, &overshoot);
-    assert!(result.is_err(), "checked_sub should panic when amount > total_supply");
+    assert!(
+        result.is_err(),
+        "checked_sub should panic when amount > total_supply"
+    );
 
     // Accumulators unchanged — no state corruption
     assert_eq!(s.contract.total_principal(), mint_amount);
@@ -210,15 +215,25 @@ fn test_mint_after_burn_to_zero() {
 #[test]
 fn test_mint_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
-    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &1_000_0000000);
-    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+    let result = s
+        .contract
+        .try_mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(
+        result.unwrap_err().unwrap_err(),
+        soroban_sdk::InvokeError::Abort
+    );
 }
 
 #[test]
 fn test_burn_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
-    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &1_000_0000000);
-    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+    let result = s
+        .contract
+        .try_burn(&s.minter, &s.yield_recipient, &1_000_0000000);
+    assert_eq!(
+        result.unwrap_err().unwrap_err(),
+        soroban_sdk::InvokeError::Abort
+    );
 }
 
 // =============================================================================
@@ -260,9 +275,11 @@ fn test_authorized_account_can_receive_mint() {
 fn test_yield_recipient_manager_cannot_mint() {
     let s = setup();
 
-    let result = s
-        .contract
-        .try_mint(&s.yield_recipient_manager, &s.yield_recipient, &1_000_0000000);
+    let result = s.contract.try_mint(
+        &s.yield_recipient_manager,
+        &s.yield_recipient,
+        &1_000_0000000,
+    );
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -280,9 +297,11 @@ fn test_yield_recipient_cannot_mint() {
 fn test_forced_transfer_manager_cannot_mint() {
     let s = setup();
 
-    let result = s
-        .contract
-        .try_mint(&s.forced_transfer_manager, &s.yield_recipient, &1_000_0000000);
+    let result = s.contract.try_mint(
+        &s.forced_transfer_manager,
+        &s.yield_recipient,
+        &1_000_0000000,
+    );
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -305,9 +324,11 @@ fn test_random_cannot_mint() {
 fn test_yield_recipient_manager_cannot_burn() {
     let s = setup();
 
-    let result = s
-        .contract
-        .try_burn(&s.yield_recipient_manager, &s.yield_recipient, &1_000_0000000);
+    let result = s.contract.try_burn(
+        &s.yield_recipient_manager,
+        &s.yield_recipient,
+        &1_000_0000000,
+    );
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -325,9 +346,11 @@ fn test_yield_recipient_cannot_burn() {
 fn test_forced_transfer_manager_cannot_burn() {
     let s = setup();
 
-    let result = s
-        .contract
-        .try_burn(&s.forced_transfer_manager, &s.yield_recipient, &1_000_0000000);
+    let result = s.contract.try_burn(
+        &s.forced_transfer_manager,
+        &s.yield_recipient,
+        &1_000_0000000,
+    );
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 

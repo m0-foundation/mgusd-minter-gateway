@@ -39,7 +39,8 @@ fn test_yield_accrual_10pct_half_year() {
 fn test_yield_zero_when_no_time_elapsed() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &1_000_0000000);
     s.contract.set_rate(&s.minter, &500);
 
     assert_eq!(s.contract.accrued_yield(), 0);
@@ -49,7 +50,8 @@ fn test_yield_zero_when_no_time_elapsed() {
 fn test_yield_zero_when_no_rate() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &1_000_0000000);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -112,7 +114,8 @@ fn test_claim_yield_principal_unchanged() {
 fn test_claim_yield_resets_accrued() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_000_0000000);
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &1_000_000_0000000);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -249,7 +252,8 @@ fn test_rate_change_finalizes_yield_at_old_rate() {
 fn test_set_rate_noop_when_unchanged() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &1_000_0000000);
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -285,7 +289,10 @@ fn test_full_flow_mint_rate_claim() {
     assert_eq!(claimed, 512_710_937_490);
 
     // Yield recipient token balance = 1M + claimed
-    assert_eq!(s.sac_token.balance(&s.yield_recipient), one_million + claimed);
+    assert_eq!(
+        s.sac_token.balance(&s.yield_recipient),
+        one_million + claimed
+    );
 
     // Step 5: total_principal unchanged, total_supply includes claimed
     assert_eq!(s.contract.total_principal(), one_million);
@@ -315,14 +322,20 @@ fn test_no_yield_accrues_after_principal_zero() {
 fn test_set_rate_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
     let result = s.contract.try_set_rate(&s.minter, &500);
-    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+    assert_eq!(
+        result.unwrap_err().unwrap_err(),
+        soroban_sdk::InvokeError::Abort
+    );
 }
 
 #[test]
 fn test_claim_yield_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
     let result = s.contract.try_claim_yield(&s.yield_recipient);
-    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+    assert_eq!(
+        result.unwrap_err().unwrap_err(),
+        soroban_sdk::InvokeError::Abort
+    );
 }
 
 // =============================================================================
@@ -333,9 +346,7 @@ fn test_claim_yield_reverts_without_caller_auth() {
 fn test_yield_recipient_manager_cannot_set_rate() {
     let s = setup();
 
-    let result = s
-        .contract
-        .try_set_rate(&s.yield_recipient_manager, &500);
+    let result = s.contract.try_set_rate(&s.yield_recipient_manager, &500);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -351,9 +362,7 @@ fn test_yield_recipient_cannot_set_rate() {
 fn test_forced_transfer_manager_cannot_set_rate() {
     let s = setup();
 
-    let result = s
-        .contract
-        .try_set_rate(&s.forced_transfer_manager, &500);
+    let result = s.contract.try_set_rate(&s.forced_transfer_manager, &500);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 

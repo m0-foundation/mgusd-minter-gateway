@@ -350,7 +350,10 @@ fn test_classic_vs_contract_issuer_comparison() {
     let contract_ok = contract_result.is_ok();
 
     // We know classic works (G... issuer authorized = tokens accumulate)
-    assert!(classic_ok, "G... issuer transfer should succeed (issuer was authorized)");
+    assert!(
+        classic_ok,
+        "G... issuer transfer should succeed (issuer was authorized)"
+    );
 
     // Document the C... issuer result — either outcome is informative
     if !contract_ok {
@@ -497,10 +500,12 @@ fn test_direct_sac_approve_and_transfer_from_bypass() {
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Alice approves a spender directly on the SAC
-    s.sac_token.approve(&alice, &spender, &allowance_amount, &1000);
+    s.sac_token
+        .approve(&alice, &spender, &allowance_amount, &1000);
 
     // Spender calls transfer_from on the SAC — completely bypasses our contract
-    s.sac_token.transfer_from(&spender, &alice, &bob, &allowance_amount);
+    s.sac_token
+        .transfer_from(&spender, &alice, &bob, &allowance_amount);
 
     // Works — both accounts are authorized, allowance was set on SAC
     assert_eq!(s.sac_token.balance(&alice), amount - allowance_amount);
@@ -526,7 +531,9 @@ fn test_direct_sac_transfer_from_blocked_for_deauthorized_recipient() {
     s.sac_token.approve(&alice, &spender, &amount, &1000);
 
     // Spender tries transfer_from to deauthorized bob — should fail
-    let result = s.sac_token.try_transfer_from(&spender, &alice, &bob, &500_0000000);
+    let result = s
+        .sac_token
+        .try_transfer_from(&spender, &alice, &bob, &500_0000000);
     assert!(result.is_err());
 
     // Balances unchanged
@@ -615,7 +622,9 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     // Contract address was never authorized — blocked by RequiredFlag
     assert!(!s.contract.is_authorized(&contract_addr));
 
-    let result = s.sac_token.try_transfer(&user, &contract_addr, &500_0000000);
+    let result = s
+        .sac_token
+        .try_transfer(&user, &contract_addr, &500_0000000);
     assert!(result.is_err());
 
     // Only after explicit authorization does it work

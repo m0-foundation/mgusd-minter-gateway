@@ -144,9 +144,13 @@ fn test_onboarding_flow() {
     s.contract.mint(&s.minter, &new_user, &mint_amount);
 
     // New user can freely transfer to existing user — no authorize_and_transfer needed
-    s.sac_token.transfer(&new_user, &existing_user, &transfer_amount);
+    s.sac_token
+        .transfer(&new_user, &existing_user, &transfer_amount);
 
-    assert_eq!(s.sac_token.balance(&new_user), mint_amount - transfer_amount);
+    assert_eq!(
+        s.sac_token.balance(&new_user),
+        mint_amount - transfer_amount
+    );
     assert_eq!(s.sac_token.balance(&existing_user), transfer_amount);
 }
 
@@ -193,7 +197,9 @@ fn test_sac_transfer_to_contract_blocked_when_contract_not_authorized() {
     s.contract.mint(&s.minter, &user, &amount);
 
     // Contract address is NOT authorized (never unfrozen) — transfer should fail
-    let result = s.sac_token.try_transfer(&user, &contract_addr, &500_0000000);
+    let result = s
+        .sac_token
+        .try_transfer(&user, &contract_addr, &500_0000000);
     assert!(result.is_err());
 
     // User balance unchanged
@@ -216,7 +222,8 @@ fn test_sac_transfer_to_contract_succeeds_when_contract_authorized() {
     s.contract.unfreeze_account(&s.admin, &contract_addr);
 
     // Transfer to contract address — succeeds but tokens are locked forever
-    s.sac_token.transfer(&user, &contract_addr, &transfer_amount);
+    s.sac_token
+        .transfer(&user, &contract_addr, &transfer_amount);
 
     assert_eq!(s.sac_token.balance(&user), amount - transfer_amount);
     assert_eq!(s.sac_token.balance(&contract_addr), transfer_amount);
