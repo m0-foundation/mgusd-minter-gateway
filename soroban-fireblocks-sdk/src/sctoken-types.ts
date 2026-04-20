@@ -1,3 +1,5 @@
+export const MAX_BATCH_SIZE = 20;
+
 export interface MintParams {
   /** Contract ID (C...) */
   contractId: string;
@@ -41,13 +43,44 @@ export interface QueryParams {
   contractId: string;
 }
 
-export interface QueryAddressResult {
-  /** Decoded Stellar address (G... or C...) */
-  address: string;
-  /** Transaction hash */
-  txHash: string;
-  /** Ledger the transaction was included in */
-  ledger: number;
+export interface FreezeAccountParams {
+  contractId: string;
+  /** Caller address — must be admin or distributor */
+  caller: string;
+  /** Account to freeze */
+  account: string;
+}
+
+export interface BatchFreezeAccountsParams {
+  contractId: string;
+  /** Caller address — must be admin or distributor */
+  caller: string;
+  /** Accounts to freeze (max 20) */
+  accounts: string[];
+}
+
+export interface ForceTransferParams {
+  contractId: string;
+  /** Caller address — must be admin or forced_transfer_manager */
+  caller: string;
+  /** Source account */
+  from: string;
+  /** Destination account */
+  to: string;
+  /** Amount in stroops */
+  amount: bigint;
+}
+
+export interface ReconcileBurnParams {
+  contractId: string;
+  /** Amount to reconcile in stroops */
+  amount: bigint;
+}
+
+export interface ClaimYieldParams {
+  contractId: string;
+  /** Caller address — must be admin or yield_recipient */
+  caller: string;
 }
 
 export interface DeployFullParams {
