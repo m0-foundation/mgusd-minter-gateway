@@ -128,6 +128,7 @@ fn test_burn_exactly_principal() {
     deposit_reserves(&s, &s.admin, yield_reserves_amount);
 
     let total_supply_before_claim = s.contract.total_supply();
+    let _claimed = s.contract.claim_yield(&s.yield_recipient);
 
     // claim_yield distributes RD (collateral) tokens, NOT MGUSD — total_supply unchanged
     assert_eq!(s.contract.total_supply(), total_supply_before_claim);
