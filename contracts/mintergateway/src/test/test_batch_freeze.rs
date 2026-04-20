@@ -44,8 +44,7 @@ fn test_batch_freeze_by_distributor() {
         .batch_unfreeze_accounts(&s.distributor, &accounts);
 
     // Then freeze them
-    s.contract
-        .batch_freeze_accounts(&s.distributor, &accounts);
+    s.contract.batch_freeze_accounts(&s.distributor, &accounts);
 
     for account in accounts.iter() {
         assert!(!s.contract.is_authorized(&account));
@@ -105,8 +104,7 @@ fn test_batch_freeze_single_account() {
         .batch_unfreeze_accounts(&s.distributor, &accounts);
     assert!(s.contract.is_authorized(&account));
 
-    s.contract
-        .batch_freeze_accounts(&s.distributor, &accounts);
+    s.contract.batch_freeze_accounts(&s.distributor, &accounts);
     assert!(!s.contract.is_authorized(&account));
 }
 
@@ -116,8 +114,7 @@ fn test_batch_freeze_empty_vec() {
     let accounts: Vec<Address> = Vec::new(&s.env);
 
     // Empty vec is a no-op, should not panic
-    s.contract
-        .batch_freeze_accounts(&s.distributor, &accounts);
+    s.contract.batch_freeze_accounts(&s.distributor, &accounts);
     s.contract
         .batch_unfreeze_accounts(&s.distributor, &accounts);
 }
@@ -163,13 +160,8 @@ fn test_minter_cannot_batch_freeze() {
     let s = setup();
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
-    let result = s
-        .contract
-        .try_batch_freeze_accounts(&s.minter, &accounts);
-    assert_eq!(
-        result,
-        Err(Ok(crate::YieldTokenError::UnauthorizedError))
-    );
+    let result = s.contract.try_batch_freeze_accounts(&s.minter, &accounts);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 #[test]
@@ -178,13 +170,8 @@ fn test_random_cannot_batch_freeze() {
     let random = Address::generate(&s.env);
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
-    let result = s
-        .contract
-        .try_batch_freeze_accounts(&random, &accounts);
-    assert_eq!(
-        result,
-        Err(Ok(crate::YieldTokenError::UnauthorizedError))
-    );
+    let result = s.contract.try_batch_freeze_accounts(&random, &accounts);
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 // =============================================================================
@@ -202,10 +189,7 @@ fn test_batch_freeze_exceeds_max_size() {
     let result = s
         .contract
         .try_batch_freeze_accounts(&s.distributor, &accounts);
-    assert_eq!(
-        result,
-        Err(Ok(crate::YieldTokenError::BatchTooLargeError))
-    );
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::BatchTooLargeError)));
 }
 
 #[test]
@@ -235,8 +219,7 @@ fn test_batch_freeze_at_max_size() {
 
     // Accounts start unauthorized (AUTH_REQUIRED), so freezing is a no-op
     // on auth state but should succeed without hitting resource limits
-    s.contract
-        .batch_freeze_accounts(&s.distributor, &accounts);
+    s.contract.batch_freeze_accounts(&s.distributor, &accounts);
 
     for account in accounts.iter() {
         assert!(!s.contract.is_authorized(&account));
@@ -265,14 +248,17 @@ fn test_batch_freeze_blocks_transfers() {
 
     // Batch freeze alice and bob
     let to_freeze: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
-    s.contract
-        .batch_freeze_accounts(&s.distributor, &to_freeze);
+    s.contract.batch_freeze_accounts(&s.distributor, &to_freeze);
 
     // Neither can transfer
-    let result_alice = s.sac_token.try_transfer(&alice, &recipient, &(100 * DECIMALS));
+    let result_alice = s
+        .sac_token
+        .try_transfer(&alice, &recipient, &(100 * DECIMALS));
     assert!(result_alice.is_err());
 
-    let result_bob = s.sac_token.try_transfer(&bob, &recipient, &(100 * DECIMALS));
+    let result_bob = s
+        .sac_token
+        .try_transfer(&bob, &recipient, &(100 * DECIMALS));
     assert!(result_bob.is_err());
 }
 
@@ -296,8 +282,7 @@ fn test_batch_unfreeze_restores_transfers() {
     s.contract.batch_freeze_accounts(&s.admin, &users);
 
     // Batch unfreeze
-    s.contract
-        .batch_unfreeze_accounts(&s.distributor, &users);
+    s.contract.batch_unfreeze_accounts(&s.distributor, &users);
 
     // Both can now transfer
     s.sac_token.transfer(&alice, &recipient, &(100 * DECIMALS));

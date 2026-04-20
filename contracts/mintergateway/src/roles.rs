@@ -88,4 +88,3 @@ pub fn write_distributor(env: &Env, addr: &Address) {
     let key = DataKey::Distributor;
     env.storage().instance().set(&key, addr);
 }
-

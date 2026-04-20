@@ -20,7 +20,9 @@ fn test_freeze_account_prevents_transfer() {
     assert!(!s.contract.is_authorized(&user));
 
     // Frozen user cannot transfer
-    let result = s.sac_token.try_transfer(&user, &recipient, &(100 * DECIMALS));
+    let result = s
+        .sac_token
+        .try_transfer(&user, &recipient, &(100 * DECIMALS));
     assert!(result.is_err());
 }
 
@@ -95,7 +97,10 @@ fn test_freeze_account_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let user = Address::generate(&s.env);
     let result = s.contract.try_freeze_account(&s.admin, &user);
-    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+    assert_eq!(
+        result.unwrap_err().unwrap_err(),
+        soroban_sdk::InvokeError::Abort
+    );
 }
 
 #[test]
@@ -103,7 +108,10 @@ fn test_unfreeze_account_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let user = Address::generate(&s.env);
     let result = s.contract.try_unfreeze_account(&s.admin, &user);
-    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+    assert_eq!(
+        result.unwrap_err().unwrap_err(),
+        soroban_sdk::InvokeError::Abort
+    );
 }
 
 #[test]
@@ -210,4 +218,3 @@ fn test_freeze_blocks_subsequent_direct_sac_transfer() {
     // Alice's remaining balance is locked
     assert_eq!(s.sac_token.balance(&alice), amount - 100 * DECIMALS);
 }
-

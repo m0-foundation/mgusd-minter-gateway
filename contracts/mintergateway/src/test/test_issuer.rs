@@ -5,7 +5,9 @@ use soroban_sdk::{
     Address, Env,
 };
 
-use super::setup::{dummy_issuer, setup, give_collateral, deposit_reserves, advance_time, DECIMALS};
+use super::setup::{
+    advance_time, deposit_reserves, dummy_issuer, give_collateral, setup, DECIMALS,
+};
 
 // =============================================================================
 // SEND-TO-ISSUER TESTS
@@ -351,14 +353,18 @@ fn test_classic_vs_contract_issuer_comparison() {
     contract_sac_admin.mint(&user2, &(1_000 * DECIMALS));
 
     // Transfer to C... issuer (don't authorize — test if it even matters)
-    let contract_result = contract_sac_token.try_transfer(&user2, &contract_admin, &(500 * DECIMALS));
+    let contract_result =
+        contract_sac_token.try_transfer(&user2, &contract_admin, &(500 * DECIMALS));
 
     // Report
     let classic_ok = classic_result.is_ok();
     let contract_ok = contract_result.is_ok();
 
     // We know classic works (G... issuer authorized = tokens accumulate)
-    assert!(classic_ok, "G... issuer transfer should succeed (issuer was authorized)");
+    assert!(
+        classic_ok,
+        "G... issuer transfer should succeed (issuer was authorized)"
+    );
 
     // Document the C... issuer result — either outcome is informative
     if !contract_ok {
@@ -510,10 +516,12 @@ fn test_direct_sac_approve_and_transfer_from_bypass() {
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Alice approves a spender directly on the SAC
-    s.sac_token.approve(&alice, &spender, &allowance_amount, &1000);
+    s.sac_token
+        .approve(&alice, &spender, &allowance_amount, &1000);
 
     // Spender calls transfer_from on the SAC — completely bypasses our contract
-    s.sac_token.transfer_from(&spender, &alice, &bob, &allowance_amount);
+    s.sac_token
+        .transfer_from(&spender, &alice, &bob, &allowance_amount);
 
     // Works — both accounts are authorized, allowance was set on SAC
     assert_eq!(s.sac_token.balance(&alice), amount - allowance_amount);
@@ -540,7 +548,9 @@ fn test_direct_sac_transfer_from_blocked_for_deauthorized_recipient() {
     s.sac_token.approve(&alice, &spender, &amount, &1000);
 
     // Spender tries transfer_from to deauthorized bob — should fail
-    let result = s.sac_token.try_transfer_from(&spender, &alice, &bob, &(500 * DECIMALS));
+    let result = s
+        .sac_token
+        .try_transfer_from(&spender, &alice, &bob, &(500 * DECIMALS));
     assert!(result.is_err());
 
     // Balances unchanged
@@ -630,13 +640,16 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     // Contract address was never authorized — blocked by RequiredFlag
     assert!(!s.contract.is_authorized(&contract_addr));
 
-    let result = s.sac_token.try_transfer(&user, &contract_addr, &(500 * DECIMALS));
+    let result = s
+        .sac_token
+        .try_transfer(&user, &contract_addr, &(500 * DECIMALS));
     assert!(result.is_err());
 
     // Only after explicit authorization does it work
     s.contract.unfreeze_account(&s.admin, &contract_addr);
     assert!(s.contract.is_authorized(&contract_addr));
 
-    s.sac_token.transfer(&user, &contract_addr, &(500 * DECIMALS));
+    s.sac_token
+        .transfer(&user, &contract_addr, &(500 * DECIMALS));
     assert_eq!(s.sac_token.balance(&contract_addr), 500 * DECIMALS);
 }

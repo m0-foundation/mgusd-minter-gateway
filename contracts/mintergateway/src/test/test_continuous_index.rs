@@ -10,9 +10,15 @@ fn test_constructor() {
 
     assert_eq!(s.contract.admin(), s.admin);
     assert_eq!(s.contract.minter(), s.minter);
-    assert_eq!(s.contract.yield_recipient_manager(), s.yield_recipient_manager);
+    assert_eq!(
+        s.contract.yield_recipient_manager(),
+        s.yield_recipient_manager
+    );
     assert_eq!(s.contract.yield_recipient(), s.yield_recipient);
-    assert_eq!(s.contract.forced_transfer_manager(), s.forced_transfer_manager);
+    assert_eq!(
+        s.contract.forced_transfer_manager(),
+        s.forced_transfer_manager
+    );
     assert_eq!(s.contract.sac_token(), s.sac_token.address);
 
     assert_eq!(s.contract.current_index(), INDEX_SCALE);
@@ -181,7 +187,8 @@ fn test_index_unchanged_with_zero_rate() {
     let s = setup();
 
     give_collateral(&s, &s.minter, 10_000 * DECIMALS);
-    s.contract.mint(&s.minter, &s.yield_recipient, &(10_000 * DECIMALS));
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &(10_000 * DECIMALS));
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -223,7 +230,8 @@ fn test_index_stored_after_state_change() {
     let s = setup();
 
     give_collateral(&s, &s.minter, 1_000 * DECIMALS);
-    s.contract.mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -248,7 +256,8 @@ fn test_index_growth_1_day() {
     let s = setup();
 
     give_collateral(&s, &s.minter, 1_000 * DECIMALS);
-    s.contract.mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, 86_400);
@@ -263,7 +272,8 @@ fn test_index_growth_1_hour() {
     let s = setup();
 
     give_collateral(&s, &s.minter, 1_000 * DECIMALS);
-    s.contract.mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, 3_600);

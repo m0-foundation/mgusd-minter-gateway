@@ -159,7 +159,8 @@ fn test_yield_overestimation_after_mint_at_grown_index() {
     let expected_total = yield_after_yr1 + correct_yield_yr2;
 
     assert_eq!(
-        total_claimed, expected_total,
+        total_claimed,
+        expected_total,
         "Yield is overestimated. Claimed {} but correct is {}. \
          Excess: {} tokens (protocol overpays by this amount)",
         total_claimed,
@@ -239,7 +240,8 @@ fn test_yield_underestimation_after_burn_at_grown_index() {
     let expected_total = yield_after_yr1 + correct_yield_yr2;
 
     assert_eq!(
-        total_claimed, expected_total,
+        total_claimed,
+        expected_total,
         "Yield is underestimated after burn. Claimed {} but correct is {}. \
          Shortfall: {} tokens",
         total_claimed,
@@ -272,7 +274,8 @@ fn test_large_index_growth_amplifies_principal_error() {
     let actual_principal = s.contract.total_principal();
 
     assert_eq!(
-        actual_principal, expected_principal,
+        actual_principal,
+        expected_principal,
         "Large index growth amplifies the bug. \
          Got {} (nominal), expected {} (PV). \
          Overstatement: {} tokens ({:.1}%)",
@@ -314,7 +317,8 @@ fn test_sequential_mints_at_different_indices_accumulate_pv() {
     let actual_principal = s.contract.total_principal();
 
     assert_eq!(
-        actual_principal, expected_total_pv,
+        actual_principal,
+        expected_total_pv,
         "Sequential mints should accumulate PV. \
          Buggy (nominal): {}, correct (PV): {}. \
          Cumulative overstatement: {} tokens",

@@ -65,12 +65,17 @@ fn test_multiple_mints_accumulate_collateral() {
     let s = setup();
 
     give_collateral(&s, &s.minter, 500 * DECIMALS);
-    s.contract.mint(&s.minter, &s.yield_recipient, &(500 * DECIMALS));
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &(500 * DECIMALS));
 
     give_collateral(&s, &s.minter, 300 * DECIMALS);
-    s.contract.mint(&s.minter, &s.yield_recipient, &(300 * DECIMALS));
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &(300 * DECIMALS));
 
-    assert_eq!(s.collateral_token.balance(&s.contract.address), 800 * DECIMALS);
+    assert_eq!(
+        s.collateral_token.balance(&s.contract.address),
+        800 * DECIMALS
+    );
 }
 
 // =============================================================================
@@ -183,7 +188,11 @@ fn test_set_collateral_token_admin_only() {
 fn test_set_collateral_token_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_addr = Address::generate(&s.env);
-    let err = s.contract.try_set_collateral_token(&new_addr).unwrap_err().unwrap();
+    let err = s
+        .contract
+        .try_set_collateral_token(&new_addr)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(soroban_sdk::Error::from(err), auth_error());
 }
 
@@ -213,7 +222,9 @@ fn test_mint_fails_insufficient_collateral() {
 
     // Give minter only 500 but try to mint 1000
     give_collateral(&s, &s.minter, 500 * DECIMALS);
-    let result = s.contract.try_mint(&s.minter, &recipient, &(1_000 * DECIMALS));
+    let result = s
+        .contract
+        .try_mint(&s.minter, &recipient, &(1_000 * DECIMALS));
     assert!(result.is_err());
 }
 
@@ -275,7 +286,9 @@ fn test_collateral_provider_must_authorize() {
 
     // Without mock auth, mint will fail because neither the minter's
     // nor the provider's auth is available
-    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
+    let result = s
+        .contract
+        .try_mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort
@@ -401,8 +414,5 @@ fn test_reconcile_burn_exceeds_principal_reverts() {
     // BurnExceedsSupply fires first (amount > total_supply) before the PV check.
     let excessive = amount * 2;
     let result = s.contract.try_reconcile_burn(&excessive, &treasury);
-    assert_eq!(
-        result,
-        Err(Ok(crate::YieldTokenError::BurnExceedsSupply))
-    );
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::BurnExceedsSupply)));
 }

@@ -9,7 +9,10 @@ use super::setup::*;
 #[test]
 fn test_forced_transfer_manager_view() {
     let s = setup();
-    assert_eq!(s.contract.forced_transfer_manager(), s.forced_transfer_manager);
+    assert_eq!(
+        s.contract.forced_transfer_manager(),
+        s.forced_transfer_manager
+    );
 }
 
 #[test]
@@ -54,7 +57,8 @@ fn test_set_yield_recipient() {
     let s = setup();
     let new_yr = Address::generate(&s.env);
 
-    s.contract.set_yield_recipient(&s.yield_recipient_manager, &new_yr);
+    s.contract
+        .set_yield_recipient(&s.yield_recipient_manager, &new_yr);
     assert_eq!(s.contract.yield_recipient(), new_yr);
 }
 
@@ -63,7 +67,10 @@ fn test_set_forced_transfer_manager() {
     let s = setup();
     let new_ftm = Address::generate(&s.env);
 
-    assert_eq!(s.contract.forced_transfer_manager(), s.forced_transfer_manager);
+    assert_eq!(
+        s.contract.forced_transfer_manager(),
+        s.forced_transfer_manager
+    );
 
     s.contract.set_forced_transfer_manager(&new_ftm);
     assert_eq!(s.contract.forced_transfer_manager(), new_ftm);
@@ -180,7 +187,11 @@ fn test_set_minter_reverts_without_auth() {
 fn test_set_yield_recipient_manager_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_yrm = Address::generate(&s.env);
-    let err = s.contract.try_set_yield_recipient_manager(&new_yrm).unwrap_err().unwrap();
+    let err = s
+        .contract
+        .try_set_yield_recipient_manager(&new_yrm)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(soroban_sdk::Error::from(err), auth_error());
 }
 
@@ -188,7 +199,11 @@ fn test_set_yield_recipient_manager_reverts_without_auth() {
 fn test_set_forced_transfer_manager_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_ftm = Address::generate(&s.env);
-    let err = s.contract.try_set_forced_transfer_manager(&new_ftm).unwrap_err().unwrap();
+    let err = s
+        .contract
+        .try_set_forced_transfer_manager(&new_ftm)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(soroban_sdk::Error::from(err), auth_error());
 }
 
@@ -196,7 +211,11 @@ fn test_set_forced_transfer_manager_reverts_without_auth() {
 fn test_set_distributor_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_dist = Address::generate(&s.env);
-    let err = s.contract.try_set_distributor(&new_dist).unwrap_err().unwrap();
+    let err = s
+        .contract
+        .try_set_distributor(&new_dist)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(soroban_sdk::Error::from(err), auth_error());
 }
 
@@ -204,8 +223,13 @@ fn test_set_distributor_reverts_without_auth() {
 fn test_set_yield_recipient_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
     let new_yr = Address::generate(&s.env);
-    let result = s.contract.try_set_yield_recipient(&s.yield_recipient_manager, &new_yr);
-    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+    let result = s
+        .contract
+        .try_set_yield_recipient(&s.yield_recipient_manager, &new_yr);
+    assert_eq!(
+        result.unwrap_err().unwrap_err(),
+        soroban_sdk::InvokeError::Abort
+    );
 }
 
 #[test]
@@ -225,9 +249,7 @@ fn test_minter_cannot_set_yield_recipient() {
     let s = setup();
     let new_yr = Address::generate(&s.env);
 
-    let result = s
-        .contract
-        .try_set_yield_recipient(&s.minter, &new_yr);
+    let result = s.contract.try_set_yield_recipient(&s.minter, &new_yr);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -259,8 +281,6 @@ fn test_random_cannot_set_yield_recipient() {
     let random = Address::generate(&s.env);
     let new_yr = Address::generate(&s.env);
 
-    let result = s
-        .contract
-        .try_set_yield_recipient(&random, &new_yr);
+    let result = s.contract.try_set_yield_recipient(&random, &new_yr);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }

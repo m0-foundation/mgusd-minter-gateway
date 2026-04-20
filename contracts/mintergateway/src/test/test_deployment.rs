@@ -92,5 +92,8 @@ fn test_upgrade_fails_with_invalid_wasm_hash() {
     // update_current_contract_wasm because the hash doesn't correspond
     // to any uploaded WASM — proving auth was satisfied (not an auth error).
     let result = s.contract.try_upgrade(&hash);
-    assert!(result.is_err(), "upgrade with non-existent WASM hash should fail");
+    assert!(
+        result.is_err(),
+        "upgrade with non-existent WASM hash should fail"
+    );
 }

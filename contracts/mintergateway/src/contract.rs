@@ -2,13 +2,14 @@ use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Vec};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::collateral_token::{read_collateral_token, write_collateral_token};
+use crate::constants::MAX_BATCH_SIZE;
 use crate::errors::YieldTokenError;
 use crate::events::{
-    emit_account_frozen, emit_account_unfrozen, emit_collateral_locked,
-    emit_collateral_token_set, emit_collateral_unlocked, emit_distributor_set,
-    emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set,
-    emit_minter_set, emit_set_admin, emit_supply_changed, emit_upgraded, emit_yield_claimed,
-    emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_account_frozen, emit_account_unfrozen, emit_collateral_locked, emit_collateral_token_set,
+    emit_collateral_unlocked, emit_distributor_set, emit_force_transfer,
+    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set, emit_set_admin,
+    emit_supply_changed, emit_upgraded, emit_yield_claimed, emit_yield_recipient_manager_set,
+    emit_yield_recipient_set,
 };
 use crate::roles::{
     read_distributor, read_forced_transfer_manager, read_minter, read_yield_recipient,
@@ -16,7 +17,6 @@ use crate::roles::{
     write_forced_transfer_manager, write_minter, write_yield_recipient,
     write_yield_recipient_manager,
 };
-use crate::constants::MAX_BATCH_SIZE;
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
 use crate::yield_state::{
@@ -254,7 +254,8 @@ impl YieldToken {
         let admin = require_admin(&e);
         extend_instance_ttl(&e);
 
-        e.deployer().update_current_contract_wasm(new_wasm_hash.clone());
+        e.deployer()
+            .update_current_contract_wasm(new_wasm_hash.clone());
 
         emit_upgraded(&e, admin, new_wasm_hash);
     }
@@ -266,12 +267,7 @@ impl YieldToken {
     /// Mints SAC tokens directly to the recipient and updates accumulators.
     /// Locks collateral (RD) 1:1 from the caller into the contract.
     /// Minter or admin only.
-    pub fn mint(
-        e: Env,
-        caller: Address,
-        to: Address,
-        amount: i128,
-    ) -> Result<(), YieldTokenError> {
+    pub fn mint(e: Env, caller: Address, to: Address, amount: i128) -> Result<(), YieldTokenError> {
         check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
@@ -279,8 +275,7 @@ impl YieldToken {
         // Lock collateral: transfer from caller to this contract
         let collateral_addr = read_collateral_token(&e);
         let contract_addr = e.current_contract_address();
-        token::TokenClient::new(&e, &collateral_addr)
-            .transfer(&caller, &contract_addr, &amount);
+        token::TokenClient::new(&e, &collateral_addr).transfer(&caller, &contract_addr, &amount);
 
         // Update index before changing principal
         update_index(&e);
@@ -294,7 +289,7 @@ impl YieldToken {
         if !sac_client.authorized(&to) {
             return Err(YieldTokenError::RecipientFrozen);
         }
-        
+
         sac_client.mint(&to, &amount);
 
         let state = read_yield_state(&e);
@@ -306,7 +301,12 @@ impl YieldToken {
     /// Burns SAC tokens from an account and updates accumulators.
     /// Returns collateral (RD) 1:1 to the `from` address.
     /// Minter or admin only.
-    pub fn burn(e: Env, caller: Address, from: Address, amount: i128) -> Result<(), YieldTokenError> {
+    pub fn burn(
+        e: Env,
+        caller: Address,
+        from: Address,
+        amount: i128,
+    ) -> Result<(), YieldTokenError> {
         check_positive_amount(amount)?;
         require_admin_or(&e, &caller, &read_minter(&e))?;
         extend_instance_ttl(&e);
@@ -324,8 +324,7 @@ impl YieldToken {
         // Return collateral to the burner
         let collateral_addr = read_collateral_token(&e);
         let contract_addr = e.current_contract_address();
-        token::TokenClient::new(&e, &collateral_addr)
-            .transfer(&contract_addr, &from, &amount);
+        token::TokenClient::new(&e, &collateral_addr).transfer(&contract_addr, &from, &amount);
 
         let state = read_yield_state(&e);
         emit_supply_changed(&e, -amount, state.total_principal, state.total_supply);
@@ -359,8 +358,11 @@ impl YieldToken {
         // Release collateral to the specified address (treasury)
         let collateral_addr = read_collateral_token(&e);
         let contract_addr = e.current_contract_address();
-        token::TokenClient::new(&e, &collateral_addr)
-            .transfer(&contract_addr, &collateral_to, &amount);
+        token::TokenClient::new(&e, &collateral_addr).transfer(
+            &contract_addr,
+            &collateral_to,
+            &amount,
+        );
 
         let state = read_yield_state(&e);
         emit_supply_changed(&e, -amount, state.total_principal, state.total_supply);
@@ -409,7 +411,7 @@ impl YieldToken {
         if !sac_client.authorized(&to) {
             return Err(YieldTokenError::RecipientFrozen);
         }
-        
+
         sac_client.clawback(&from, &amount);
         sac_client.mint(&to, &amount);
 
@@ -461,16 +463,19 @@ impl YieldToken {
             // Verify collateral reserves cover total_supply + claimed yield
             let collateral_addr = read_collateral_token(&e);
             let contract_addr = e.current_contract_address();
-            let collateral_balance = token::TokenClient::new(&e, &collateral_addr)
-                .balance(&contract_addr);
+            let collateral_balance =
+                token::TokenClient::new(&e, &collateral_addr).balance(&contract_addr);
             let total_supply = get_total_supply(&e);
             if collateral_balance < total_supply.checked_add(claimed).unwrap() {
                 return Err(YieldTokenError::InsufficientCollateralReserves);
             }
 
             // Distribute yield as collateral (RD) tokens
-            token::TokenClient::new(&e, &collateral_addr)
-                .transfer(&contract_addr, &recipient, &claimed);
+            token::TokenClient::new(&e, &collateral_addr).transfer(
+                &contract_addr,
+                &recipient,
+                &claimed,
+            );
 
             emit_yield_claimed(&e, recipient, claimed);
         }
@@ -588,8 +593,7 @@ impl YieldToken {
         extend_instance_ttl(&e);
         let collateral_addr = read_collateral_token(&e);
         let contract_addr = e.current_contract_address();
-        let balance = token::TokenClient::new(&e, &collateral_addr)
-            .balance(&contract_addr);
+        let balance = token::TokenClient::new(&e, &collateral_addr).balance(&contract_addr);
         let total_needed = get_total_supply(&e)
             .checked_add(get_accrued_yield(&e))
             .unwrap();

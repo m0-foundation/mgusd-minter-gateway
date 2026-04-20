@@ -61,9 +61,15 @@ pub fn exponent(x: i128) -> i128 {
     // Each term builds on the previous: term_n = term_{n-1} * x / n
     // The factorial is absorbed incrementally (e.g., /2 then /3 = /6, then /4 = /24).
     let first_term = x; // x
-    let second_term = first_term.fixed_mul_floor(first_term, 2 * INDEX_SCALE).unwrap(); // x * x / 2 = x²/2
-    let third_term = second_term.fixed_mul_floor(first_term, 3 * INDEX_SCALE).unwrap(); // x²/2 * x / 3 = x³/6
-    let fourth_term = third_term.fixed_mul_floor(first_term, 4 * INDEX_SCALE).unwrap(); // x³/6 * x / 4 = x⁴/24
+    let second_term = first_term
+        .fixed_mul_floor(first_term, 2 * INDEX_SCALE)
+        .unwrap(); // x * x / 2 = x²/2
+    let third_term = second_term
+        .fixed_mul_floor(first_term, 3 * INDEX_SCALE)
+        .unwrap(); // x²/2 * x / 3 = x³/6
+    let fourth_term = third_term
+        .fixed_mul_floor(first_term, 4 * INDEX_SCALE)
+        .unwrap(); // x³/6 * x / 4 = x⁴/24
 
     INDEX_SCALE
         .checked_add(first_term)

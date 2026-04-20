@@ -181,10 +181,7 @@ fn test_first_update_index_from_timestamp_zero() {
 
     // The index should have grown from the default (timestamp 0 → T0 + 1_000_000)
     let idx = s.contract.current_index();
-    assert!(
-        idx > INDEX_SCALE,
-        "index should have grown from 1.0"
-    );
+    assert!(idx > INDEX_SCALE, "index should have grown from 1.0");
 
     // Now mint — update_index finalizes the grown index
     // PV conversion: principal = 1M * INDEX_SCALE / grown_index

@@ -3,9 +3,14 @@ use soroban_sdk::{Address, Env};
 use crate::storage_types::DataKey;
 
 pub fn read_collateral_token(env: &Env) -> Address {
-    env.storage().instance().get(&DataKey::CollateralToken).unwrap()
+    env.storage()
+        .instance()
+        .get(&DataKey::CollateralToken)
+        .unwrap()
 }
 
 pub fn write_collateral_token(env: &Env, addr: &Address) {
-    env.storage().instance().set(&DataKey::CollateralToken, addr);
+    env.storage()
+        .instance()
+        .set(&DataKey::CollateralToken, addr);
 }

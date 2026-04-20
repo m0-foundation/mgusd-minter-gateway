@@ -151,7 +151,7 @@ pub fn emit_upgraded(env: &Env, by: Address, new_wasm_hash: BytesN<32>) {
 }
 
 #[contractevent]
-pub struct CollateralTokenSet{
+pub struct CollateralTokenSet {
     #[topic]
     pub new: Address,
 }
@@ -161,7 +161,7 @@ pub fn emit_collateral_token_set(env: &Env, new: Address) {
 }
 
 #[contractevent]
-pub struct CollateralLocked{
+pub struct CollateralLocked {
     #[topic]
     pub from: Address,
     pub amount: i128,
@@ -172,7 +172,7 @@ pub fn emit_collateral_locked(env: &Env, from: Address, amount: i128) {
 }
 
 #[contractevent]
-pub struct CollateralUnlocked{
+pub struct CollateralUnlocked {
     #[topic]
     pub to: Address,
     pub amount: i128,

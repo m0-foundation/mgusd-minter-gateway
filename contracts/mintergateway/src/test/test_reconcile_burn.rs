@@ -1,7 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::Address;
 
-use super::setup::{advance_time, give_collateral, setup, SECONDS_PER_YEAR, DECIMALS};
+use super::setup::{advance_time, give_collateral, setup, DECIMALS, SECONDS_PER_YEAR};
 use crate::errors::YieldTokenError;
 
 // =============================================================================
@@ -129,7 +129,10 @@ fn test_reconcile_burn_rejects_zero_amount() {
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_reconcile_burn(&0, &treasury);
-    assert_eq!(result.unwrap_err().unwrap(), YieldTokenError::InvalidAmountError);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        YieldTokenError::InvalidAmountError
+    );
 }
 
 #[test]
@@ -143,7 +146,10 @@ fn test_reconcile_burn_rejects_negative_amount() {
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_reconcile_burn(&-100, &treasury);
-    assert_eq!(result.unwrap_err().unwrap(), YieldTokenError::InvalidAmountError);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        YieldTokenError::InvalidAmountError
+    );
 }
 
 #[test]
@@ -183,7 +189,10 @@ fn test_reconcile_burn_requires_admin_auth() {
     s.env.mock_auths(&[]);
 
     let result = s.contract.try_reconcile_burn(&(100 * DECIMALS), &treasury);
-    assert!(result.is_err(), "reconcile_burn should revert without admin auth");
+    assert!(
+        result.is_err(),
+        "reconcile_burn should revert without admin auth"
+    );
 
     // Accumulators unchanged
     assert_eq!(s.contract.total_principal(), 1_000 * DECIMALS);
