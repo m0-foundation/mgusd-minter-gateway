@@ -14,6 +14,7 @@ pub use crate::continuous_index::{
 pub use crate::contract::{YieldToken, YieldTokenClient};
 
 pub const T0: u64 = 1_000_000; // Arbitrary start timestamp
+pub const DECIMALS: i128 = 10_000_000; // 1 token = 10^7 stroops
 
 pub struct TestSetup<'a> {
     pub env: Env,

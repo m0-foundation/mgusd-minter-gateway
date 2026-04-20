@@ -5,7 +5,7 @@ use soroban_sdk::{
     Address, Env,
 };
 
-use super::setup::{dummy_issuer, setup, give_collateral, deposit_reserves, advance_time};
+use super::setup::{dummy_issuer, setup, give_collateral, deposit_reserves, advance_time, DECIMALS};
 
 // =============================================================================
 // SEND-TO-ISSUER TESTS
@@ -37,7 +37,7 @@ fn test_issuer_is_not_admin() {
 fn test_send_to_issuer_destroys_tokens() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     let issuer = &s.issuer;
 
@@ -70,7 +70,7 @@ fn test_send_to_issuer_destroys_tokens() {
 fn test_frozen_user_cannot_send_to_issuer() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     let issuer = &s.issuer;
 
@@ -85,7 +85,7 @@ fn test_frozen_user_cannot_send_to_issuer() {
     // Frozen user CANNOT transfer to a normal account
     let other = Address::generate(&s.env);
     s.contract.unfreeze_account(&s.admin, &other);
-    let result = s.sac_token.try_transfer(&user, &other, &100_0000000);
+    let result = s.sac_token.try_transfer(&user, &other, &(100 * DECIMALS));
     assert!(result.is_err());
 
     // Frozen user also CANNOT send to issuer — sender deauthorization
@@ -168,7 +168,7 @@ fn test_issuer_is_always_authorized() {
 fn test_issuer_cannot_be_frozen_to_block_send_to_issuer() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
     let issuer = &s.issuer;
 
     // Setup: authorize user, mint tokens
@@ -181,8 +181,8 @@ fn test_issuer_cannot_be_frozen_to_block_send_to_issuer() {
     assert!(freeze_result.is_err(), "Cannot freeze issuer");
 
     // The authorized user CAN still send to issuer (the bypass)
-    s.sac_token.transfer(&user, issuer, &500_0000000);
-    assert_eq!(s.sac_token.balance(&user), amount - 500_0000000);
+    s.sac_token.transfer(&user, issuer, &(500 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&user), amount - 500 * DECIMALS);
 
     // Tokens are destroyed — contract accumulators are stale
     assert_eq!(s.contract.total_principal(), amount);
@@ -195,7 +195,7 @@ fn test_issuer_cannot_be_frozen_to_block_send_to_issuer() {
 fn test_operations_work_after_failed_issuer_freeze() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
     let issuer = &s.issuer;
 
     // Attempt to freeze issuer (fails, but shouldn't corrupt state)
@@ -220,8 +220,8 @@ fn test_operations_work_after_failed_issuer_freeze() {
     assert!(claimed > 0);
 
     // Burn still works
-    s.contract.burn(&s.minter, &user, &100_0000000);
-    assert_eq!(s.sac_token.balance(&user), amount - 100_0000000);
+    s.contract.burn(&s.minter, &user, &(100 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&user), amount - 100 * DECIMALS);
 }
 
 // =============================================================================
@@ -260,9 +260,9 @@ fn test_register_sac_with_contract_issuer() {
     // Try to authorize a user and mint
     let user = Address::generate(&env);
     sac_admin.set_authorized(&user, &true);
-    sac_admin.mint(&user, &1000_0000000);
+    sac_admin.mint(&user, &(1_000 * DECIMALS));
 
-    assert_eq!(sac_token.balance(&user), 1000_0000000);
+    assert_eq!(sac_token.balance(&user), 1000 * DECIMALS);
 }
 
 /// Test 2: If SAC-with-contract-issuer works, can user send to the issuer?
@@ -285,18 +285,18 @@ fn test_contract_issuer_blocks_send_to_issuer() {
 
     let user = Address::generate(&env);
     sac_admin.set_authorized(&user, &true);
-    sac_admin.mint(&user, &1000_0000000);
+    sac_admin.mint(&user, &(1_000 * DECIMALS));
 
     // KEY TEST: user tries to transfer to the contract-issuer
     // If issuer is a contract, this should fail (no Classic account to receive)
-    let result = sac_token.try_transfer(&user, &issuer_contract, &500_0000000);
+    let result = sac_token.try_transfer(&user, &issuer_contract, &(500 * DECIMALS));
 
     if result.is_err() {
         // Contract-issuer blocks the transfer — exactly what we want
-        assert_eq!(sac_token.balance(&user), 1000_0000000);
+        assert_eq!(sac_token.balance(&user), 1000 * DECIMALS);
     } else {
         // Transfer succeeded — check if tokens were destroyed or accumulated
-        assert_eq!(sac_token.balance(&user), 500_0000000);
+        assert_eq!(sac_token.balance(&user), 500 * DECIMALS);
         let issuer_balance = sac_token.balance(&issuer_contract);
         // issuer_balance == 0 means destroyed, > 0 means accumulated
         panic!(
@@ -329,10 +329,10 @@ fn test_classic_vs_contract_issuer_comparison() {
     let user1 = Address::generate(&env);
     classic_sac_admin.set_authorized(&user1, &true);
     classic_sac_admin.set_authorized(&classic_admin, &true); // authorize issuer
-    classic_sac_admin.mint(&user1, &1000_0000000);
+    classic_sac_admin.mint(&user1, &(1_000 * DECIMALS));
 
     // Transfer to G... issuer
-    let classic_result = classic_sac_token.try_transfer(&user1, &classic_admin, &500_0000000);
+    let classic_result = classic_sac_token.try_transfer(&user1, &classic_admin, &(500 * DECIMALS));
 
     // --- Contract issuer (C... address) ---
     let contract_admin = env.register(dummy_issuer::DummyIssuer, ());
@@ -348,10 +348,10 @@ fn test_classic_vs_contract_issuer_comparison() {
 
     let user2 = Address::generate(&env);
     contract_sac_admin.set_authorized(&user2, &true);
-    contract_sac_admin.mint(&user2, &1000_0000000);
+    contract_sac_admin.mint(&user2, &(1_000 * DECIMALS));
 
     // Transfer to C... issuer (don't authorize — test if it even matters)
-    let contract_result = contract_sac_token.try_transfer(&user2, &contract_admin, &500_0000000);
+    let contract_result = contract_sac_token.try_transfer(&user2, &contract_admin, &(500 * DECIMALS));
 
     // Report
     let classic_ok = classic_result.is_ok();
@@ -363,7 +363,7 @@ fn test_classic_vs_contract_issuer_comparison() {
     // Document the C... issuer result — either outcome is informative
     if !contract_ok {
         // Contract issuer blocks transfer — this is the mitigation we want!
-        assert_eq!(contract_sac_token.balance(&user2), 1000_0000000);
+        assert_eq!(contract_sac_token.balance(&user2), 1000 * DECIMALS);
     }
     // If contract_ok is true, the mitigation doesn't work at the SAC level
 }
@@ -381,8 +381,8 @@ fn test_classic_vs_contract_issuer_comparison() {
 fn test_authorized_user_can_send_to_issuer_to_burn() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
-    let send_amount = 400_0000000i128;
+    let amount = 1_000 * DECIMALS;
+    let send_amount = 400 * DECIMALS;
 
     // Authorize user and mint tokens
     s.contract.unfreeze_account(&s.admin, &user);
@@ -413,7 +413,7 @@ fn test_authorized_user_can_send_to_issuer_to_burn() {
 fn test_authorized_user_can_send_full_balance_to_issuer() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &user);
     give_collateral(&s, &s.minter, amount);
@@ -444,7 +444,7 @@ fn test_direct_sac_transfer_blocked_for_deauthorized_recipient() {
     let s = setup();
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     // Authorize alice and mint tokens to her
     s.contract.unfreeze_account(&s.admin, &alice);
@@ -454,7 +454,7 @@ fn test_direct_sac_transfer_blocked_for_deauthorized_recipient() {
 
     // Bob is NOT authorized (never called unfreeze_account)
     // Alice tries to transfer directly on the SAC, bypassing our contract
-    let result = s.sac_token.try_transfer(&alice, &bob, &500_0000000);
+    let result = s.sac_token.try_transfer(&alice, &bob, &(500 * DECIMALS));
 
     // BLOCKED — AUTH_REQUIRED enforces authorization on the recipient
     assert!(result.is_err());
@@ -469,8 +469,8 @@ fn test_direct_sac_transfer_succeeds_between_authorized_accounts() {
     let s = setup();
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
-    let transfer_amount = 400_0000000i128;
+    let amount = 1_000 * DECIMALS;
+    let transfer_amount = 400 * DECIMALS;
 
     // Authorize both accounts and mint to alice
     s.contract.unfreeze_account(&s.admin, &alice);
@@ -500,8 +500,8 @@ fn test_direct_sac_approve_and_transfer_from_bypass() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
     let spender = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
-    let allowance_amount = 500_0000000i128;
+    let amount = 1_000 * DECIMALS;
+    let allowance_amount = 500 * DECIMALS;
 
     // Authorize alice and bob, mint to alice
     s.contract.unfreeze_account(&s.admin, &alice);
@@ -530,7 +530,7 @@ fn test_direct_sac_transfer_from_blocked_for_deauthorized_recipient() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env); // NOT authorized
     let spender = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &alice);
     give_collateral(&s, &s.minter, amount);
@@ -540,7 +540,7 @@ fn test_direct_sac_transfer_from_blocked_for_deauthorized_recipient() {
     s.sac_token.approve(&alice, &spender, &amount, &1000);
 
     // Spender tries transfer_from to deauthorized bob — should fail
-    let result = s.sac_token.try_transfer_from(&spender, &alice, &bob, &500_0000000);
+    let result = s.sac_token.try_transfer_from(&spender, &alice, &bob, &(500 * DECIMALS));
     assert!(result.is_err());
 
     // Balances unchanged
@@ -573,13 +573,13 @@ fn test_without_required_flag_accounts_are_authorized_by_default() {
     let receiver = Address::generate(&env);
 
     // Mint directly via SAC admin — no unfreeze needed
-    sac_admin.mint(&sender, &1_000_0000000);
+    sac_admin.mint(&sender, &(1_000 * DECIMALS));
 
     // Transfer succeeds without any authorization — RequiredFlag was never set
-    sac_token.transfer(&sender, &receiver, &500_0000000);
+    sac_token.transfer(&sender, &receiver, &(500 * DECIMALS));
 
-    assert_eq!(sac_token.balance(&sender), 500_0000000);
-    assert_eq!(sac_token.balance(&receiver), 500_0000000);
+    assert_eq!(sac_token.balance(&sender), 500 * DECIMALS);
+    assert_eq!(sac_token.balance(&receiver), 500 * DECIMALS);
 }
 
 #[test]
@@ -601,18 +601,18 @@ fn test_with_required_flag_new_accounts_are_blocked_by_default() {
 
     // Authorize sender and mint
     sac_admin.set_authorized(&sender, &true);
-    sac_admin.mint(&sender, &1_000_0000000);
+    sac_admin.mint(&sender, &(1_000 * DECIMALS));
 
     // Receiver is NOT authorized — transfer fails
-    let result = sac_token.try_transfer(&sender, &receiver, &500_0000000);
+    let result = sac_token.try_transfer(&sender, &receiver, &(500 * DECIMALS));
     assert!(result.is_err());
 
     // Authorize receiver — now it works
     sac_admin.set_authorized(&receiver, &true);
-    sac_token.transfer(&sender, &receiver, &500_0000000);
+    sac_token.transfer(&sender, &receiver, &(500 * DECIMALS));
 
-    assert_eq!(sac_token.balance(&sender), 500_0000000);
-    assert_eq!(sac_token.balance(&receiver), 500_0000000);
+    assert_eq!(sac_token.balance(&sender), 500 * DECIMALS);
+    assert_eq!(sac_token.balance(&receiver), 500 * DECIMALS);
 }
 
 #[test]
@@ -621,7 +621,7 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     let s = setup();
     let user = Address::generate(&s.env);
     let contract_addr = s.contract.address.clone();
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &user);
     give_collateral(&s, &s.minter, amount);
@@ -630,13 +630,13 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     // Contract address was never authorized — blocked by RequiredFlag
     assert!(!s.contract.is_authorized(&contract_addr));
 
-    let result = s.sac_token.try_transfer(&user, &contract_addr, &500_0000000);
+    let result = s.sac_token.try_transfer(&user, &contract_addr, &(500 * DECIMALS));
     assert!(result.is_err());
 
     // Only after explicit authorization does it work
     s.contract.unfreeze_account(&s.admin, &contract_addr);
     assert!(s.contract.is_authorized(&contract_addr));
 
-    s.sac_token.transfer(&user, &contract_addr, &500_0000000);
-    assert_eq!(s.sac_token.balance(&contract_addr), 500_0000000);
+    s.sac_token.transfer(&user, &contract_addr, &(500 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&contract_addr), 500 * DECIMALS);
 }

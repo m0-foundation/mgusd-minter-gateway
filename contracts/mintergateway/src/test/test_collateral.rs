@@ -9,7 +9,7 @@ use super::setup::*;
 #[test]
 fn test_mint_locks_collateral() {
     let s = setup();
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
     let recipient = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &recipient);
@@ -27,7 +27,7 @@ fn test_mint_locks_collateral() {
 #[test]
 fn test_burn_returns_collateral() {
     let s = setup();
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
@@ -46,7 +46,7 @@ fn test_burn_returns_collateral() {
 #[test]
 fn test_mint_burn_round_trip() {
     let s = setup();
-    let amount = 500_0000000i128;
+    let amount = 500 * DECIMALS;
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
@@ -64,13 +64,13 @@ fn test_mint_burn_round_trip() {
 fn test_multiple_mints_accumulate_collateral() {
     let s = setup();
 
-    give_collateral(&s, &s.minter, 500_0000000);
-    s.contract.mint(&s.minter, &s.yield_recipient, &500_0000000);
+    give_collateral(&s, &s.minter, 500 * DECIMALS);
+    s.contract.mint(&s.minter, &s.yield_recipient, &(500 * DECIMALS));
 
-    give_collateral(&s, &s.minter, 300_0000000);
-    s.contract.mint(&s.minter, &s.yield_recipient, &300_0000000);
+    give_collateral(&s, &s.minter, 300 * DECIMALS);
+    s.contract.mint(&s.minter, &s.yield_recipient, &(300 * DECIMALS));
 
-    assert_eq!(s.collateral_token.balance(&s.contract.address), 800_0000000);
+    assert_eq!(s.collateral_token.balance(&s.contract.address), 800 * DECIMALS);
 }
 
 // =============================================================================
@@ -80,7 +80,7 @@ fn test_multiple_mints_accumulate_collateral() {
 #[test]
 fn test_claim_yield_distributes_rd() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     give_collateral(&s, &s.minter, principal);
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
@@ -106,7 +106,7 @@ fn test_claim_yield_distributes_rd() {
 #[test]
 fn test_claim_yield_no_mgusd_minted() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     give_collateral(&s, &s.minter, principal);
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
@@ -117,7 +117,7 @@ fn test_claim_yield_no_mgusd_minted() {
     let supply_before = s.contract.total_supply();
     let mgusd_before = s.sac_token.balance(&s.yield_recipient);
 
-    deposit_reserves(&s, &s.admin, 1_000_000_0000000);
+    deposit_reserves(&s, &s.admin, 1_000_000 * DECIMALS);
     s.contract.claim_yield(&s.yield_recipient);
 
     // No new MGUSD minted
@@ -128,7 +128,7 @@ fn test_claim_yield_no_mgusd_minted() {
 #[test]
 fn test_claim_yield_fails_without_reserves() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     give_collateral(&s, &s.minter, principal);
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
@@ -147,7 +147,7 @@ fn test_claim_yield_fails_without_reserves() {
 #[test]
 fn test_claim_yield_preserves_backing() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     give_collateral(&s, &s.minter, principal);
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
@@ -212,8 +212,8 @@ fn test_mint_fails_insufficient_collateral() {
     s.contract.unfreeze_account(&s.admin, &recipient);
 
     // Give minter only 500 but try to mint 1000
-    give_collateral(&s, &s.minter, 500_0000000);
-    let result = s.contract.try_mint(&s.minter, &recipient, &1_000_0000000);
+    give_collateral(&s, &s.minter, 500 * DECIMALS);
+    let result = s.contract.try_mint(&s.minter, &recipient, &(1_000 * DECIMALS));
     assert!(result.is_err());
 }
 
@@ -224,7 +224,7 @@ fn test_mint_fails_insufficient_collateral() {
 #[test]
 fn test_collateral_deficit_view() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     // No principal, no deficit
     assert_eq!(s.contract.collateral_deficit(), 0);
@@ -258,7 +258,7 @@ fn test_collateral_balance_view() {
 
     assert_eq!(s.contract.collateral_balance(), 0);
 
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
     give_collateral(&s, &s.minter, amount);
     s.contract.mint(&s.minter, &s.yield_recipient, &amount);
 
@@ -275,7 +275,7 @@ fn test_collateral_provider_must_authorize() {
 
     // Without mock auth, mint will fail because neither the minter's
     // nor the provider's auth is available
-    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort
@@ -289,7 +289,7 @@ fn test_collateral_provider_must_authorize() {
 #[test]
 fn test_reconcile_burn_adjusts_accumulators() {
     let s = setup();
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
     let treasury = Address::generate(&s.env);
 
     give_collateral(&s, &s.minter, amount);
@@ -300,7 +300,7 @@ fn test_reconcile_burn_adjusts_accumulators() {
 
     // Simulate: user sent tokens to issuer (destroyed at protocol level).
     // Admin calls reconcile_burn to sync accumulators.
-    let reconcile_amount = 400_0000000i128;
+    let reconcile_amount = 400 * DECIMALS;
     s.contract.reconcile_burn(&reconcile_amount, &treasury);
 
     assert_eq!(s.contract.total_principal(), amount - reconcile_amount);
@@ -310,7 +310,7 @@ fn test_reconcile_burn_adjusts_accumulators() {
 #[test]
 fn test_reconcile_burn_releases_collateral_to_treasury() {
     let s = setup();
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
     let treasury = Address::generate(&s.env);
 
     give_collateral(&s, &s.minter, amount);
@@ -320,7 +320,7 @@ fn test_reconcile_burn_releases_collateral_to_treasury() {
     assert_eq!(s.collateral_token.balance(&treasury), 0);
 
     // Reconcile burn — collateral goes to treasury, not the original holder
-    let reconcile_amount = 400_0000000i128;
+    let reconcile_amount = 400 * DECIMALS;
     s.contract.reconcile_burn(&reconcile_amount, &treasury);
 
     assert_eq!(
@@ -333,7 +333,7 @@ fn test_reconcile_burn_releases_collateral_to_treasury() {
 #[test]
 fn test_reconcile_burn_admin_only() {
     let s = setup();
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
     let treasury = Address::generate(&s.env);
 
     give_collateral(&s, &s.minter, amount);
@@ -351,7 +351,7 @@ fn test_reconcile_burn_admin_only() {
 #[test]
 fn test_reconcile_burn_with_yield_accrued() {
     let s = setup();
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
     let treasury = Address::generate(&s.env);
 
     give_collateral(&s, &s.minter, amount);
@@ -365,7 +365,7 @@ fn test_reconcile_burn_with_yield_accrued() {
     assert!(yield_before > 0);
 
     // Reconcile half — update_index called first, yield preserved
-    let reconcile_amount = 500_0000000i128;
+    let reconcile_amount = 500 * DECIMALS;
     let idx_at_reconcile = s.contract.current_index();
     s.contract.reconcile_burn(&reconcile_amount, &treasury);
 
@@ -391,7 +391,7 @@ fn test_reconcile_burn_with_yield_accrued() {
 #[test]
 fn test_reconcile_burn_exceeds_principal_reverts() {
     let s = setup();
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
     let treasury = Address::generate(&s.env);
 
     give_collateral(&s, &s.minter, amount);

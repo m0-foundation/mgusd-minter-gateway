@@ -9,7 +9,7 @@ use super::setup::*;
 #[test]
 fn test_mint_increases_both_accumulators_and_sac_balance() {
     let s = setup();
-    let amount = 1_000_000_0000000i128; // 1M tokens (7 decimals)
+    let amount = 1_000_000 * DECIMALS; // 1M tokens (7 decimals)
     let recipient = Address::generate(&s.env);
 
     // Authorize recipient before mint (AUTH_REQUIRED mode)
@@ -30,15 +30,15 @@ fn test_mint_multiple_recipients() {
 
     s.contract.unfreeze_account(&s.admin, &user_a);
     s.contract.unfreeze_account(&s.admin, &user_b);
-    give_collateral(&s, &s.minter, 500_0000000);
-    s.contract.mint(&s.minter, &user_a, &500_0000000);
-    give_collateral(&s, &s.minter, 300_0000000);
-    s.contract.mint(&s.minter, &user_b, &300_0000000);
+    give_collateral(&s, &s.minter, 500 * DECIMALS);
+    s.contract.mint(&s.minter, &user_a, &(500 * DECIMALS));
+    give_collateral(&s, &s.minter, 300 * DECIMALS);
+    s.contract.mint(&s.minter, &user_b, &(300 * DECIMALS));
 
-    assert_eq!(s.contract.total_principal(), 800_0000000);
-    assert_eq!(s.contract.total_supply(), 800_0000000);
-    assert_eq!(s.sac_token.balance(&user_a), 500_0000000);
-    assert_eq!(s.sac_token.balance(&user_b), 300_0000000);
+    assert_eq!(s.contract.total_principal(), 800 * DECIMALS);
+    assert_eq!(s.contract.total_supply(), 800 * DECIMALS);
+    assert_eq!(s.sac_token.balance(&user_a), 500 * DECIMALS);
+    assert_eq!(s.sac_token.balance(&user_b), 300 * DECIMALS);
 }
 
 // =============================================================================
@@ -51,19 +51,19 @@ fn test_burn_decreases_both_accumulators_and_sac_balance() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    give_collateral(&s, &s.minter, 1_000_0000000);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
-    s.contract.burn(&s.minter, &user, &400_0000000);
+    give_collateral(&s, &s.minter, 1_000 * DECIMALS);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
+    s.contract.burn(&s.minter, &user, &(400 * DECIMALS));
 
-    assert_eq!(s.contract.total_principal(), 600_0000000);
-    assert_eq!(s.contract.total_supply(), 600_0000000);
-    assert_eq!(s.sac_token.balance(&user), 600_0000000);
+    assert_eq!(s.contract.total_principal(), 600 * DECIMALS);
+    assert_eq!(s.contract.total_supply(), 600 * DECIMALS);
+    assert_eq!(s.sac_token.balance(&user), 600 * DECIMALS);
 }
 
 #[test]
 fn test_burn_decreases_principal() {
     let s = setup();
-    let initial = 1_000_000_0000000i128;
+    let initial = 1_000_000 * DECIMALS;
 
     give_collateral(&s, &s.minter, initial);
     s.contract.mint(&s.minter, &s.yield_recipient, &initial);
@@ -78,7 +78,7 @@ fn test_burn_decreases_principal() {
 
     // Burn half — PV conversion: pv_burn = burn_amount * INDEX_SCALE / current_index
     // Use current_index because burn() calls update_index() which advances latest_index
-    let burn_amount = 500_000_0000000i128;
+    let burn_amount = 500_000 * DECIMALS;
     let idx_at_burn = s.contract.current_index();
     s.contract.burn(&s.minter, &s.yield_recipient, &burn_amount);
 
@@ -115,7 +115,7 @@ fn test_burn_decreases_principal() {
 #[test]
 fn test_burn_exactly_principal() {
     let s = setup();
-    let initial = 1_000_0000000i128;
+    let initial = 1_000 * DECIMALS;
 
     give_collateral(&s, &s.minter, initial);
     s.contract.mint(&s.minter, &s.yield_recipient, &initial);
@@ -151,7 +151,7 @@ fn test_burn_exactly_principal() {
 #[test]
 fn test_burn_exceeding_principal_reverts() {
     let s = setup();
-    let initial = 1_000_0000000i128;
+    let initial = 1_000 * DECIMALS;
 
     give_collateral(&s, &s.minter, initial);
     s.contract.mint(&s.minter, &s.yield_recipient, &initial);
@@ -186,7 +186,7 @@ fn test_burn_exceeding_principal_reverts() {
 fn test_burn_exceeding_total_supply_reverts() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let mint_amount = 1_000_0000000i128;
+    let mint_amount = 1_000 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &user);
     give_collateral(&s, &s.minter, mint_amount);
@@ -211,7 +211,7 @@ fn test_burn_exceeding_total_supply_reverts() {
 #[test]
 fn test_mint_after_burn_to_zero() {
     let s = setup();
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     give_collateral(&s, &s.minter, amount);
     s.contract.mint(&s.minter, &s.yield_recipient, &amount);
@@ -235,14 +235,14 @@ fn test_mint_after_burn_to_zero() {
 #[test]
 fn test_mint_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
-    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
 }
 
 #[test]
 fn test_burn_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
-    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &1_000_0000000);
+    let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
 }
 
@@ -259,8 +259,8 @@ fn test_unauthorized_account_cannot_receive_mint() {
     assert!(!s.contract.is_authorized(&user));
 
     // Minting to unauthorized account should fail
-    give_collateral(&s, &s.minter, 1_000_0000000);
-    let result = s.contract.try_mint(&s.minter, &user, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000 * DECIMALS);
+    let result = s.contract.try_mint(&s.minter, &user, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::YieldTokenError::RecipientFrozen)));
 }
 
@@ -274,9 +274,9 @@ fn test_authorized_account_can_receive_mint() {
     assert!(s.contract.is_authorized(&user));
 
     // Minting to authorized account succeeds
-    give_collateral(&s, &s.minter, 1_000_0000000);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
-    assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000 * DECIMALS);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
+    assert_eq!(s.sac_token.balance(&user), 1_000 * DECIMALS);
 }
 
 // =============================================================================
@@ -287,10 +287,10 @@ fn test_authorized_account_can_receive_mint() {
 fn test_yield_recipient_manager_cannot_mint() {
     let s = setup();
 
-    give_collateral(&s, &s.yield_recipient_manager, 1_000_0000000);
+    give_collateral(&s, &s.yield_recipient_manager, 1_000 * DECIMALS);
     let result = s
         .contract
-        .try_mint(&s.yield_recipient_manager, &s.yield_recipient, &1_000_0000000);
+        .try_mint(&s.yield_recipient_manager, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -298,10 +298,10 @@ fn test_yield_recipient_manager_cannot_mint() {
 fn test_yield_recipient_cannot_mint() {
     let s = setup();
 
-    give_collateral(&s, &s.yield_recipient, 1_000_0000000);
+    give_collateral(&s, &s.yield_recipient, 1_000 * DECIMALS);
     let result = s
         .contract
-        .try_mint(&s.yield_recipient, &s.yield_recipient, &1_000_0000000);
+        .try_mint(&s.yield_recipient, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -309,10 +309,10 @@ fn test_yield_recipient_cannot_mint() {
 fn test_forced_transfer_manager_cannot_mint() {
     let s = setup();
 
-    give_collateral(&s, &s.forced_transfer_manager, 1_000_0000000);
+    give_collateral(&s, &s.forced_transfer_manager, 1_000 * DECIMALS);
     let result = s
         .contract
-        .try_mint(&s.forced_transfer_manager, &s.yield_recipient, &1_000_0000000);
+        .try_mint(&s.forced_transfer_manager, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -321,10 +321,10 @@ fn test_random_cannot_mint() {
     let s = setup();
     let random = Address::generate(&s.env);
 
-    give_collateral(&s, &random, 1_000_0000000);
+    give_collateral(&s, &random, 1_000 * DECIMALS);
     let result = s
         .contract
-        .try_mint(&random, &s.yield_recipient, &1_000_0000000);
+        .try_mint(&random, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -338,7 +338,7 @@ fn test_yield_recipient_manager_cannot_burn() {
 
     let result = s
         .contract
-        .try_burn(&s.yield_recipient_manager, &s.yield_recipient, &1_000_0000000);
+        .try_burn(&s.yield_recipient_manager, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -348,7 +348,7 @@ fn test_yield_recipient_cannot_burn() {
 
     let result = s
         .contract
-        .try_burn(&s.yield_recipient, &s.yield_recipient, &1_000_0000000);
+        .try_burn(&s.yield_recipient, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -358,7 +358,7 @@ fn test_forced_transfer_manager_cannot_burn() {
 
     let result = s
         .contract
-        .try_burn(&s.forced_transfer_manager, &s.yield_recipient, &1_000_0000000);
+        .try_burn(&s.forced_transfer_manager, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -369,6 +369,6 @@ fn test_random_cannot_burn() {
 
     let result = s
         .contract
-        .try_burn(&random, &s.yield_recipient, &1_000_0000000);
+        .try_burn(&random, &s.yield_recipient, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }

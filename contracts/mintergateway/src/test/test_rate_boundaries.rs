@@ -32,7 +32,7 @@ fn test_set_rate_exceeds_maximum() {
 #[test]
 fn test_set_rate_to_zero_stops_accrual() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     // Mint and set 5% rate
     give_collateral(&s, &s.minter, principal);
@@ -55,7 +55,7 @@ fn test_set_rate_to_zero_stops_accrual() {
 #[test]
 fn test_set_rate_zero_to_nonzero() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     // Rate starts at 0 (default), mint with zero rate
     give_collateral(&s, &s.minter, principal);
@@ -81,7 +81,7 @@ fn test_set_rate_zero_to_nonzero() {
 #[test]
 fn test_set_rate_to_zero_finalizes_pending() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     give_collateral(&s, &s.minter, principal);
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
@@ -118,7 +118,7 @@ fn test_set_rate_to_zero_finalizes_pending() {
 #[test]
 fn test_yield_accuracy_at_max_rate() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     // Mint 1M and set rate to 100% (10000 bps)
     give_collateral(&s, &s.minter, one_million);
@@ -168,7 +168,7 @@ fn test_yield_accuracy_at_max_rate() {
 #[test]
 fn test_first_update_index_from_timestamp_zero() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     // Set rate before any mint — index will grow from timestamp 0
     s.contract.set_rate(&s.minter, &500); // 5%

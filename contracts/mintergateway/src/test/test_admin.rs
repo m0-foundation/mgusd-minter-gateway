@@ -90,11 +90,11 @@ fn test_admin_can_mint() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    give_collateral(&s, &s.admin, 1_000_0000000);
-    s.contract.mint(&s.admin, &user, &1_000_0000000);
+    give_collateral(&s, &s.admin, 1_000 * DECIMALS);
+    s.contract.mint(&s.admin, &user, &(1_000 * DECIMALS));
 
-    assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
-    assert_eq!(s.contract.total_principal(), 1_000_0000000);
+    assert_eq!(s.sac_token.balance(&user), 1_000 * DECIMALS);
+    assert_eq!(s.contract.total_principal(), 1_000 * DECIMALS);
 }
 
 #[test]
@@ -103,13 +103,13 @@ fn test_admin_can_burn() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    give_collateral(&s, &s.minter, 1_000_0000000);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    give_collateral(&s, &s.minter, 1_000 * DECIMALS);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
-    s.contract.burn(&s.admin, &user, &400_0000000);
+    s.contract.burn(&s.admin, &user, &(400 * DECIMALS));
 
-    assert_eq!(s.sac_token.balance(&user), 600_0000000);
-    assert_eq!(s.contract.total_principal(), 600_0000000);
+    assert_eq!(s.sac_token.balance(&user), 600 * DECIMALS);
+    assert_eq!(s.contract.total_principal(), 600 * DECIMALS);
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn test_admin_can_set_rate() {
 #[test]
 fn test_admin_can_claim_yield() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     give_collateral(&s, &s.minter, principal);
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
