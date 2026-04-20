@@ -201,8 +201,12 @@ fn test_force_transfer_to_self() {
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Self-transfer — balance unchanged
-    s.contract
-        .force_transfer(&s.forced_transfer_manager, &alice, &alice, &(500 * DECIMALS));
+    s.contract.force_transfer(
+        &s.forced_transfer_manager,
+        &alice,
+        &alice,
+        &(500 * DECIMALS),
+    );
 
     assert_eq!(s.sac_token.balance(&alice), amount);
 }
@@ -306,9 +310,12 @@ fn test_force_transfer_reverts_without_caller_auth() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
 
-    let result =
-        s.contract
-            .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &(1_000 * DECIMALS));
+    let result = s.contract.try_force_transfer(
+        &s.forced_transfer_manager,
+        &alice,
+        &bob,
+        &(1_000 * DECIMALS),
+    );
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort
@@ -337,9 +344,9 @@ fn test_yield_recipient_cannot_force_transfer() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
 
-    let result = s
-        .contract
-        .try_force_transfer(&s.yield_recipient, &alice, &bob, &(1_000 * DECIMALS));
+    let result =
+        s.contract
+            .try_force_transfer(&s.yield_recipient, &alice, &bob, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
@@ -349,9 +356,12 @@ fn test_yield_recipient_manager_cannot_force_transfer() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
 
-    let result =
-        s.contract
-            .try_force_transfer(&s.yield_recipient_manager, &alice, &bob, &(1_000 * DECIMALS));
+    let result = s.contract.try_force_transfer(
+        &s.yield_recipient_manager,
+        &alice,
+        &bob,
+        &(1_000 * DECIMALS),
+    );
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 

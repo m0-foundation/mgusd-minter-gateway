@@ -47,8 +47,10 @@ fn test_sac_transfer_multiple_recipients() {
     s.contract.mint(&s.minter, &treasury, &amount);
 
     // Distribute to multiple recipients
-    s.sac_token.transfer(&treasury, &recipient_a, &(400 * DECIMALS));
-    s.sac_token.transfer(&treasury, &recipient_b, &(300 * DECIMALS));
+    s.sac_token
+        .transfer(&treasury, &recipient_a, &(400 * DECIMALS));
+    s.sac_token
+        .transfer(&treasury, &recipient_b, &(300 * DECIMALS));
 
     assert_eq!(s.sac_token.balance(&treasury), 300 * DECIMALS);
     assert_eq!(s.sac_token.balance(&recipient_a), 400 * DECIMALS);
@@ -173,7 +175,9 @@ fn test_unauthorized_recipient_cannot_receive_transfer() {
     assert!(!s.contract.is_authorized(&recipient));
 
     // Transfer to unauthorized recipient should fail
-    let result = s.sac_token.try_transfer(&sender, &recipient, &(100 * DECIMALS));
+    let result = s
+        .sac_token
+        .try_transfer(&sender, &recipient, &(100 * DECIMALS));
     assert!(result.is_err());
 }
 

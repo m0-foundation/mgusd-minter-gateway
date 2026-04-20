@@ -343,7 +343,8 @@ fn test_classic_vs_contract_issuer_comparison() {
     contract_sac_admin.mint(&user2, &(1000 * DECIMALS));
 
     // Transfer to C... issuer (don't authorize — test if it even matters)
-    let contract_result = contract_sac_token.try_transfer(&user2, &contract_admin, &(500 * DECIMALS));
+    let contract_result =
+        contract_sac_token.try_transfer(&user2, &contract_admin, &(500 * DECIMALS));
 
     // Report
     let classic_ok = classic_result.is_ok();
@@ -631,6 +632,7 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     s.contract.unfreeze_account(&s.admin, &contract_addr);
     assert!(s.contract.is_authorized(&contract_addr));
 
-    s.sac_token.transfer(&user, &contract_addr, &(500 * DECIMALS));
+    s.sac_token
+        .transfer(&user, &contract_addr, &(500 * DECIMALS));
     assert_eq!(s.sac_token.balance(&contract_addr), 500 * DECIMALS);
 }

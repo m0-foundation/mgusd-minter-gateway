@@ -249,10 +249,14 @@ fn test_batch_freeze_blocks_transfers() {
     s.contract.batch_freeze_accounts(&s.distributor, &to_freeze);
 
     // Neither can transfer
-    let result_alice = s.sac_token.try_transfer(&alice, &recipient, &(100 * DECIMALS));
+    let result_alice = s
+        .sac_token
+        .try_transfer(&alice, &recipient, &(100 * DECIMALS));
     assert!(result_alice.is_err());
 
-    let result_bob = s.sac_token.try_transfer(&bob, &recipient, &(100 * DECIMALS));
+    let result_bob = s
+        .sac_token
+        .try_transfer(&bob, &recipient, &(100 * DECIMALS));
     assert!(result_bob.is_err());
 }
 

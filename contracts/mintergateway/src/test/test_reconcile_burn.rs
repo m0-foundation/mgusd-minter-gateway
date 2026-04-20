@@ -1,7 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::Address;
 
-use super::setup::{advance_time, setup, SECONDS_PER_YEAR, DECIMALS};
+use super::setup::{advance_time, setup, DECIMALS, SECONDS_PER_YEAR};
 use crate::errors::YieldTokenError;
 
 // =============================================================================

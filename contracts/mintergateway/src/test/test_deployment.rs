@@ -43,9 +43,9 @@ fn test_double_initialization_returns_error() {
 fn test_yield_state_defaults_to_zero_on_fresh_contract() {
     let s = setup();
 
-    let state = s.env.as_contract(&s.contract.address, || {
-        read_yield_state(&s.env)
-    });
+    let state = s
+        .env
+        .as_contract(&s.contract.address, || read_yield_state(&s.env));
 
     assert_eq!(state.total_principal, 0);
     assert_eq!(state.total_supply, 0);

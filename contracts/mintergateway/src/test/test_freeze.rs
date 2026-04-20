@@ -19,7 +19,9 @@ fn test_freeze_account_prevents_transfer() {
     assert!(!s.contract.is_authorized(&user));
 
     // Frozen user cannot transfer
-    let result = s.sac_token.try_transfer(&user, &recipient, &(100 * DECIMALS));
+    let result = s
+        .sac_token
+        .try_transfer(&user, &recipient, &(100 * DECIMALS));
     assert!(result.is_err());
 }
 

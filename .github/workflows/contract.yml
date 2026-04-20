@@ -7,12 +7,14 @@ on:
       - "contracts/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "clippy.toml"
       - ".github/workflows/contract.yml"
   pull_request:
     paths:
       - "contracts/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "clippy.toml"
       - ".github/workflows/contract.yml"
 
 env:

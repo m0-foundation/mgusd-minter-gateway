@@ -76,7 +76,12 @@ pub fn emit_supply_synced(
     new_total_principal: i128,
     new_total_supply: i128,
 ) {
-    SupplySynced { delta, new_total_principal, new_total_supply }.publish(env);
+    SupplySynced {
+        delta,
+        new_total_principal,
+        new_total_supply,
+    }
+    .publish(env);
 }
 
 #[contractevent]

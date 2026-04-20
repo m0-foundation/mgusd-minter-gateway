@@ -75,7 +75,10 @@ fn test_burn_blocked_when_paused_resumes_after_unpause() {
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
-    assert!(s.contract.try_burn(&s.minter, &user, &(500 * DECIMALS)).is_err());
+    assert!(s
+        .contract
+        .try_burn(&s.minter, &user, &(500 * DECIMALS))
+        .is_err());
 
     s.contract.unpause(&s.pauser);
     s.contract.burn(&s.minter, &user, &(500 * DECIMALS));
