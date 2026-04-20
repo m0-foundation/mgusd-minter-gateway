@@ -1,30 +1,10 @@
 use soroban_sdk::{Address, Env};
 
-use crate::admin::read_admin;
 use crate::errors::YieldTokenError;
 use crate::storage_types::DataKey;
 
-/// Verifies that `caller` has authorized this invocation and is either
-/// the admin or the specified role holder.
-pub fn require_admin_or(
-    env: &Env,
-    caller: &Address,
-    role_holder: &Address,
-) -> Result<(), YieldTokenError> {
-    caller.require_auth();
-    let admin = read_admin(env);
-    if *caller != admin && *caller != *role_holder {
-        return Err(YieldTokenError::UnauthorizedError);
-    }
-    Ok(())
-}
-
 /// Verifies that `caller` has authorized this invocation and is the specified role holder.
-pub fn require_role_holder(
-    env: &Env,
-    caller: &Address,
-    role_holder: &Address,
-) -> Result<(), YieldTokenError> {
+pub fn require_role_holder(caller: &Address, role_holder: &Address) -> Result<(), YieldTokenError> {
     caller.require_auth();
     if *caller != *role_holder {
         return Err(YieldTokenError::UnauthorizedError);

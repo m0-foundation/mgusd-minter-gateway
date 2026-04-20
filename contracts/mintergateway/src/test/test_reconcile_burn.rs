@@ -157,9 +157,9 @@ fn test_reconcile_burn_rejects_exceeding_principal() {
 // ACCESS CONTROL — only admin can call reconcile_burn
 // =============================================================================
 
-/// `reconcile_burn` uses `require_admin()` (not `require_admin_or`), so it
-/// always demands admin auth regardless of caller. Verify that the call
-/// reverts when auth is disabled — even with real supply in the contract.
+/// `reconcile_burn` uses `require_admin()` directly, so it always demands
+/// admin auth regardless of caller. Verify that the call reverts when auth
+/// is disabled — even with real supply in the contract.
 #[test]
 fn test_reconcile_burn_requires_admin_auth() {
     let s = setup(); // mock_all_auths — allows mint setup
