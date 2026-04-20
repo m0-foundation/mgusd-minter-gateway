@@ -32,7 +32,7 @@ fn test_set_rate_exceeds_maximum() {
 #[test]
 fn test_set_rate_to_zero_stops_accrual() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     // Mint and set 5% rate
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
@@ -54,7 +54,7 @@ fn test_set_rate_to_zero_stops_accrual() {
 #[test]
 fn test_set_rate_zero_to_nonzero() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     // Rate starts at 0 (default), mint with zero rate
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
@@ -79,7 +79,7 @@ fn test_set_rate_zero_to_nonzero() {
 #[test]
 fn test_set_rate_to_zero_finalizes_pending() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
+    let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
@@ -112,7 +112,7 @@ fn test_set_rate_to_zero_finalizes_pending() {
 #[test]
 fn test_yield_accuracy_at_max_rate() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     // Mint 1M and set rate to 100% (10000 bps)
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
@@ -140,7 +140,8 @@ fn test_yield_accuracy_at_max_rate() {
     // The Taylor result should be between 1.70 and 1.72 of principal
     let ratio_times_100 = (claimed * 100) / one_million;
     assert!(
-        ratio_times_100 >= 170 && ratio_times_100 <= 172,
+        (170..=172).contains(&ratio_times_100),
+        //ratio_times_100 >= 170 && ratio_times_100 <= 172,
         "yield/principal ratio outside expected range: {}",
         ratio_times_100
     );
@@ -156,7 +157,7 @@ fn test_yield_accuracy_at_max_rate() {
 #[test]
 fn test_first_update_index_from_timestamp_zero() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     // Set rate before any mint — index will grow from timestamp 0
     s.contract.set_rate(&s.minter, &500); // 5%
@@ -169,10 +170,7 @@ fn test_first_update_index_from_timestamp_zero() {
 
     // The index should have grown from the default (timestamp 0 → T0 + 1_000_000)
     let idx = s.contract.current_index();
-    assert!(
-        idx > INDEX_SCALE,
-        "index should have grown from 1.0"
-    );
+    assert!(idx > INDEX_SCALE, "index should have grown from 1.0");
 
     // Now mint — update_index finalizes the grown index
     // PV conversion: principal = 1M * INDEX_SCALE / grown_index

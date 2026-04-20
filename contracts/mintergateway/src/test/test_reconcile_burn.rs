@@ -1,7 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::Address;
 
-use super::setup::{advance_time, setup, SECONDS_PER_YEAR};
+use super::setup::{advance_time, setup, DECIMALS, SECONDS_PER_YEAR};
 use crate::errors::YieldTokenError;
 
 // =============================================================================
@@ -12,8 +12,8 @@ use crate::errors::YieldTokenError;
 fn test_reconcile_burn_decreases_both_accumulators() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let mint_amount = 1_000_0000000i128;
-    let reconcile_amount = 400_0000000i128;
+    let mint_amount = 1_000 * DECIMALS;
+    let reconcile_amount = 400 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &mint_amount);
@@ -37,7 +37,7 @@ fn test_reconcile_burn_decreases_both_accumulators() {
 fn test_reconcile_burn_after_yield_accrual() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let mint_amount = 1_000_0000000i128;
+    let mint_amount = 1_000 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &mint_amount);
@@ -50,7 +50,7 @@ fn test_reconcile_burn_after_yield_accrual() {
     let supply_before = s.contract.total_supply();
 
     // Reconcile a portion — should work with grown index
-    let reconcile_amount = 200_0000000i128;
+    let reconcile_amount = 200 * DECIMALS;
     s.contract.reconcile_burn(&reconcile_amount);
 
     // Both accumulators decreased (PV conversion applied to principal)
@@ -62,7 +62,7 @@ fn test_reconcile_burn_after_yield_accrual() {
 fn test_reconcile_burn_full_amount_to_zero() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
@@ -74,17 +74,17 @@ fn test_reconcile_burn_full_amount_to_zero() {
     assert_eq!(s.contract.total_supply(), 0);
 
     // Can mint again after zeroing out
-    s.contract.mint(&s.minter, &user, &500_0000000);
-    assert_eq!(s.contract.total_principal(), 500_0000000);
-    assert_eq!(s.contract.total_supply(), 500_0000000);
+    s.contract.mint(&s.minter, &user, &(500 * DECIMALS));
+    assert_eq!(s.contract.total_principal(), 500 * DECIMALS);
+    assert_eq!(s.contract.total_supply(), 500 * DECIMALS);
 }
 
 #[test]
 fn test_reconcile_burn_real_world_send_to_issuer_flow() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
-    let destroyed = 600_0000000i128;
+    let amount = 1_000 * DECIMALS;
+    let destroyed = 600 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
@@ -115,10 +115,13 @@ fn test_reconcile_burn_rejects_zero_amount() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_reconcile_burn(&0);
-    assert_eq!(result.unwrap_err().unwrap(), YieldTokenError::InvalidAmountError);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        YieldTokenError::InvalidAmountError
+    );
 }
 
 #[test]
@@ -127,17 +130,20 @@ fn test_reconcile_burn_rejects_negative_amount() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_reconcile_burn(&-100);
-    assert_eq!(result.unwrap_err().unwrap(), YieldTokenError::InvalidAmountError);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        YieldTokenError::InvalidAmountError
+    );
 }
 
 #[test]
 fn test_reconcile_burn_rejects_exceeding_principal() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
@@ -160,17 +166,20 @@ fn test_reconcile_burn_requires_admin_auth() {
     let user = Address::generate(&s.env);
 
     s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     // Disable all auth — simulates a call without admin signature
     s.env.mock_auths(&[]);
 
-    let result = s.contract.try_reconcile_burn(&100_0000000);
-    assert!(result.is_err(), "reconcile_burn should revert without admin auth");
+    let result = s.contract.try_reconcile_burn(&(100 * DECIMALS));
+    assert!(
+        result.is_err(),
+        "reconcile_burn should revert without admin auth"
+    );
 
     // Accumulators unchanged
-    assert_eq!(s.contract.total_principal(), 1_000_0000000);
-    assert_eq!(s.contract.total_supply(), 1_000_0000000);
+    assert_eq!(s.contract.total_principal(), 1_000 * DECIMALS);
+    assert_eq!(s.contract.total_supply(), 1_000 * DECIMALS);
 }
 
 // =============================================================================
@@ -181,7 +190,7 @@ fn test_reconcile_burn_requires_admin_auth() {
 fn test_reconcile_burn_does_not_touch_sac_tokens() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
@@ -189,7 +198,7 @@ fn test_reconcile_burn_does_not_touch_sac_tokens() {
     let balance_before = s.sac_token.balance(&user);
 
     // reconcile_burn only adjusts accumulators — no clawback, no mint
-    s.contract.reconcile_burn(&400_0000000);
+    s.contract.reconcile_burn(&(400 * DECIMALS));
 
     // User's SAC balance is unchanged
     assert_eq!(s.sac_token.balance(&user), balance_before);
@@ -199,19 +208,19 @@ fn test_reconcile_burn_does_not_touch_sac_tokens() {
 fn test_reconcile_burn_multiple_calls() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let amount = 1_000_0000000i128;
+    let amount = 1_000 * DECIMALS;
 
     s.contract.unfreeze_account(&s.admin, &user);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Multiple reconcile burns
-    s.contract.reconcile_burn(&200_0000000);
-    assert_eq!(s.contract.total_principal(), 800_0000000);
+    s.contract.reconcile_burn(&(200 * DECIMALS));
+    assert_eq!(s.contract.total_principal(), 800 * DECIMALS);
 
-    s.contract.reconcile_burn(&300_0000000);
-    assert_eq!(s.contract.total_principal(), 500_0000000);
+    s.contract.reconcile_burn(&(300 * DECIMALS));
+    assert_eq!(s.contract.total_principal(), 500 * DECIMALS);
 
-    s.contract.reconcile_burn(&500_0000000);
+    s.contract.reconcile_burn(&(500 * DECIMALS));
     assert_eq!(s.contract.total_principal(), 0);
     assert_eq!(s.contract.total_supply(), 0);
 }
@@ -224,7 +233,7 @@ fn test_reconcile_burn_multiple_calls() {
 fn test_reconcile_burn_rejects_amount_exceeding_total_supply() {
     let s = setup();
     let user = Address::generate(&s.env);
-    let mint_amount = 1_000_0000000i128; // 1000 tokens (7 decimals)
+    let mint_amount = 1_000 * DECIMALS; // 1000 tokens (7 decimals)
 
     s.contract.unfreeze_account(&s.admin, &user);
 

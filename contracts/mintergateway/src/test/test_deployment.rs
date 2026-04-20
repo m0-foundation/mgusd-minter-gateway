@@ -1,6 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::yield_state::read_yield_state;
 
 // =============================================================================
 // INITIALIZATION TESTS
@@ -17,6 +18,7 @@ fn test_double_initialization_returns_error() {
     let yr = s.yield_recipient.clone();
     let ftm = s.forced_transfer_manager.clone();
     let dist = s.distributor.clone();
+    let pauser = s.pauser.clone();
 
     // Re-invoke __constructor inside the contract's storage context
     // The admin already exists, so this should return AlreadyInitializedError
@@ -30,10 +32,27 @@ fn test_double_initialization_returns_error() {
             yr,
             ftm,
             dist,
+            pauser,
         )
     });
 
     assert_eq!(result, Err(crate::YieldTokenError::AlreadyInitializedError));
+}
+
+#[test]
+fn test_yield_state_defaults_to_zero_on_fresh_contract() {
+    let s = setup();
+
+    let state = s
+        .env
+        .as_contract(&s.contract.address, || read_yield_state(&s.env));
+
+    assert_eq!(state.total_principal, 0);
+    assert_eq!(state.total_supply, 0);
+    assert_eq!(state.accrued_yield, 0);
+    assert_eq!(state.rate_bps, 0);
+    assert_eq!(state.latest_index, INDEX_SCALE);
+    assert_eq!(state.last_update_timestamp, 0);
 }
 
 // =============================================================================
@@ -86,5 +105,8 @@ fn test_upgrade_fails_with_invalid_wasm_hash() {
     // update_current_contract_wasm because the hash doesn't correspond
     // to any uploaded WASM — proving auth was satisfied (not an auth error).
     let result = s.contract.try_upgrade(&hash);
-    assert!(result.is_err(), "upgrade with non-existent WASM hash should fail");
+    assert!(
+        result.is_err(),
+        "upgrade with non-existent WASM hash should fail"
+    );
 }

@@ -1,69 +1,162 @@
-use soroban_sdk::{symbol_short, Address, BytesN, Env, Symbol};
+use soroban_sdk::{contractevent, Address, BytesN, Env};
 
-// Event topic symbols
-const SET_ADMIN: Symbol = symbol_short!("set_admin");
-const INT_RATE: Symbol = symbol_short!("int_rate");
-const YLD_CLAIM: Symbol = symbol_short!("yld_clm");
-const SET_MINTER: Symbol = symbol_short!("set_mntr");
-const SET_YIELD_RCPT_MGR: Symbol = symbol_short!("set_yrmr");
-const SET_YIELD_RCPT: Symbol = symbol_short!("set_yrcp");
-const SUP_CHG: Symbol = symbol_short!("sup_chg");
-const FREEZE: Symbol = symbol_short!("freeze");
-const UNFREEZE: Symbol = symbol_short!("unfreeze");
-const SET_FTM: Symbol = symbol_short!("set_ftmr");
-const SET_DIST: Symbol = symbol_short!("set_dist");
-const FORCE_TX: Symbol = symbol_short!("force_tx");
-const UPGRADED: Symbol = symbol_short!("upgraded");
+#[contractevent]
+pub struct AdminSet {
+    #[topic]
+    pub old: Address,
+    pub new: Address,
+}
 
-pub fn emit_set_admin(env: &Env, admin: Address, new_admin: Address) {
-    env.events().publish((SET_ADMIN,), (admin, new_admin));
+pub fn emit_set_admin(env: &Env, old: Address, new: Address) {
+    AdminSet { old, new }.publish(env);
+}
+
+#[contractevent]
+pub struct InterestRateSet {
+    pub rate_bps: u32,
 }
 
 pub fn emit_interest_rate_set(env: &Env, rate_bps: u32) {
-    env.events().publish((INT_RATE,), rate_bps);
+    InterestRateSet { rate_bps }.publish(env);
+}
+
+#[contractevent]
+pub struct YieldClaimed {
+    pub recipient: Address,
+    pub amount: i128,
 }
 
 pub fn emit_yield_claimed(env: &Env, recipient: Address, amount: i128) {
-    env.events().publish((YLD_CLAIM,), (recipient, amount));
+    YieldClaimed { recipient, amount }.publish(env);
+}
+
+#[contractevent]
+pub struct MinterSet {
+    #[topic]
+    pub old: Address,
+    pub new: Address,
 }
 
 pub fn emit_minter_set(env: &Env, old: Address, new: Address) {
-    env.events().publish((SET_MINTER,), (old, new));
+    MinterSet { old, new }.publish(env);
+}
+
+#[contractevent]
+pub struct YieldRecipientManagerSet {
+    #[topic]
+    pub old: Address,
+    pub new: Address,
 }
 
 pub fn emit_yield_recipient_manager_set(env: &Env, old: Address, new: Address) {
-    env.events().publish((SET_YIELD_RCPT_MGR,), (old, new));
+    YieldRecipientManagerSet { old, new }.publish(env);
+}
+
+#[contractevent]
+pub struct YieldRecipientSet {
+    #[topic]
+    pub old: Address,
+    pub new: Address,
 }
 
 pub fn emit_yield_recipient_set(env: &Env, old: Address, new: Address) {
-    env.events().publish((SET_YIELD_RCPT,), (old, new));
+    YieldRecipientSet { old, new }.publish(env);
 }
 
-pub fn emit_supply_synced(env: &Env, delta: i128, new_total_principal: i128, new_total_supply: i128) {
-    env.events()
-        .publish((SUP_CHG,), (delta, new_total_principal, new_total_supply));
+#[contractevent]
+pub struct SupplySynced {
+    pub delta: i128,
+    pub new_total_principal: i128,
+    pub new_total_supply: i128,
+}
+
+pub fn emit_supply_synced(
+    env: &Env,
+    delta: i128,
+    new_total_principal: i128,
+    new_total_supply: i128,
+) {
+    SupplySynced {
+        delta,
+        new_total_principal,
+        new_total_supply,
+    }
+    .publish(env);
+}
+
+#[contractevent]
+pub struct AccountFrozen {
+    #[topic]
+    pub account: Address,
 }
 
 pub fn emit_account_frozen(env: &Env, account: Address) {
-    env.events().publish((FREEZE,), account);
+    AccountFrozen { account }.publish(env);
+}
+
+#[contractevent]
+pub struct AccountUnfrozen {
+    #[topic]
+    pub account: Address,
 }
 
 pub fn emit_account_unfrozen(env: &Env, account: Address) {
-    env.events().publish((UNFREEZE,), account);
+    AccountUnfrozen { account }.publish(env);
+}
+
+#[contractevent]
+pub struct ForcedTransferManagerSet {
+    #[topic]
+    pub old: Address,
+    pub new: Address,
 }
 
 pub fn emit_forced_transfer_manager_set(env: &Env, old: Address, new: Address) {
-    env.events().publish((SET_FTM,), (old, new));
+    ForcedTransferManagerSet { old, new }.publish(env);
+}
+
+#[contractevent]
+pub struct DistributorSet {
+    #[topic]
+    pub old: Address,
+    pub new: Address,
 }
 
 pub fn emit_distributor_set(env: &Env, old: Address, new: Address) {
-    env.events().publish((SET_DIST,), (old, new));
+    DistributorSet { old, new }.publish(env);
+}
+
+#[contractevent]
+pub struct ForceTransfer {
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub to: Address,
+    pub amount: i128,
 }
 
 pub fn emit_force_transfer(env: &Env, from: Address, to: Address, amount: i128) {
-    env.events().publish((FORCE_TX,), (from, to, amount));
+    ForceTransfer { from, to, amount }.publish(env);
+}
+
+#[contractevent]
+pub struct Upgraded {
+    #[topic]
+    pub by: Address,
+    pub new_wasm_hash: BytesN<32>,
 }
 
 pub fn emit_upgraded(env: &Env, by: Address, new_wasm_hash: BytesN<32>) {
-    env.events().publish((UPGRADED,), (by, new_wasm_hash));
+    Upgraded { by, new_wasm_hash }.publish(env);
+}
+
+#[contractevent]
+pub struct PauserSet {
+    #[topic]
+    pub old: Address,
+    pub new: Address,
+}
+
+pub fn emit_pauser_set(env: &Env, old: Address, new: Address) {
+    PauserSet { old, new }.publish(env);
 }

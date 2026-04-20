@@ -12,8 +12,8 @@ pub struct YieldStateValue {
     pub latest_index: i128,         // Last stored index (1.0 = 1e12)
     pub last_update_timestamp: u64, // Unix timestamp of last index update
     pub accrued_yield: i128,        // Accumulated unclaimed yield
-    pub total_principal: i128, // Yield-earning base (mints - burns, excludes claimed yield)
-    pub total_supply: i128,    // Total outstanding tokens (principal + cumulative claimed yield)
+    pub total_principal: i128,      // Yield-earning base (mints - burns, excludes claimed yield)
+    pub total_supply: i128, // Total outstanding tokens (principal + cumulative claimed yield)
 }
 
 impl Default for YieldStateValue {
@@ -43,4 +43,5 @@ pub enum DataKey {
     YieldRecipient,        // Instance: Address (can claim yield)
     ForcedTransferManager, // Instance: Address (can authorize + transfer tokens)
     Distributor,           // Instance: Address (can batch freeze/unfreeze accounts)
+    Pauser,                // Instance: Address (can pause/unpause the contract)
 }

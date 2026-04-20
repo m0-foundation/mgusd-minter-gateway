@@ -14,6 +14,7 @@ pub use crate::continuous_index::{
 pub use crate::contract::{YieldToken, YieldTokenClient};
 
 pub const T0: u64 = 1_000_000; // Arbitrary start timestamp
+pub const DECIMALS: i128 = 10_000_000; // 1 token = 10^7 stroops
 
 pub struct TestSetup<'a> {
     pub env: Env,
@@ -26,6 +27,7 @@ pub struct TestSetup<'a> {
     pub yield_recipient: Address,
     pub forced_transfer_manager: Address,
     pub distributor: Address,
+    pub pauser: Address,
 }
 
 pub fn setup() -> TestSetup<'static> {
@@ -39,6 +41,7 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
     let distributor = Address::generate(&env);
+    let pauser = Address::generate(&env);
 
     // Register SAC token with admin as initial issuer
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
@@ -62,6 +65,7 @@ pub fn setup() -> TestSetup<'static> {
             &yield_recipient,
             &forced_transfer_manager,
             &distributor,
+            &pauser,
         ),
     );
     let contract = YieldTokenClient::new(&env, &contract_addr);
@@ -83,6 +87,7 @@ pub fn setup() -> TestSetup<'static> {
         yield_recipient,
         forced_transfer_manager,
         distributor,
+        pauser,
     }
 }
 

@@ -89,3 +89,16 @@ pub fn write_distributor(env: &Env, addr: &Address) {
     env.storage().instance().set(&key, addr);
 }
 
+// =============================================================================
+// Pauser - Can pause/unpause the contract
+// =============================================================================
+
+pub fn read_pauser(env: &Env) -> Address {
+    let key = DataKey::Pauser;
+    env.storage().instance().get(&key).unwrap()
+}
+
+pub fn write_pauser(env: &Env, addr: &Address) {
+    let key = DataKey::Pauser;
+    env.storage().instance().set(&key, addr);
+}

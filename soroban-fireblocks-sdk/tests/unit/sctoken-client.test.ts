@@ -365,6 +365,7 @@ describe("SctokenFireblocksClient", () => {
         yieldRecipient: config.sourcePublicKey,
         forcedTransferManager: config.sourcePublicKey,
         distributor: config.sourcePublicKey,
+        pauser: config.sourcePublicKey,
       });
 
       expect(result.sacContractId).toBe(sacContractId);
@@ -432,6 +433,7 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
           distributor: config.sourcePublicKey,
+          pauser: config.sourcePublicKey,
         }),
       ).rejects.toThrow("configureIssuer failed");
 
@@ -485,6 +487,7 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
           distributor: config.sourcePublicKey,
+          pauser: config.sourcePublicKey,
         }),
       ).rejects.toThrow("deploySac failed");
 
@@ -547,6 +550,7 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
           distributor: config.sourcePublicKey,
+          pauser: config.sourcePublicKey,
         }),
       ).rejects.toThrow("uploadWasm failed");
 
@@ -617,6 +621,7 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
           distributor: config.sourcePublicKey,
+          pauser: config.sourcePublicKey,
         }),
       ).rejects.toThrow("deployContract failed");
 
@@ -695,6 +700,7 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
           distributor: config.sourcePublicKey,
+          pauser: config.sourcePublicKey,
         }),
       ).rejects.toThrow("set_admin failed");
 
