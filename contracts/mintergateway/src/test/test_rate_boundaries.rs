@@ -152,7 +152,7 @@ fn test_yield_accuracy_at_max_rate() {
     // The Taylor result should be between 1.70 and 1.72 of principal
     let ratio_times_100 = (claimed * 100) / one_million;
     assert!(
-        ratio_times_100 >= 170 && ratio_times_100 <= 172,
+        (170..=172).contains(&ratio_times_100),
         "yield/principal ratio outside expected range: {}",
         ratio_times_100
     );

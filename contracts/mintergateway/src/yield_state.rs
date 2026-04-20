@@ -39,7 +39,7 @@ pub fn read_yield_state(env: &Env) -> YieldStateValue {
     env.storage()
         .instance()
         .get(&key)
-        .unwrap_or(YieldStateValue::default())
+        .unwrap_or_default()
 }
 
 pub fn write_yield_state(env: &Env, state: &YieldStateValue) {

@@ -172,7 +172,7 @@ fn test_set_admin_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_admin = Address::generate(&s.env);
     let err = s.contract.try_set_admin(&new_admin).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    assert_eq!(err, auth_error());
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn test_set_minter_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_minter = Address::generate(&s.env);
     let err = s.contract.try_set_minter(&new_minter).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    assert_eq!(err, auth_error());
 }
 
 #[test]
@@ -192,7 +192,7 @@ fn test_set_yield_recipient_manager_reverts_without_auth() {
         .try_set_yield_recipient_manager(&new_yrm)
         .unwrap_err()
         .unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    assert_eq!(err, auth_error());
 }
 
 #[test]
@@ -204,7 +204,7 @@ fn test_set_forced_transfer_manager_reverts_without_auth() {
         .try_set_forced_transfer_manager(&new_ftm)
         .unwrap_err()
         .unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    assert_eq!(err, auth_error());
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn test_set_distributor_reverts_without_auth() {
         .try_set_distributor(&new_dist)
         .unwrap_err()
         .unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    assert_eq!(err, auth_error());
 }
 
 #[test]
@@ -237,7 +237,7 @@ fn test_upgrade_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let fake_hash = BytesN::from_array(&s.env, &[0u8; 32]);
     let err = s.contract.try_upgrade(&fake_hash).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    assert_eq!(err, auth_error());
 }
 
 // =============================================================================

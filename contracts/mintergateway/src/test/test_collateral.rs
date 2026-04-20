@@ -193,7 +193,7 @@ fn test_set_collateral_token_reverts_without_auth() {
         .try_set_collateral_token(&new_addr)
         .unwrap_err()
         .unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    assert_eq!(err, auth_error());
 }
 
 #[test]
