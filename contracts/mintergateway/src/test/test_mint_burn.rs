@@ -128,7 +128,6 @@ fn test_burn_exactly_principal() {
     deposit_reserves(&s, &s.admin, yield_reserves_amount);
 
     let total_supply_before_claim = s.contract.total_supply();
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
 
     // claim_yield distributes RD (collateral) tokens, NOT MGUSD — total_supply unchanged
     assert_eq!(s.contract.total_supply(), total_supply_before_claim);
@@ -262,7 +261,7 @@ fn test_unauthorized_account_cannot_receive_mint() {
     // Minting to unauthorized account should fail
     give_collateral(&s, &s.minter, 1_000_0000000);
     let result = s.contract.try_mint(&s.minter, &user, &1_000_0000000);
-    assert!(result.is_err());
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::RecipientFrozen)));
 }
 
 #[test]

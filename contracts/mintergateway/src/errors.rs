@@ -15,5 +15,6 @@ pub enum YieldTokenError {
     RateExceedsMax = 101,
     BatchTooLargeError = 102,
     InsufficientCollateralReserves = 103,
-    BurnExceedsSupply = 104,
+    RecipientFrozen = 104,
+    BurnExceedsSupply = 105,
 }

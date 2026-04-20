@@ -12,8 +12,9 @@
  * Required .env variables:
  *   ISSUER_PUBLIC_KEY, ISSUER_FIREBLOCKS_VAULT_ACCOUNT_ID
  *   MINTER_PUBLIC_KEY (set as admin + all roles)
- *   ASSET_CODE    — Asset code (default: TMGUSD)
- *   WASM_PATH     — Path to compiled WASM
+ *   ASSET_CODE          — Asset code (default: TMGUSD)
+ *   COLLATERAL_TOKEN    — Collateral SAC contract ID (C...)
+ *   WASM_PATH           — Path to compiled WASM
  *
  * Usage: npm run deploy
  */
@@ -37,21 +38,26 @@ async function main(): Promise<void> {
   const minterPublicKey = process.env.MINTER_PUBLIC_KEY;
   if (!minterPublicKey) throw new Error("Missing MINTER_PUBLIC_KEY in .env");
 
+  const collateralToken = process.env.COLLATERAL_TOKEN;
+  if (!collateralToken) throw new Error("Missing COLLATERAL_TOKEN in .env");
+
   const wasm = fs.readFileSync(wasmPath);
   const admin = minterPublicKey;
 
   console.log("=== Full Fireblocks Deploy ===");
-  console.log(`  Asset:  ${assetCode}`);
-  console.log(`  Issuer: ${assetIssuer}`);
-  console.log(`  Admin:  ${admin} (minter)`);
-  console.log(`  WASM:   ${wasmPath} (${wasm.length} bytes)`);
-  console.log(`  RPC:    ${config.sorobanRpcUrl}`);
+  console.log(`  Asset:            ${assetCode}`);
+  console.log(`  Issuer:           ${assetIssuer}`);
+  console.log(`  Collateral token: ${collateralToken}`);
+  console.log(`  Admin:            ${admin} (minter)`);
+  console.log(`  WASM:             ${wasmPath} (${wasm.length} bytes)`);
+  console.log(`  RPC:              ${config.sorobanRpcUrl}`);
   console.log();
 
   const result = await client.deployFull({
     assetCode,
     assetIssuer,
     wasm,
+    collateralToken,
     admin,
     minter: minterPublicKey,
     yieldRecipientManager: minterPublicKey,

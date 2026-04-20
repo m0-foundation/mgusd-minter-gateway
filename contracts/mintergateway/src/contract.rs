@@ -290,7 +290,12 @@ impl YieldToken {
 
         // Mint SAC tokens to recipient
         let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).mint(&to, &amount);
+        let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+        if !sac_client.authorized(&to) {
+            return Err(YieldTokenError::RecipientFrozen);
+        }
+        
+        sac_client.mint(&to, &amount);
 
         let state = read_yield_state(&e);
         emit_supply_changed(&e, amount, state.total_principal, state.total_supply);
@@ -401,6 +406,10 @@ impl YieldToken {
         // SAC operations: clawback from source, mint to destination
         let sac_addr = read_sac_token(&e);
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+        if !sac_client.authorized(&to) {
+            return Err(YieldTokenError::RecipientFrozen);
+        }
+        
         sac_client.clawback(&from, &amount);
         sac_client.mint(&to, &amount);
 

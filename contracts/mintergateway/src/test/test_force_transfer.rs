@@ -310,7 +310,7 @@ fn test_force_transfer_to_unauthorized_account_reverts() {
     give_collateral(&s, &s.minter, 1_000_0000000);
     s.contract.mint(&s.minter, &alice, &1_000_0000000);
 
-    // Bob is unauthorized (AUTH_REQUIRED mode) — mint to bob will fail
+    // Bob is unauthorized (AUTH_REQUIRED mode) — force_transfer to bob will fail
     assert!(!s.contract.is_authorized(&bob));
     let result = s.contract.try_force_transfer(
         &s.forced_transfer_manager,
@@ -318,7 +318,7 @@ fn test_force_transfer_to_unauthorized_account_reverts() {
         &bob,
         &500_0000000,
     );
-    assert!(result.is_err());
+    assert_eq!(result, Err(Ok(crate::YieldTokenError::RecipientFrozen)));
 }
 
 // =============================================================================
