@@ -397,11 +397,12 @@ fn test_reconcile_burn_exceeds_principal_reverts() {
     give_collateral(&s, &s.minter, amount);
     s.contract.mint(&s.minter, &s.yield_recipient, &amount);
 
-    // Try to reconcile more than what's in accumulators
+    // Try to reconcile more than what's in accumulators.
+    // BurnExceedsSupply fires first (amount > total_supply) before the PV check.
     let excessive = amount * 2;
     let result = s.contract.try_reconcile_burn(&excessive, &treasury);
     assert_eq!(
         result,
-        Err(Ok(crate::YieldTokenError::BurnExceedsPrincipal))
+        Err(Ok(crate::YieldTokenError::BurnExceedsSupply))
     );
 }

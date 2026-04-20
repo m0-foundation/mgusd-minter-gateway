@@ -69,15 +69,15 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
-| **Forced Transfer Manager** | `force_transfer` | *(configurable)* |
+| **Forced Transfer Manager** | `force_transfer` | Crossmint |
 | **Distributor** | `freeze_account`, `unfreeze_account`, `batch_freeze_accounts`, `batch_unfreeze_accounts` | Crossmint |
 
 **Design properties:**
 
 - **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_distributor`, `set_collateral_token`, `reconcile_burn`, `upgrade`)
 - All roles are **single-address** — exactly one holder per role at any time
-- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager, and Distributor is set by Admin)
-- Every role-gated function calls `require_auth()` on the role holder — no implicit trust
+- Only Admin can reassign roles (except Yield Recipient, which can be set by the Yield Recipient Manager or Admin)
+- Every role-gated function calls `require_auth()` on the `caller` argument, then verifies the caller is either Admin or the designated role holder — no implicit trust
 - Roles are stored in **Instance** storage
 
 ---
@@ -98,7 +98,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `set_forced_transfer_manager` | `(new_ftm: Address)` | Set a new forced transfer manager |
 | `set_distributor` | `(new_distributor: Address)` | Set a new distributor address |
 | `set_collateral_token` | `(collateral_token: Address)` | Set collateral (RD) token address |
-| `reconcile_burn` | `(amount: i128, collateral_to: Address)` | Sync accumulators after issuer burn, release RD to treasury |
+| `reconcile_burn` | `(amount: i128, collateral_to: Address)` | Decrease both accumulators for tokens destroyed outside the contract, release RD to `collateral_to` |
 | `upgrade` | `(new_wasm_hash: BytesN<32>)` | Upgrade contract WASM to a new version |
 
 ### Minter Functions (3)
@@ -151,12 +151,22 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `interest_rate` | `u32` | Current rate in basis points |
 | `current_index` | `i128` | Real-time index (includes pending growth) |
 | `latest_index` | `i128` | Last stored index (from most recent update) |
-| `accrued_yield` | `i128` | Pending yield available to claim |
+| `accrued_yield` | `i128` | Real-time accrued yield (stored + pending from index growth since last update) |
 | `total_principal` | `i128` | Yield-earning base (mints − burns) |
-| `total_supply` | `i128` | Total outstanding tokens (principal + claimed yield) |
+| `total_supply` | `i128` | Total outstanding MGUSD token supply |
 | `collateral_balance` | `i128` | Contract's RD balance |
 | `collateral_deficit` | `i128` | Additional RD needed before `claim_yield` succeeds (0 if fully collateralized) |
-| `is_authorized` | `bool` | Whether an account is unfrozen on the SAC |
+| `is_authorized(account)` | `bool` | Whether an account is unfrozen on the SAC |
+
+### Initialization (Constructor)
+
+The contract is initialized via `__constructor` during deployment:
+
+```
+__constructor(sac_token, collateral_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager, distributor)
+```
+
+All 8 addresses are stored in Instance storage. Returns `Err(AlreadyInitializedError)` if the contract has already been initialized (checked via `has_admin()`). The constructor does **not** initialize the yield state — index starts at `1.0` (`INDEX_SCALE`) on first use.
 
 ---
 
@@ -170,9 +180,10 @@ The Minter acts as the **bridge gateway** — the sole entry point for supply ch
 mint(caller: Address, to: Address, amount: i128)
 ```
 
+0. Validates positive amount and caller authorization (Minter or Admin)
 1. Locks collateral: transfers `amount` RD from caller to contract
 2. Finalizes pending yield via `update_index()`
-3. Increases `total_supply` by `amount` and `total_principal` by the present value (`amount × INDEX_SCALE / latest_index`)
+3. Increases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
 4. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
 5. Emits `sup_chg` event with delta and new accumulator values
 6. Emits `col_lock` event with caller and amount
@@ -185,14 +196,15 @@ Recipient must already be authorized (unfrozen) on the SAC. Caller must have app
 burn(caller: Address, from: Address, amount: i128)
 ```
 
+0. Validates positive amount and caller authorization (Minter or Admin)
 1. Finalizes pending yield via `update_index()`
-2. Decreases `total_supply` by `amount` and `total_principal` by the present value (`amount × INDEX_SCALE / latest_index`)
+2. Decreases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
 3. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
 4. Returns collateral: transfers `amount` RD from contract to `from`
 5. Emits `sup_chg` event with negative delta
 6. Emits `col_unlk` event with `from` and amount
 
-Returns `BurnExceedsPrincipal` if `PV(amount) > total_principal` — you cannot burn more than was minted (prevents burning claimed yield). Does **not** require the target account's authorization.
+Returns `Err(BurnExceedsPrincipal)` if the present-value amount exceeds `total_principal` — you cannot burn more than was minted (prevents burning claimed yield). Does **not** require the target account's authorization.
 
 ### Reconcile Burn
 
@@ -202,7 +214,7 @@ reconcile_burn(amount: i128, collateral_to: Address)
 
 1. Admin only — reconciliation action for tokens destroyed by sending to the SAC issuer
 2. Finalizes pending yield via `update_index()`
-3. Decreases `total_supply` by `amount` and `total_principal` by the present value (same PV conversion as burn)
+3. Decreases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
 4. Transfers `amount` RD from contract to `collateral_to` (treasury)
 5. Emits `sup_chg` event with negative delta
 6. Emits `col_unlk` event with `collateral_to` and amount
@@ -219,7 +231,7 @@ set_rate(rate_bps: u32)
 2. Calls `set_interest_rate()` which first updates the index at the old rate, then applies the new rate
 3. Emits `int_rate` event
 
-Rate is in basis points: 100 = 1%, max 10,000 = 100%.
+Rate is in basis points: 100 = 1%, max 10,000 = 100%. Returns `Err(RateExceedsMax)` if rate exceeds 10,000.
 
 ### Key Properties
 
@@ -237,7 +249,7 @@ force_transfer(caller: Address, from: Address, to: Address, amount: i128)
 
 Administrative token movement that does not require the source account's authorization. Forced Transfer Manager or Admin only.
 
-1. Validates non-negative amount and caller role
+1. Validates positive amount and caller role
 2. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
 3. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
 4. Emits `force_tx` event with `(from, to, amount)`
@@ -275,7 +287,7 @@ The `e^x` approximation uses a 4th-order Taylor series: `1 + x + x²/2 + x³/6 +
 | Accumulator | Tracks | Modified By |
 |-------------|--------|-------------|
 | `total_principal` | Yield-earning base (mints − burns) | `mint`, `burn`, `reconcile_burn` |
-| `total_supply` | All outstanding tokens (principal + claimed yield) | `mint`, `burn`, `reconcile_burn` |
+| `total_supply` | Total outstanding MGUSD supply | `mint`, `burn`, `reconcile_burn` |
 
 ### Yield Accrual Formula
 
@@ -290,11 +302,12 @@ yield = total_principal × (newIndex − oldIndex) / INDEX_SCALE
 ### Non-Compounding
 
 When `claim_yield()` is called:
-1. Accrued yield is distributed as RD (collateral) tokens to the yield recipient
-2. `total_supply` is **unchanged** — no new MGUSD is minted
-3. `total_principal` is **unchanged** — claimed yield does not earn more yield
-4. `accrued_yield` resets to zero
-5. Contract must hold at least `total_supply + claimed` RD; returns `InsufficientCollateralReserves` (103) if reserves are insufficient
+1. Pending yield is finalized via `update_index()`
+2. Accrued yield is distributed as RD (collateral) tokens to the yield recipient
+3. `total_supply` is **unchanged** — no new MGUSD is minted
+4. `total_principal` is **unchanged** — claimed yield does not earn more yield
+5. `accrued_yield` resets to zero
+6. Contract must hold at least `total_supply + claimed` RD; returns `InsufficientCollateralReserves` (103) if reserves are insufficient
 
 ### Index Update Ordering
 
@@ -363,10 +376,36 @@ When tokens are sent to the issuer, Admin can call `reconcile_burn(amount, treas
 | 3 | `AlreadyInitializedError` | Constructor called on already-initialized contract |
 | 4 | `UnauthorizedError` | Caller lacks required role |
 | 8 | `InvalidAmountError` | Amount ≤ 0 in mint/burn/force_transfer |
-| 100 | `BurnExceedsPrincipal` | Burn amount exceeds `total_principal` |
+| 100 | `BurnExceedsPrincipal` | Burn amount (PV) exceeds `total_principal` |
 | 101 | `RateExceedsMax` | Rate > 10000 bps |
 | 102 | `BatchTooLargeError` | Batch freeze/unfreeze exceeds 20 accounts |
 | 103 | `InsufficientCollateralReserves` | `claim_yield` called when contract holds insufficient RD to cover `total_supply + claimed` |
+| 104 | `BurnExceedsSupply` | `reconcile_burn` amount exceeds `total_supply` (nominal guard) |
+
+---
+
+## Event Reference
+
+All events emitted by the contract:
+
+| Event | Emitted By | Payload |
+|-------|-----------|---------|
+| `set_admin` | `set_admin` | `(old, new)` |
+| `set_mntr` | `set_minter` | `(old, new)` |
+| `set_yrmr` | `set_yield_recipient_manager` | `(old, new)` |
+| `set_yrcp` | `set_yield_recipient` | `(old, new)` |
+| `set_ftmr` | `set_forced_transfer_manager` | `(old, new)` |
+| `set_dist` | `set_distributor` | `(old, new)` |
+| `set_col` | `set_collateral_token` | `(new)` |
+| `int_rate` | `set_rate` | `(rate_bps)` |
+| `sup_chg` | `mint`, `burn`, `reconcile_burn` | `(delta, total_principal, total_supply)` |
+| `col_lock` | `mint` | `(from, amount)` |
+| `col_unlk` | `burn`, `reconcile_burn` | `(to, amount)` |
+| `yld_clm` | `claim_yield` | `(recipient, amount)` |
+| `freeze` | `freeze_account`, `batch_freeze_accounts` | `(account)` |
+| `unfreeze` | `unfreeze_account`, `batch_unfreeze_accounts` | `(account)` |
+| `force_tx` | `force_transfer` | `(from, to, amount)` |
+| `upgraded` | `upgrade` | `(by, new_wasm_hash)` |
 
 ---
 
@@ -380,18 +419,19 @@ The SDK exposes dedicated methods for Minter actions and queries:
 
 | SDK Method | Contract Function | Parameters |
 |------------|-------------------|------------|
-| `mint()` | `mint(caller, to, amount)` | `contractId`, `caller`, `to`, `amount: bigint` |
-| `burn()` | `burn(caller, from, amount)` | `contractId`, `caller`, `from`, `amount: bigint` |
-| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `caller`, `rateBps: number` |
-| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter` |
-| `reconcileBurn()` | `reconcile_burn(amount, collateral_to)` | `contractId`, `amount: bigint`, `collateralTo` |
-| `setCollateralToken()` | `set_collateral_token(collateral_token)` | `contractId`, `collateralToken` |
+| `mint()` | `mint(caller, to, amount)` | `contractId`, `caller: string`, `to: string`, `amount: bigint` |
+| `burn()` | `burn(caller, from, amount)` | `contractId`, `caller: string`, `from: string`, `amount: bigint` |
+| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `caller: string`, `rateBps: number` |
+| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter: string` |
+| `reconcileBurn()` | `reconcile_burn(amount, collateral_to)` | `contractId`, `amount: bigint`, `collateralTo: string` |
+| `setCollateralToken()` | `set_collateral_token(collateral_token)` | `contractId`, `collateralToken: string` |
 | `queryAdmin()` | `admin()` | `contractId` |
 | `querySacToken()` | `sac_token()` | `contractId` |
 | `queryCollateralToken()` | `collateral_token()` | `contractId` |
 | `queryCollateralBalance()` | `collateral_balance()` | `contractId` → `QueryI128Result` |
 | `queryCollateralDeficit()` | `collateral_deficit()` | `contractId` → `QueryI128Result` |
 | `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `assetIssuer`, `wasm`, `collateralToken`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `distributor` |
+| `setupTrustline()` | *(classic changeTrust op)* | `assetCode`, `assetIssuer` |
 
 Other functions are available through the generic `invokeContract({ contractId, method: "..." })` interface.
 
@@ -420,8 +460,9 @@ Build Tx → Simulate & Prepare → SHA-256 Hash → Fireblocks RAW Sign → Att
 1. **Build** — Construct the Soroban invoke transaction with the source account's sequence number
 2. **Simulate** — Soroban RPC simulates the transaction, returning resource fees and auth entries
 3. **Prepare** — Assemble the simulation result into the transaction envelope
-4. **Sign** — Send the 32-byte transaction hash to Fireblocks for MPC-based Ed25519 signing (`MPC_EDDSA_ED25519`)
-5. **Submit** — Submit the signed transaction to the Stellar network and poll until terminal
+4. **Hash** — Compute the 32-byte SHA-256 transaction hash
+5. **Sign** — Send the hash to Fireblocks for MPC-based Ed25519 signing (`MPC_EDDSA_ED25519`)
+6. **Submit** — Attach signature, submit to the Stellar network, and poll until terminal
 
 > Note: RAW signing is a premium Fireblocks feature that requires explicit enablement on your vault.
 

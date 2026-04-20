@@ -3,7 +3,7 @@
  *   1. Configure issuer (AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED)
  *   2. Deploy SAC (Stellar Asset Contract)
  *   3. Upload WASM
- *   4. Deploy wrapper contract with 6 constructor args
+ *   4. Deploy wrapper contract with 7 constructor args
  *   5. Transfer SAC admin to wrapper
  *
  * Uses the ISSUER Fireblocks account to sign all deploy transactions.
