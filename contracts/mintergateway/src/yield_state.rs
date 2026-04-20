@@ -36,10 +36,7 @@ use crate::storage_types::{DataKey, YieldStateValue};
 
 pub fn read_yield_state(env: &Env) -> YieldStateValue {
     let key = DataKey::YieldState;
-    env.storage()
-        .instance()
-        .get(&key)
-        .unwrap_or_default()
+    env.storage().instance().get(&key).unwrap_or_default()
 }
 
 pub fn write_yield_state(env: &Env, state: &YieldStateValue) {
