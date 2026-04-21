@@ -19,9 +19,10 @@
 //!
 //! # Rounding Policy
 //!
-//! Yield computation (`principal * index_delta / INDEX_SCALE`) rounds **DOWN** (truncation).
-//! This is protocol-favorable — pays slightly less yield than mathematically exact.
-//! See `continuous_index` module for the full rounding policy of the index pipeline.
+//! Unclaimed yield is derived on demand as
+//! `floor(total_principal × current_index / INDEX_SCALE) − total_supply`, clamped at 0.
+//! This keeps yield a pure function of the index and the accumulators, with one rounding
+//! point. See `continuous_index` for the rounding policy of the index pipeline.
 
 use soroban_fixed_point_math::FixedPoint;
 use soroban_sdk::Env;
@@ -170,15 +171,11 @@ pub fn update_index(env: &Env) {
 pub fn get_accrued_yield(env: &Env) -> i128 {
     let state = read_yield_state(env);
 
-    if state.total_principal == 0 || state.rate_bps == 0 {
+    if state.total_principal == 0 {
         return 0;
     }
 
     let current_time = env.ledger().timestamp();
-
-    // if (current_time <= state.last_update_timestamp) {
-    //     return 0;
-    // }
 
     let current_index = continuous_index::current_index(
         state.latest_index,
@@ -192,20 +189,23 @@ pub fn get_accrued_yield(env: &Env) -> i128 {
         .fixed_mul_floor(current_index, INDEX_SCALE)
         .unwrap();
 
-    total_supply_with_yield - state.total_supply
+    // `pv_amount` floors at mint time, so `total_principal × latest_index / SCALE`
+    // can be below `total_supply` by the floor residue and produce a small negative
+    // result; yield is never negative, so clamp at 0.
+    (total_supply_with_yield - state.total_supply).max(0)
 }
 
 // =============================================================================
 // Rate Management
 // =============================================================================
 
-/// Sets the interest rate. Updates index first to finalize yield at old rate.
+/// Sets the interest rate. Caller must call `update_index` first to finalize
+/// yield at the old rate before invoking this.
 pub fn set_interest_rate(env: &Env, rate_bps: u32) -> Result<(), YieldTokenError> {
     if rate_bps > 10_000 {
         return Err(YieldTokenError::RateExceedsMax);
     }
 
-    // Then set the new rate
     let mut state = read_yield_state(env);
     state.rate_bps = rate_bps;
     write_yield_state(env, &state);
