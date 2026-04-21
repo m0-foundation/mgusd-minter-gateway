@@ -347,7 +347,10 @@ fn test_yield_recipient_manager_cannot_set_rate() {
     let s = setup();
 
     let result = s.contract.try_set_rate(&s.yield_recipient_manager, &500);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -355,7 +358,10 @@ fn test_yield_recipient_cannot_set_rate() {
     let s = setup();
 
     let result = s.contract.try_set_rate(&s.yield_recipient, &500);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -363,7 +369,10 @@ fn test_forced_transfer_manager_cannot_set_rate() {
     let s = setup();
 
     let result = s.contract.try_set_rate(&s.forced_transfer_manager, &500);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -372,7 +381,10 @@ fn test_random_cannot_set_rate() {
     let random = Address::generate(&s.env);
 
     let result = s.contract.try_set_rate(&random, &500);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 // =============================================================================
@@ -384,7 +396,10 @@ fn test_minter_cannot_claim_yield() {
     let s = setup();
 
     let result = s.contract.try_claim_yield(&s.minter);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -392,7 +407,10 @@ fn test_yield_recipient_manager_cannot_claim_yield() {
     let s = setup();
 
     let result = s.contract.try_claim_yield(&s.yield_recipient_manager);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -400,7 +418,10 @@ fn test_forced_transfer_manager_cannot_claim_yield() {
     let s = setup();
 
     let result = s.contract.try_claim_yield(&s.forced_transfer_manager);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -409,5 +430,8 @@ fn test_random_cannot_claim_yield() {
     let random = Address::generate(&s.env);
 
     let result = s.contract.try_claim_yield(&random);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }

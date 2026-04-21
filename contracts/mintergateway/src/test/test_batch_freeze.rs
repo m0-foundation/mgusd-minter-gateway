@@ -57,7 +57,10 @@ fn test_batch_unfreeze_admin_unauthorized() {
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
     let result = s.contract.try_batch_unfreeze_accounts(&s.admin, &accounts);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -66,7 +69,10 @@ fn test_batch_freeze_admin_unauthorized() {
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
     let result = s.contract.try_batch_freeze_accounts(&s.admin, &accounts);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 // =============================================================================
@@ -140,7 +146,10 @@ fn test_minter_cannot_batch_freeze() {
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
     let result = s.contract.try_batch_freeze_accounts(&s.minter, &accounts);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -150,7 +159,10 @@ fn test_random_cannot_batch_freeze() {
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
     let result = s.contract.try_batch_freeze_accounts(&random, &accounts);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 // =============================================================================
@@ -168,7 +180,10 @@ fn test_batch_freeze_exceeds_max_size() {
     let result = s
         .contract
         .try_batch_freeze_accounts(&s.distributor, &accounts);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::BatchTooLargeError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::BatchTooLargeError))
+    );
 }
 
 #[test]

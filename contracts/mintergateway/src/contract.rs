@@ -270,7 +270,12 @@ impl YieldToken {
 
     /// Mints SAC tokens directly to the recipient and updates accumulators.
     /// Minter only.
-    pub fn mint(e: Env, caller: Address, to: Address, amount: i128) -> Result<(), MinterGatewayError> {
+    pub fn mint(
+        e: Env,
+        caller: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), MinterGatewayError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_role_holder(&caller, &read_minter(&e))?;
@@ -343,7 +348,7 @@ impl YieldToken {
 
         let state = read_yield_state(&e);
         emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
-        
+
         Ok(())
     }
 
