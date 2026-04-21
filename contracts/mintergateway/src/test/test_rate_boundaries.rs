@@ -23,7 +23,7 @@ fn test_set_rate_exceeds_maximum() {
 
     // 10_001 bps > 100% — should return RateExceedsMax
     let result = s.contract.try_set_rate(&s.minter, &10_001);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::RateExceedsMax)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::RateExceedsMax)));
 
     // Rate unchanged (still default 0)
     assert_eq!(s.contract.interest_rate(), 0);

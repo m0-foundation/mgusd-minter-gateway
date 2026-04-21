@@ -28,7 +28,7 @@ use soroban_fixed_point_math::FixedPoint;
 use soroban_sdk::Env;
 
 use crate::continuous_index::{self, INDEX_SCALE};
-use crate::errors::YieldTokenError;
+use crate::errors::MinterGatewayError;
 use crate::storage_types::{DataKey, YieldStateValue};
 
 // =============================================================================
@@ -118,13 +118,13 @@ pub fn increase_both_accumulators(env: &Env, amount: i128) {
 /// `total_principal` is adjusted by the present value of the amount
 /// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
 /// by the nominal amount. Returns error if PV amount exceeds total_principal.
-pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), YieldTokenError> {
+pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), MinterGatewayError> {
     let mut state = read_yield_state(env);
     let pv_amount = amount
         .fixed_mul_floor(INDEX_SCALE, state.latest_index)
         .unwrap();
     if pv_amount > state.total_principal {
-        return Err(YieldTokenError::BurnExceedsPrincipal);
+        return Err(MinterGatewayError::BurnExceedsPrincipal);
     }
 
     state.total_principal = state.total_principal.checked_sub(pv_amount).unwrap();
@@ -201,9 +201,9 @@ pub fn get_accrued_yield(env: &Env) -> i128 {
 
 /// Sets the interest rate. Caller must call `update_index` first to finalize
 /// yield at the old rate before invoking this.
-pub fn set_interest_rate(env: &Env, rate_bps: u32) -> Result<(), YieldTokenError> {
+pub fn set_interest_rate(env: &Env, rate_bps: u32) -> Result<(), MinterGatewayError> {
     if rate_bps > 10_000 {
-        return Err(YieldTokenError::RateExceedsMax);
+        return Err(MinterGatewayError::RateExceedsMax);
     }
 
     let mut state = read_yield_state(env);

@@ -153,7 +153,7 @@ fn test_force_transfer_admin_cannot_call() {
     let result = s
         .contract
         .try_force_transfer(&s.admin, &alice, &bob, &(500 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -187,7 +187,7 @@ fn test_force_transfer_zero_amount() {
     let result = s
         .contract
         .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &0);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::InvalidAmountError)));
 }
 
 #[test]
@@ -223,7 +223,7 @@ fn test_force_transfer_negative_amount_reverts() {
     let result = s
         .contract
         .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &(-100));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::InvalidAmountError)));
 }
 
 #[test]
@@ -334,7 +334,7 @@ fn test_minter_cannot_force_transfer() {
     let result = s
         .contract
         .try_force_transfer(&s.minter, &alice, &bob, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -346,7 +346,7 @@ fn test_yield_recipient_cannot_force_transfer() {
     let result =
         s.contract
             .try_force_transfer(&s.yield_recipient, &alice, &bob, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -361,7 +361,7 @@ fn test_yield_recipient_manager_cannot_force_transfer() {
         &bob,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -373,7 +373,7 @@ fn test_distributor_cannot_force_transfer() {
     let result = s
         .contract
         .try_force_transfer(&s.distributor, &alice, &bob, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -386,5 +386,5 @@ fn test_random_cannot_force_transfer() {
     let result = s
         .contract
         .try_force_transfer(&random, &alice, &bob, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }

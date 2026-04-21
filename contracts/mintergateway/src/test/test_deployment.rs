@@ -36,7 +36,7 @@ fn test_double_initialization_returns_error() {
         )
     });
 
-    assert_eq!(result, Err(crate::YieldTokenError::AlreadyInitializedError));
+    assert_eq!(result, Err(crate::MinterGatewayError::AlreadyInitializedError));
 }
 
 #[test]

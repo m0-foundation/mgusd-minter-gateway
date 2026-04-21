@@ -3,7 +3,7 @@ use soroban_sdk::contracterror;
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
-pub enum YieldTokenError {
+pub enum MinterGatewayError {
     // Common errors — codes align with Soroban SDK built-in error ranges.
     // Codes 2, 5-7 are reserved/unused to avoid collision with SDK conventions.
     InternalError = 1,

@@ -280,7 +280,7 @@ fn test_yield_recipient_manager_cannot_mint() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -290,7 +290,7 @@ fn test_yield_recipient_cannot_mint() {
     let result = s
         .contract
         .try_mint(&s.yield_recipient, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -302,7 +302,7 @@ fn test_forced_transfer_manager_cannot_mint() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -313,7 +313,7 @@ fn test_random_cannot_mint() {
     let result = s
         .contract
         .try_mint(&random, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 // =============================================================================
@@ -329,7 +329,7 @@ fn test_yield_recipient_manager_cannot_burn() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn test_yield_recipient_cannot_burn() {
     let result = s
         .contract
         .try_burn(&s.yield_recipient, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -351,7 +351,7 @@ fn test_forced_transfer_manager_cannot_burn() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }
 
 #[test]
@@ -362,5 +362,5 @@ fn test_random_cannot_burn() {
     let result = s
         .contract
         .try_burn(&random, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
 }

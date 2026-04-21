@@ -106,7 +106,7 @@ fn test_mint_negative_amount() {
     let s = setup();
 
     let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &-1);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::InvalidAmountError)));
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn test_burn_negative_amount() {
     let s = setup();
 
     let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &-1);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::InvalidAmountError)));
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn test_mint_zero_amount() {
     let s = setup();
 
     let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &0);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::InvalidAmountError)));
 }
 
 #[test]
@@ -130,5 +130,5 @@ fn test_burn_zero_amount() {
     let s = setup();
 
     let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &0);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::InvalidAmountError)));
 }
