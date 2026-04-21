@@ -1,6 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::events::ForceTransfer;
 
 // =============================================================================
 // HAPPY PATH — force_transfer moves tokens between accounts
@@ -19,6 +20,11 @@ fn test_force_transfer_moves_tokens() {
 
     s.contract
         .force_transfer(&s.forced_transfer_manager, &alice, &bob, &(500 * DECIMALS));
+    s.assert_event(ForceTransfer {
+        from: alice.clone(),
+        to: bob.clone(),
+        amount: 500 * DECIMALS,
+    });
 
     assert_eq!(s.sac_token.balance(&alice), 500 * DECIMALS);
     assert_eq!(s.sac_token.balance(&bob), 500 * DECIMALS);

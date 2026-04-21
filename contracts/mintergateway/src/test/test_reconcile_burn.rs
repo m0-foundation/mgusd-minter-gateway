@@ -1,8 +1,9 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::Address;
 
-use super::setup::{advance_time, setup, DECIMALS, SECONDS_PER_YEAR};
+use super::setup::{advance_time, setup, DECIMALS, INDEX_SCALE, SECONDS_PER_YEAR};
 use crate::errors::MinterGatewayError;
+use crate::events::SupplySynced;
 
 // =============================================================================
 // HAPPY PATH
@@ -27,6 +28,14 @@ fn test_reconcile_burn_decreases_both_accumulators() {
 
     // Admin reconciles
     s.contract.reconcile_burn(&reconcile_amount);
+
+    // Assert emitted event before any view calls — they reset the host event buffer.
+    s.assert_event(SupplySynced {
+        delta: -reconcile_amount,
+        new_total_principal: mint_amount - reconcile_amount,
+        new_total_supply: mint_amount - reconcile_amount,
+        latest_index: INDEX_SCALE,
+    });
 
     // Both accumulators decreased
     assert_eq!(s.contract.total_principal(), mint_amount - reconcile_amount);

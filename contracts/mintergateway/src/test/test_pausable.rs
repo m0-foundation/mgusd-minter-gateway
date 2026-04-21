@@ -2,6 +2,7 @@ use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, IntoVal};
 
 use super::setup::*;
+use crate::events::PauserSet;
 
 // =============================================================================
 // STATE — pause / unpause / paused
@@ -212,6 +213,10 @@ fn test_set_pauser_updates_pauser() {
     let new_pauser = Address::generate(&s.env);
 
     s.contract.set_pauser(&new_pauser);
+    s.assert_event(PauserSet {
+        old: s.pauser.clone(),
+        new: new_pauser.clone(),
+    });
     assert_eq!(s.contract.pauser(), new_pauser);
 }
 

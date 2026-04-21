@@ -1,6 +1,10 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::events::{
+    AdminSet, DistributorSet, ForcedTransferManagerSet, MinterSet, YieldRecipientManagerSet,
+    YieldRecipientSet,
+};
 
 // =============================================================================
 // ROLE GETTERS — verify initial state
@@ -31,6 +35,10 @@ fn test_set_admin() {
     let new_admin = Address::generate(&s.env);
 
     s.contract.set_admin(&new_admin);
+    s.assert_event(AdminSet {
+        old: s.admin.clone(),
+        new: new_admin.clone(),
+    });
     assert_eq!(s.contract.admin(), new_admin);
 }
 
@@ -40,6 +48,10 @@ fn test_set_minter() {
     let new_minter = Address::generate(&s.env);
 
     s.contract.set_minter(&new_minter);
+    s.assert_event(MinterSet {
+        old: s.minter.clone(),
+        new: new_minter.clone(),
+    });
     assert_eq!(s.contract.minter(), new_minter);
 }
 
@@ -49,6 +61,10 @@ fn test_set_yield_recipient_manager() {
     let new_yrm = Address::generate(&s.env);
 
     s.contract.set_yield_recipient_manager(&new_yrm);
+    s.assert_event(YieldRecipientManagerSet {
+        old: s.yield_recipient_manager.clone(),
+        new: new_yrm.clone(),
+    });
     assert_eq!(s.contract.yield_recipient_manager(), new_yrm);
 }
 
@@ -59,6 +75,10 @@ fn test_set_yield_recipient() {
 
     s.contract
         .set_yield_recipient(&s.yield_recipient_manager, &new_yr);
+    s.assert_event(YieldRecipientSet {
+        old: s.yield_recipient.clone(),
+        new: new_yr.clone(),
+    });
     assert_eq!(s.contract.yield_recipient(), new_yr);
 }
 
@@ -73,6 +93,10 @@ fn test_set_forced_transfer_manager() {
     );
 
     s.contract.set_forced_transfer_manager(&new_ftm);
+    s.assert_event(ForcedTransferManagerSet {
+        old: s.forced_transfer_manager.clone(),
+        new: new_ftm.clone(),
+    });
     assert_eq!(s.contract.forced_transfer_manager(), new_ftm);
 }
 
@@ -84,6 +108,10 @@ fn test_set_distributor() {
     assert_eq!(s.contract.distributor(), s.distributor);
 
     s.contract.set_distributor(&new_dist);
+    s.assert_event(DistributorSet {
+        old: s.distributor.clone(),
+        new: new_dist.clone(),
+    });
     assert_eq!(s.contract.distributor(), new_dist);
 }
 

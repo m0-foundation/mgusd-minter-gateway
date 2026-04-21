@@ -1,6 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::events::{AccountFrozen, AccountUnfrozen};
 
 // =============================================================================
 // FREEZE / UNFREEZE TESTS
@@ -16,6 +17,9 @@ fn test_freeze_account_prevents_transfer() {
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     s.contract.freeze_account(&s.distributor, &user);
+    s.assert_event(AccountFrozen {
+        account: user.clone(),
+    });
     assert!(!s.contract.is_authorized(&user));
 
     // Frozen user cannot transfer
@@ -38,6 +42,9 @@ fn test_unfreeze_account_restores_transfer() {
     assert!(!s.contract.is_authorized(&user));
 
     s.contract.unfreeze_account(&s.distributor, &user);
+    s.assert_event(AccountUnfrozen {
+        account: user.clone(),
+    });
     assert!(s.contract.is_authorized(&user));
 
     // Authorize recipient so they can receive (AUTH_REQUIRED mode)

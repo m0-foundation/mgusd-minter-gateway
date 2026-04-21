@@ -1,6 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::events::{InterestRateSet, YieldClaimed};
 
 // =============================================================================
 // YIELD ACCRUAL TESTS
@@ -13,6 +14,7 @@ fn test_yield_accrual_5pct_one_year() {
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
     s.contract.set_rate(&s.minter, &500);
+    s.assert_event(InterestRateSet { rate_bps: 500 });
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -86,7 +88,19 @@ fn test_claim_yield_mints_tokens_to_yield_recipient() {
     let balance_before = s.sac_token.balance(&s.yield_recipient);
     assert_eq!(balance_before, principal);
 
+    // current_index() reports the live index that update_index inside
+    // claim_yield will persist and emit.
+    let expected_latest_index = s.contract.current_index();
+
     let claimed = s.contract.claim_yield(&s.yield_recipient);
+
+    // Assert emitted event before any view calls — they reset the host event buffer.
+    s.assert_event(YieldClaimed {
+        recipient: s.yield_recipient.clone(),
+        amount: claimed,
+        latest_index: expected_latest_index,
+    });
+
     assert_eq!(claimed, 512_710_937_490);
 
     // Yield recipient now holds principal + claimed in SAC tokens
@@ -134,6 +148,9 @@ fn test_claim_yield_with_zero_accrued() {
     // No principal, no rate, no time — claim returns 0
     let claimed = s.contract.claim_yield(&s.yield_recipient);
     assert_eq!(claimed, 0);
+
+    // No YieldClaimed event emitted for zero-yield claims.
+    s.assert_no_events();
 }
 
 // =============================================================================

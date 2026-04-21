@@ -24,10 +24,16 @@ pub fn emit_interest_rate_set(env: &Env, rate_bps: u32) {
 pub struct YieldClaimed {
     pub recipient: Address,
     pub amount: i128,
+    pub latest_index: i128,
 }
 
-pub fn emit_yield_claimed(env: &Env, recipient: Address, amount: i128) {
-    YieldClaimed { recipient, amount }.publish(env);
+pub fn emit_yield_claimed(env: &Env, recipient: Address, amount: i128, latest_index: i128) {
+    YieldClaimed {
+        recipient,
+        amount,
+        latest_index,
+    }
+    .publish(env);
 }
 
 #[contractevent]
@@ -68,6 +74,7 @@ pub struct SupplySynced {
     pub delta: i128,
     pub new_total_principal: i128,
     pub new_total_supply: i128,
+    pub latest_index: i128,
 }
 
 pub fn emit_supply_synced(
@@ -75,11 +82,13 @@ pub fn emit_supply_synced(
     delta: i128,
     new_total_principal: i128,
     new_total_supply: i128,
+    latest_index: i128,
 ) {
     SupplySynced {
         delta,
         new_total_principal,
         new_total_supply,
+        latest_index,
     }
     .publish(env);
 }

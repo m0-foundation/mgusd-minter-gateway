@@ -292,7 +292,13 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).mint(&to, &amount);
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, amount, state.total_principal, state.total_supply);
+        emit_supply_synced(
+            &e,
+            amount,
+            state.total_principal,
+            state.total_supply,
+            state.latest_index,
+        );
 
         Ok(())
     }
@@ -321,7 +327,13 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).clawback(&from, &amount);
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        emit_supply_synced(
+            &e,
+            -amount,
+            state.total_principal,
+            state.total_supply,
+            state.latest_index,
+        );
 
         Ok(())
     }
@@ -347,7 +359,13 @@ impl YieldToken {
         decrease_both_accumulators(&e, amount)?;
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        emit_supply_synced(
+            &e,
+            -amount,
+            state.total_principal,
+            state.total_supply,
+            state.latest_index,
+        );
 
         Ok(())
     }
@@ -454,7 +472,7 @@ impl YieldToken {
             let sac_addr = read_sac_token(&e);
             token::StellarAssetClient::new(&e, &sac_addr).mint(&recipient, &unclaimed_yield);
 
-            emit_yield_claimed(&e, recipient, unclaimed_yield);
+            emit_yield_claimed(&e, recipient, unclaimed_yield, get_latest_index(&e));
         }
 
         Ok(unclaimed_yield)

@@ -1,6 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::events::SupplySynced;
 
 // =============================================================================
 // MINT — mints SAC tokens and updates accumulators
@@ -15,6 +16,14 @@ fn test_mint_increases_both_accumulators_and_sac_balance() {
     // Authorize recipient before mint (AUTH_REQUIRED mode)
     s.contract.unfreeze_account(&s.distributor, &recipient);
     s.contract.mint(&s.minter, &recipient, &amount);
+
+    // Assert emitted event before any view calls — they reset the host event buffer.
+    s.assert_event(SupplySynced {
+        delta: amount,
+        new_total_principal: amount,
+        new_total_supply: amount,
+        latest_index: INDEX_SCALE,
+    });
 
     assert_eq!(s.contract.total_principal(), amount);
     assert_eq!(s.contract.total_supply(), amount);
@@ -79,6 +88,15 @@ fn test_burn_decreases_principal() {
 
     // Principal reduced by PV of burn amount
     let pv_burn = burn_amount * INDEX_SCALE / idx_at_burn;
+
+    // Assert emitted event before any view calls — they reset the host event buffer.
+    s.assert_event(SupplySynced {
+        delta: -burn_amount,
+        new_total_principal: initial - pv_burn,
+        new_total_supply: initial - burn_amount,
+        latest_index: idx_at_burn,
+    });
+
     assert_eq!(s.contract.total_principal(), initial - pv_burn);
 
     // Accrued yield should still be there (burn calls update_index first)
