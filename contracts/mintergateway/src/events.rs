@@ -7,7 +7,7 @@ pub struct AdminSet {
     pub new: Address,
 }
 
-pub fn emit_set_admin(env: &Env, old: Address, new: Address) {
+pub fn emit_admin_set(env: &Env, old: Address, new: Address) {
     AdminSet { old, new }.publish(env);
 }
 

@@ -4,9 +4,9 @@ use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::constants::MAX_BATCH_SIZE;
 use crate::errors::YieldTokenError;
 use crate::events::{
-    emit_account_frozen, emit_account_unfrozen, emit_distributor_set, emit_force_transfer,
-    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set, emit_pauser_set,
-    emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
+    emit_account_frozen, emit_account_unfrozen, emit_admin_set, emit_distributor_set,
+    emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set,
+    emit_pauser_set, emit_supply_synced, emit_upgraded, emit_yield_claimed,
     emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
@@ -18,10 +18,9 @@ use crate::roles::{
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
 use crate::yield_state::{
-    claim_accrued_yield, decrease_both_accumulators, get_accrued_yield, get_current_index,
-    get_interest_rate, get_latest_index, get_total_principal, get_total_supply,
-    increase_both_accumulators, increase_total_supply, read_yield_state, set_interest_rate,
-    update_index,
+    decrease_both_accumulators, get_accrued_yield, get_current_index, get_interest_rate,
+    get_latest_index, get_total_principal, get_total_supply, increase_both_accumulators,
+    increase_total_supply, read_yield_state, set_interest_rate, update_index,
 };
 use stellar_contract_utils::pausable::{self as pausable, Pausable};
 
@@ -80,6 +79,7 @@ impl YieldToken {
         write_forced_transfer_manager(&e, &forced_transfer_manager);
         write_distributor(&e, &distributor);
         write_pauser(&e, &pauser);
+
         Ok(())
     }
 
@@ -94,7 +94,7 @@ impl YieldToken {
 
         write_admin(&e, &new_admin);
 
-        emit_set_admin(&e, admin, new_admin);
+        emit_admin_set(&e, admin, new_admin);
     }
 
     /// Sets a new minter address. Admin only.
@@ -170,6 +170,7 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&account, &false);
 
         emit_account_frozen(&e, account);
+
         Ok(())
     }
 
@@ -187,6 +188,7 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&account, &true);
 
         emit_account_unfrozen(&e, account);
+
         Ok(())
     }
 
@@ -353,9 +355,13 @@ impl YieldToken {
             return Ok(());
         }
 
+        // First update index at the old rate
+        update_index(&e);
+
         set_interest_rate(&e, rate_bps)?;
 
         emit_interest_rate_set(&e, rate_bps);
+
         Ok(())
     }
 
@@ -386,6 +392,7 @@ impl YieldToken {
         sac_client.mint(&to, &amount);
 
         emit_force_transfer(&e, from, to, amount);
+
         Ok(())
     }
 
@@ -400,12 +407,14 @@ impl YieldToken {
         new_yield_recipient: Address,
     ) -> Result<(), YieldTokenError> {
         require_role_holder(&caller, &read_yield_recipient_manager(&e))?;
+
         extend_instance_ttl(&e);
 
         let old = read_yield_recipient(&e);
         write_yield_recipient(&e, &new_yield_recipient);
 
         emit_yield_recipient_set(&e, old, new_yield_recipient);
+
         Ok(())
     }
 
@@ -420,25 +429,27 @@ impl YieldToken {
     /// Tokens are always minted to the yield recipient, regardless of who calls.
     pub fn claim_yield(e: Env, caller: Address) -> Result<i128, YieldTokenError> {
         pausable::when_not_paused(&e);
+
         let recipient = read_yield_recipient(&e);
-        require_role_holder(&caller, &recipient)?;
+        require_role_holder(&caller, &recipient)?; // TODO - review who can claim
 
         extend_instance_ttl(&e);
 
-        let claimed = claim_accrued_yield(&e);
+        update_index(&e);
 
-        if claimed > 0 {
+        let unclaimed_yield = get_accrued_yield(&e);
+
+        if unclaimed_yield > 0 {
             // Increase total_supply (but NOT total_principal — no compounding)
-            increase_total_supply(&e, claimed);
-
+            increase_total_supply(&e, unclaimed_yield);
             // Mint new tokens to yield recipient
             let sac_addr = read_sac_token(&e);
-            token::StellarAssetClient::new(&e, &sac_addr).mint(&recipient, &claimed);
+            token::StellarAssetClient::new(&e, &sac_addr).mint(&recipient, &unclaimed_yield);
 
-            emit_yield_claimed(&e, recipient, claimed);
+            emit_yield_claimed(&e, recipient, unclaimed_yield);
         }
 
-        Ok(claimed)
+        Ok(unclaimed_yield)
     }
 
     // =========================================================================

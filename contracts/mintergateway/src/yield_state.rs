@@ -125,9 +125,11 @@ pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), YieldTo
     if pv_amount > state.total_principal {
         return Err(YieldTokenError::BurnExceedsPrincipal);
     }
+
     state.total_principal = state.total_principal.checked_sub(pv_amount).unwrap();
     state.total_supply = state.total_supply.checked_sub(amount).unwrap();
     write_yield_state(env, &state);
+
     Ok(())
 }
 
@@ -149,30 +151,16 @@ pub fn update_index(env: &Env) {
 
     // Only update if time has passed
     if current_time > state.last_update_timestamp {
-        let new_index = continuous_index::current_index(
+        let current_index = continuous_index::current_index(
             state.latest_index,
             state.rate_bps,
             current_time - state.last_update_timestamp,
         );
 
-        // Accrue yield if there's principal and index grew
-        if state.total_principal > 0 && new_index > state.latest_index {
-            let index_delta = new_index - state.latest_index;
-
-            // yield = principal × index_delta / INDEX_SCALE
-            // Rounding: DOWN (truncation). Protocol-favorable — pays slightly less yield.
-            let yield_amount = state
-                .total_principal
-                .fixed_mul_floor(index_delta, INDEX_SCALE)
-                .unwrap();
-
-            state.accrued_yield = state.accrued_yield.checked_add(yield_amount).unwrap();
-        }
-
-        state.latest_index = new_index;
+        state.latest_index = current_index;
+        state.last_update_timestamp = current_time;
     }
 
-    state.last_update_timestamp = current_time;
     write_yield_state(env, &state);
 }
 
@@ -181,33 +169,30 @@ pub fn update_index(env: &Env) {
 /// Includes both stored yield and pending yield from index growth.
 pub fn get_accrued_yield(env: &Env) -> i128 {
     let state = read_yield_state(env);
-    let current_time = env.ledger().timestamp();
 
-    // Start with stored accrued yield
-    let mut total_yield = state.accrued_yield;
-
-    // Add pending yield from index growth (on principal only)
-    if current_time > state.last_update_timestamp && state.total_principal > 0 && state.rate_bps > 0
-    {
-        let new_index = continuous_index::current_index(
-            state.latest_index,
-            state.rate_bps,
-            current_time - state.last_update_timestamp,
-        );
-
-        if new_index > state.latest_index {
-            let index_delta = new_index - state.latest_index;
-            // Rounding: DOWN (truncation). Protocol-favorable — same as update_index.
-            let pending_yield = state
-                .total_principal
-                .fixed_mul_floor(index_delta, INDEX_SCALE)
-                .unwrap();
-
-            total_yield = total_yield.checked_add(pending_yield).unwrap();
-        }
+    if state.total_principal == 0 || state.rate_bps == 0 {
+        return 0;
     }
 
-    total_yield
+    let current_time = env.ledger().timestamp();
+
+    // if (current_time <= state.last_update_timestamp) {
+    //     return 0;
+    // }
+
+    let current_index = continuous_index::current_index(
+        state.latest_index,
+        state.rate_bps,
+        current_time - state.last_update_timestamp,
+    );
+
+    // Rounding: DOWN (truncation). Protocol-favorable — same as update_index.
+    let total_supply_with_yield = state
+        .total_principal
+        .fixed_mul_floor(current_index, INDEX_SCALE)
+        .unwrap();
+
+    total_supply_with_yield - state.total_supply
 }
 
 // =============================================================================
@@ -220,38 +205,15 @@ pub fn set_interest_rate(env: &Env, rate_bps: u32) -> Result<(), YieldTokenError
         return Err(YieldTokenError::RateExceedsMax);
     }
 
-    // First update index at the old rate
-    update_index(env);
-
     // Then set the new rate
     let mut state = read_yield_state(env);
     state.rate_bps = rate_bps;
     write_yield_state(env, &state);
+
     Ok(())
 }
 
 /// Returns the current interest rate in basis points.
 pub fn get_interest_rate(env: &Env) -> u32 {
     read_yield_state(env).rate_bps
-}
-
-// =============================================================================
-// Yield Claims
-// =============================================================================
-
-/// Claims accrued yield and resets the accumulator.
-///
-/// Returns the amount claimed.
-///
-/// Note: This does NOT increase principal - claimed yield doesn't earn more yield.
-pub fn claim_accrued_yield(env: &Env) -> i128 {
-    // Update to capture latest yield
-    update_index(env);
-
-    let mut state = read_yield_state(env);
-    let claimed = state.accrued_yield;
-    state.accrued_yield = 0;
-    write_yield_state(env, &state);
-
-    claimed
 }
