@@ -173,7 +173,7 @@ fn test_random_cannot_batch_freeze() {
 fn test_batch_freeze_exceeds_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..21 {
+    for _ in 0..41 {
         accounts.push_back(Address::generate(&s.env));
     }
 
@@ -190,11 +190,11 @@ fn test_batch_freeze_exceeds_max_size() {
 fn test_batch_unfreeze_at_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..20 {
+    for _ in 0..40 {
         accounts.push_back(Address::generate(&s.env));
     }
 
-    // Should succeed at exactly 20
+    // Should succeed at exactly 40
     s.contract
         .batch_unfreeze_accounts(&s.distributor, &accounts);
 
@@ -207,12 +207,19 @@ fn test_batch_unfreeze_at_max_size() {
 fn test_batch_freeze_at_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..20 {
+    for _ in 0..40 {
         accounts.push_back(Address::generate(&s.env));
     }
 
-    // Accounts start unauthorized (AUTH_REQUIRED), so freezing is a no-op
-    // on auth state but should succeed without hitting resource limits
+    // Authorize first (AUTH_REQUIRED default is unauthorized), matching
+    // realistic usage — freeze is called on accounts the distributor
+    // previously unfroze. `reset_unlimited` bypasses the harness's
+    // accumulating auth-recording budget; per-transaction mainnet fit
+    // is covered by test_batch_at_max_size_within_resource_limits.
+    s.env.cost_estimate().budget().reset_unlimited();
+    s.contract
+        .batch_unfreeze_accounts(&s.distributor, &accounts);
+    s.env.cost_estimate().budget().reset_unlimited();
     s.contract.batch_freeze_accounts(&s.distributor, &accounts);
 
     for account in accounts.iter() {
