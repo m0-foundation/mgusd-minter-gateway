@@ -151,25 +151,27 @@ pub fn update_index(env: &Env) {
     let mut state = read_yield_state(env);
     let current_time = env.ledger().timestamp();
 
-    // Only update if time has passed
-    if current_time > state.last_update_timestamp {
-        let current_index = continuous_index::current_index(
-            state.latest_index,
-            state.rate_bps,
-            current_time - state.last_update_timestamp,
-        );
-
-        // Emit only when the index actually changes — rate=0 advances the
-        // timestamp without changing the value, and that's not worth an event.
-        if current_index != state.latest_index {
-            emit_update_index(env, current_index);
-        }
-
-        state.latest_index = current_index;
-        state.last_update_timestamp = current_time;
-
-        write_yield_state(env, &state);
+    // Nothing to do if time hasn't advanced (same ledger, repeat call).
+    if current_time <= state.last_update_timestamp {
+        return;
     }
+
+    let current_index = continuous_index::current_index(
+        state.latest_index,
+        state.rate_bps,
+        current_time - state.last_update_timestamp,
+    );
+
+    // Emit only when the index value actually changed. rate=0 keeps
+    // the index flat even as the timestamp advances — that's not
+    // event-worthy.
+    if current_index != state.latest_index {
+        emit_update_index(env, current_index);
+        state.latest_index = current_index;
+    }
+
+    state.last_update_timestamp = current_time;
+    write_yield_state(env, &state);
 }
 
 /// Returns the current accrued yield without updating state.
