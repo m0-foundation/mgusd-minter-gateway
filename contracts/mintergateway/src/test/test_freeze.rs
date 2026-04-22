@@ -7,16 +7,16 @@ use super::setup::*;
 // =============================================================================
 
 #[test]
-fn test_freeze_account_prevents_transfer() {
+fn test_block_user_prevents_transfer() {
     let s = setup();
     let user = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.distributor, &user);
+    s.contract.unblock_user(&user, &s.blocker);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
-    s.contract.freeze_account(&s.distributor, &user);
-    assert!(!s.contract.is_authorized(&user));
+    s.contract.block_user(&user, &s.blocker);
+    assert!(s.contract.blocked(&user));
 
     // Frozen user cannot transfer
     let result = s
@@ -26,22 +26,22 @@ fn test_freeze_account_prevents_transfer() {
 }
 
 #[test]
-fn test_unfreeze_account_restores_transfer() {
+fn test_unblock_user_restores_transfer() {
     let s = setup();
     let user = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.distributor, &user);
+    s.contract.unblock_user(&user, &s.blocker);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
-    s.contract.freeze_account(&s.distributor, &user);
-    assert!(!s.contract.is_authorized(&user));
+    s.contract.block_user(&user, &s.blocker);
+    assert!(s.contract.blocked(&user));
 
-    s.contract.unfreeze_account(&s.distributor, &user);
-    assert!(s.contract.is_authorized(&user));
+    s.contract.unblock_user(&user, &s.blocker);
+    assert!(!s.contract.blocked(&user));
 
     // Authorize recipient so they can receive (AUTH_REQUIRED mode)
-    s.contract.unfreeze_account(&s.distributor, &recipient);
+    s.contract.unblock_user(&recipient, &s.blocker);
 
     // Unfrozen user can transfer again
     s.sac_token.transfer(&user, &recipient, &(100 * DECIMALS));
@@ -49,40 +49,40 @@ fn test_unfreeze_account_restores_transfer() {
 }
 
 #[test]
-fn test_is_authorized_default_false() {
+fn test_blocked_default_true() {
     let s = setup();
     let user = Address::generate(&s.env);
 
     // New accounts are unauthorized by default with AUTH_REQUIRED
-    assert!(!s.contract.is_authorized(&user));
+    assert!(s.contract.blocked(&user));
 }
 
 #[test]
-fn test_freeze_idempotent() {
+fn test_block_idempotent() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.distributor, &user);
+    s.contract.unblock_user(&user, &s.blocker);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     // Freezing twice doesn't panic
-    s.contract.freeze_account(&s.distributor, &user);
-    s.contract.freeze_account(&s.distributor, &user);
-    assert!(!s.contract.is_authorized(&user));
+    s.contract.block_user(&user, &s.blocker);
+    s.contract.block_user(&user, &s.blocker);
+    assert!(s.contract.blocked(&user));
 }
 
 #[test]
-fn test_unfreeze_idempotent() {
+fn test_unblock_idempotent() {
     let s = setup();
     let user = Address::generate(&s.env);
 
     // Authorize the account first
-    s.contract.unfreeze_account(&s.distributor, &user);
-    assert!(s.contract.is_authorized(&user));
+    s.contract.unblock_user(&user, &s.blocker);
+    assert!(!s.contract.blocked(&user));
 
     // Unfreezing an already-authorized account doesn't panic
-    s.contract.unfreeze_account(&s.distributor, &user);
-    assert!(s.contract.is_authorized(&user));
+    s.contract.unblock_user(&user, &s.blocker);
+    assert!(!s.contract.blocked(&user));
 }
 
 // =============================================================================
@@ -90,10 +90,10 @@ fn test_unfreeze_idempotent() {
 // =============================================================================
 
 #[test]
-fn test_freeze_account_reverts_without_auth() {
+fn test_block_user_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let user = Address::generate(&s.env);
-    let result = s.contract.try_freeze_account(&s.distributor, &user);
+    let result = s.contract.try_block_user(&user, &s.blocker);
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort
@@ -101,10 +101,10 @@ fn test_freeze_account_reverts_without_auth() {
 }
 
 #[test]
-fn test_unfreeze_account_reverts_without_auth() {
+fn test_unblock_user_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let user = Address::generate(&s.env);
-    let result = s.contract.try_unfreeze_account(&s.distributor, &user);
+    let result = s.contract.try_unblock_user(&user, &s.blocker);
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort
@@ -112,42 +112,42 @@ fn test_unfreeze_account_reverts_without_auth() {
 }
 
 #[test]
-fn test_freeze_account_rejects_unauthorized_role() {
+fn test_block_user_rejects_unauthorized_role() {
     let s = setup();
     let user = Address::generate(&s.env);
     let random = Address::generate(&s.env);
-    let result = s.contract.try_freeze_account(&random, &user);
+    let result = s.contract.try_block_user(&user, &random);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 #[test]
-fn test_unfreeze_account_rejects_unauthorized_role() {
+fn test_unblock_user_rejects_unauthorized_role() {
     let s = setup();
     let user = Address::generate(&s.env);
     let random = Address::generate(&s.env);
-    let result = s.contract.try_unfreeze_account(&random, &user);
+    let result = s.contract.try_unblock_user(&user, &random);
     assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
 }
 
 #[test]
-fn test_distributor_can_freeze_account() {
+fn test_blocker_can_block_user() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.distributor, &user);
-    assert!(s.contract.is_authorized(&user));
+    s.contract.unblock_user(&user, &s.blocker);
+    assert!(!s.contract.blocked(&user));
 
-    s.contract.freeze_account(&s.distributor, &user);
-    assert!(!s.contract.is_authorized(&user));
+    s.contract.block_user(&user, &s.blocker);
+    assert!(s.contract.blocked(&user));
 }
 
 #[test]
-fn test_distributor_can_unfreeze_account() {
+fn test_blocker_can_unblock_user() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.distributor, &user);
-    assert!(s.contract.is_authorized(&user));
+    s.contract.unblock_user(&user, &s.blocker);
+    assert!(!s.contract.blocked(&user));
 }
 
 // =============================================================================
@@ -155,20 +155,20 @@ fn test_distributor_can_unfreeze_account() {
 // =============================================================================
 
 #[test]
-fn test_compliance_flow_freeze_burn_unfreeze() {
+fn test_compliance_flow_block_burn_unblock() {
     let s = setup();
     let user = Address::generate(&s.env);
     let principal = 1_000 * DECIMALS;
 
     // Step 1: Mint tokens
-    s.contract.unfreeze_account(&s.distributor, &user);
+    s.contract.unblock_user(&user, &s.blocker);
     s.contract.mint(&s.minter, &user, &principal);
     assert_eq!(s.sac_token.balance(&user), principal);
-    assert!(s.contract.is_authorized(&user));
+    assert!(!s.contract.blocked(&user));
 
     // Step 2: Freeze the account
-    s.contract.freeze_account(&s.distributor, &user);
-    assert!(!s.contract.is_authorized(&user));
+    s.contract.block_user(&user, &s.blocker);
+    assert!(s.contract.blocked(&user));
 
     // Step 3: Burn half
     s.contract.burn(&s.minter, &user, &(principal / 2));
@@ -177,26 +177,26 @@ fn test_compliance_flow_freeze_burn_unfreeze() {
     assert_eq!(s.contract.total_supply(), principal / 2);
 
     // Step 4: Unfreeze the account
-    s.contract.unfreeze_account(&s.distributor, &user);
-    assert!(s.contract.is_authorized(&user));
+    s.contract.unblock_user(&user, &s.blocker);
+    assert!(!s.contract.blocked(&user));
 
     // Step 5: User can transfer remaining balance
     let recipient = Address::generate(&s.env);
-    s.contract.unfreeze_account(&s.distributor, &recipient); // Authorize recipient (AUTH_REQUIRED mode)
+    s.contract.unblock_user(&recipient, &s.blocker); // Authorize recipient (AUTH_REQUIRED mode)
     s.sac_token.transfer(&user, &recipient, &(100 * DECIMALS));
     assert_eq!(s.sac_token.balance(&recipient), 100 * DECIMALS);
 }
 
 #[test]
-fn test_freeze_blocks_subsequent_direct_sac_transfer() {
+fn test_block_user_blocks_subsequent_direct_sac_transfer() {
     let s = setup();
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
     // Authorize both and mint
-    s.contract.unfreeze_account(&s.distributor, &alice);
-    s.contract.unfreeze_account(&s.distributor, &bob);
+    s.contract.unblock_user(&alice, &s.blocker);
+    s.contract.unblock_user(&bob, &s.blocker);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Direct SAC transfer works while both are authorized
@@ -204,7 +204,7 @@ fn test_freeze_blocks_subsequent_direct_sac_transfer() {
     assert_eq!(s.sac_token.balance(&bob), 100 * DECIMALS);
 
     // Admin freezes alice via our contract
-    s.contract.freeze_account(&s.distributor, &alice);
+    s.contract.block_user(&alice, &s.blocker);
 
     // Alice tries another direct SAC transfer — BLOCKED
     let result = s.sac_token.try_transfer(&alice, &bob, &(100 * DECIMALS));
@@ -212,4 +212,26 @@ fn test_freeze_blocks_subsequent_direct_sac_transfer() {
 
     // Alice's remaining balance is locked
     assert_eq!(s.sac_token.balance(&alice), amount - 100 * DECIMALS);
+}
+
+// =============================================================================
+// balance() VIEW — delegates to SAC
+// =============================================================================
+
+#[test]
+fn test_balance_matches_sac_balance() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let amount = 1_000 * DECIMALS;
+
+    // Before mint: balance is 0 and matches SAC
+    assert_eq!(s.contract.balance(&user), 0);
+    assert_eq!(s.contract.balance(&user), s.sac_token.balance(&user));
+
+    s.contract.unblock_user(&user, &s.blocker);
+    s.contract.mint(&s.minter, &user, &amount);
+
+    // After mint: balance matches SAC-reported balance
+    assert_eq!(s.contract.balance(&user), amount);
+    assert_eq!(s.contract.balance(&user), s.sac_token.balance(&user));
 }

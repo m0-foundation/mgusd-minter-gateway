@@ -69,16 +69,16 @@ pub fn write_forced_transfer_manager(env: &Env, addr: &Address) {
 }
 
 // =============================================================================
-// Distributor - Can batch freeze/unfreeze accounts
+// Blocker - Can block/unblock accounts (individually or in batches)
 // =============================================================================
 
-pub fn read_distributor(env: &Env) -> Address {
-    let key = DataKey::Distributor;
+pub fn read_blocker(env: &Env) -> Address {
+    let key = DataKey::Blocker;
     env.storage().instance().get(&key).unwrap()
 }
 
-pub fn write_distributor(env: &Env, addr: &Address) {
-    let key = DataKey::Distributor;
+pub fn write_blocker(env: &Env, addr: &Address) {
+    let key = DataKey::Blocker;
     env.storage().instance().set(&key, addr);
 }
 

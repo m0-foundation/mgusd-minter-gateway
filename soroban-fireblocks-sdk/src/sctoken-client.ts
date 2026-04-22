@@ -3,13 +3,13 @@ import { SorobanFireblocksClient } from "./client";
 import { addressToScVal, addressVecToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
 import {
   MAX_BATCH_SIZE,
-  BatchFreezeAccountsParams,
+  BatchBlockUsersParams,
+  BlockUserParams,
   BurnParams,
   ClaimYieldParams,
   DeployFullParams,
   DeployFullResult,
   ForceTransferParams,
-  FreezeAccountParams,
   MintParams,
   QueryParams,
   ReconcileBurnParams,
@@ -51,47 +51,47 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     });
   }
 
-  async freezeAccount(params: FreezeAccountParams): Promise<InvokeContractResult> {
+  async blockUser(params: BlockUserParams): Promise<InvokeContractResult> {
     return this.invokeContract({
       contractId: params.contractId,
-      method: "freeze_account",
-      args: [addressToScVal(params.caller), addressToScVal(params.account)],
+      method: "block_user",
+      args: [addressToScVal(params.user), addressToScVal(params.operator)],
     });
   }
 
-  async unfreezeAccount(params: FreezeAccountParams): Promise<InvokeContractResult> {
+  async unblockUser(params: BlockUserParams): Promise<InvokeContractResult> {
     return this.invokeContract({
       contractId: params.contractId,
-      method: "unfreeze_account",
-      args: [addressToScVal(params.caller), addressToScVal(params.account)],
+      method: "unblock_user",
+      args: [addressToScVal(params.user), addressToScVal(params.operator)],
     });
   }
 
-  async batchFreezeAccounts(params: BatchFreezeAccountsParams): Promise<InvokeContractResult> {
-    if (params.accounts.length === 0) {
-      throw new Error("batchFreezeAccounts: accounts array must not be empty");
+  async batchBlockUsers(params: BatchBlockUsersParams): Promise<InvokeContractResult> {
+    if (params.users.length === 0) {
+      throw new Error("batchBlockUsers: users array must not be empty");
     }
-    if (params.accounts.length > MAX_BATCH_SIZE) {
-      throw new Error(`batchFreezeAccounts: accounts array exceeds MAX_BATCH_SIZE (${MAX_BATCH_SIZE})`);
+    if (params.users.length > MAX_BATCH_SIZE) {
+      throw new Error(`batchBlockUsers: users array exceeds MAX_BATCH_SIZE (${MAX_BATCH_SIZE})`);
     }
     return this.invokeContract({
       contractId: params.contractId,
-      method: "batch_freeze_accounts",
-      args: [addressToScVal(params.caller), addressVecToScVal(params.accounts)],
+      method: "batch_block_users",
+      args: [addressVecToScVal(params.users), addressToScVal(params.operator)],
     });
   }
 
-  async batchUnfreezeAccounts(params: BatchFreezeAccountsParams): Promise<InvokeContractResult> {
-    if (params.accounts.length === 0) {
-      throw new Error("batchUnfreezeAccounts: accounts array must not be empty");
+  async batchUnblockUsers(params: BatchBlockUsersParams): Promise<InvokeContractResult> {
+    if (params.users.length === 0) {
+      throw new Error("batchUnblockUsers: users array must not be empty");
     }
-    if (params.accounts.length > MAX_BATCH_SIZE) {
-      throw new Error(`batchUnfreezeAccounts: accounts array exceeds MAX_BATCH_SIZE (${MAX_BATCH_SIZE})`);
+    if (params.users.length > MAX_BATCH_SIZE) {
+      throw new Error(`batchUnblockUsers: users array exceeds MAX_BATCH_SIZE (${MAX_BATCH_SIZE})`);
     }
     return this.invokeContract({
       contractId: params.contractId,
-      method: "batch_unfreeze_accounts",
-      args: [addressToScVal(params.caller), addressVecToScVal(params.accounts)],
+      method: "batch_unblock_users",
+      args: [addressVecToScVal(params.users), addressToScVal(params.operator)],
     });
   }
 
@@ -162,10 +162,30 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     return Address.fromScVal(retval).toString();
   }
 
-  async queryDistributor(params: QueryParams): Promise<string> {
-    const retval = await this.simulateView({ contractId: params.contractId, method: "distributor" });
-    if (!retval) throw new Error("distributor returned no value");
+  async queryBlocker(params: QueryParams): Promise<string> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "blocker" });
+    if (!retval) throw new Error("blocker returned no value");
     return Address.fromScVal(retval).toString();
+  }
+
+  async queryBlocked(params: QueryParams & { account: string }): Promise<boolean> {
+    const retval = await this.simulateView({
+      contractId: params.contractId,
+      method: "blocked",
+      args: [addressToScVal(params.account)],
+    });
+    if (!retval) throw new Error("blocked returned no value");
+    return scValToNative(retval) as boolean;
+  }
+
+  async queryBalance(params: QueryParams & { id: string }): Promise<bigint> {
+    const retval = await this.simulateView({
+      contractId: params.contractId,
+      method: "balance",
+      args: [addressToScVal(params.id)],
+    });
+    if (!retval) throw new Error("balance returned no value");
+    return scValToNative(retval) as bigint;
   }
 
   async queryTotalSupply(params: QueryParams): Promise<bigint> {
@@ -243,7 +263,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
         addressToScVal(params.yieldRecipientManager),
         addressToScVal(params.yieldRecipient),
         addressToScVal(params.forcedTransferManager),
-        addressToScVal(params.distributor),
+        addressToScVal(params.blocker),
         addressToScVal(params.pauser),
       ],
     });

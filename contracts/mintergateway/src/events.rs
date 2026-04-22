@@ -85,26 +85,6 @@ pub fn emit_supply_synced(
 }
 
 #[contractevent]
-pub struct AccountFrozen {
-    #[topic]
-    pub account: Address,
-}
-
-pub fn emit_account_frozen(env: &Env, account: Address) {
-    AccountFrozen { account }.publish(env);
-}
-
-#[contractevent]
-pub struct AccountUnfrozen {
-    #[topic]
-    pub account: Address,
-}
-
-pub fn emit_account_unfrozen(env: &Env, account: Address) {
-    AccountUnfrozen { account }.publish(env);
-}
-
-#[contractevent]
 pub struct ForcedTransferManagerSet {
     #[topic]
     pub old: Address,
@@ -116,14 +96,14 @@ pub fn emit_forced_transfer_manager_set(env: &Env, old: Address, new: Address) {
 }
 
 #[contractevent]
-pub struct DistributorSet {
+pub struct BlockerSet {
     #[topic]
     pub old: Address,
     pub new: Address,
 }
 
-pub fn emit_distributor_set(env: &Env, old: Address, new: Address) {
-    DistributorSet { old, new }.publish(env);
+pub fn emit_blocker_set(env: &Env, old: Address, new: Address) {
+    BlockerSet { old, new }.publish(env);
 }
 
 #[contractevent]

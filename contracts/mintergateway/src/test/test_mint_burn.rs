@@ -13,7 +13,7 @@ fn test_mint_increases_both_accumulators_and_sac_balance() {
     let recipient = Address::generate(&s.env);
 
     // Authorize recipient before mint (AUTH_REQUIRED mode)
-    s.contract.unfreeze_account(&s.distributor, &recipient);
+    s.contract.unblock_user(&recipient, &s.blocker);
     s.contract.mint(&s.minter, &recipient, &amount);
 
     assert_eq!(s.contract.total_principal(), amount);
@@ -27,8 +27,8 @@ fn test_mint_multiple_recipients() {
     let user_a = Address::generate(&s.env);
     let user_b = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.distributor, &user_a);
-    s.contract.unfreeze_account(&s.distributor, &user_b);
+    s.contract.unblock_user(&user_a, &s.blocker);
+    s.contract.unblock_user(&user_b, &s.blocker);
     s.contract.mint(&s.minter, &user_a, &(500 * DECIMALS));
     s.contract.mint(&s.minter, &user_b, &(300 * DECIMALS));
 
@@ -47,7 +47,7 @@ fn test_burn_decreases_both_accumulators_and_sac_balance() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.distributor, &user);
+    s.contract.unblock_user(&user, &s.blocker);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.burn(&s.minter, &user, &(400 * DECIMALS));
 
@@ -168,7 +168,7 @@ fn test_burn_exceeding_total_supply_reverts() {
     let user = Address::generate(&s.env);
     let mint_amount = 1_000 * DECIMALS;
 
-    s.contract.unfreeze_account(&s.distributor, &user);
+    s.contract.unblock_user(&user, &s.blocker);
     s.contract.mint(&s.minter, &user, &mint_amount);
 
     // Grow index so PV conversion shrinks amounts
@@ -246,7 +246,7 @@ fn test_unauthorized_account_cannot_receive_mint() {
     let user = Address::generate(&s.env);
 
     // Do NOT authorize — user is unauthorized by default (AUTH_REQUIRED)
-    assert!(!s.contract.is_authorized(&user));
+    assert!(s.contract.blocked(&user));
 
     // Minting to unauthorized account should fail
     let result = s.contract.try_mint(&s.minter, &user, &(1_000 * DECIMALS));
@@ -259,8 +259,8 @@ fn test_authorized_account_can_receive_mint() {
     let user = Address::generate(&s.env);
 
     // Authorize via unfreeze_account (allowlist)
-    s.contract.unfreeze_account(&s.distributor, &user);
-    assert!(s.contract.is_authorized(&user));
+    s.contract.unblock_user(&user, &s.blocker);
+    assert!(!s.contract.blocked(&user));
 
     // Minting to authorized account succeeds
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));

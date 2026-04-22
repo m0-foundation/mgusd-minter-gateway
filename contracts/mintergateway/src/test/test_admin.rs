@@ -16,9 +16,9 @@ fn test_forced_transfer_manager_view() {
 }
 
 #[test]
-fn test_distributor_view() {
+fn test_blocker_view() {
     let s = setup();
-    assert_eq!(s.contract.distributor(), s.distributor);
+    assert_eq!(s.contract.blocker(), s.blocker);
 }
 
 // =============================================================================
@@ -77,14 +77,14 @@ fn test_set_forced_transfer_manager() {
 }
 
 #[test]
-fn test_set_distributor() {
+fn test_set_blocker() {
     let s = setup();
     let new_dist = Address::generate(&s.env);
 
-    assert_eq!(s.contract.distributor(), s.distributor);
+    assert_eq!(s.contract.blocker(), s.blocker);
 
-    s.contract.set_distributor(&new_dist);
-    assert_eq!(s.contract.distributor(), new_dist);
+    s.contract.set_blocker(&new_dist);
+    assert_eq!(s.contract.blocker(), new_dist);
 }
 
 // =============================================================================
@@ -105,7 +105,7 @@ fn test_admin_cannot_burn() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.distributor, &user);
+    s.contract.unblock_user(&user, &s.blocker);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_burn(&s.admin, &user, &(400 * DECIMALS));
@@ -182,14 +182,10 @@ fn test_set_forced_transfer_manager_reverts_without_auth() {
 }
 
 #[test]
-fn test_set_distributor_reverts_without_auth() {
+fn test_set_blocker_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_dist = Address::generate(&s.env);
-    let err = s
-        .contract
-        .try_set_distributor(&new_dist)
-        .unwrap_err()
-        .unwrap();
+    let err = s.contract.try_set_blocker(&new_dist).unwrap_err().unwrap();
     assert_eq!(err, auth_error());
 }
 

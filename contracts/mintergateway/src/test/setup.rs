@@ -26,7 +26,7 @@ pub struct TestSetup<'a> {
     pub yield_recipient_manager: Address,
     pub yield_recipient: Address,
     pub forced_transfer_manager: Address,
-    pub distributor: Address,
+    pub blocker: Address,
     pub pauser: Address,
 }
 
@@ -40,7 +40,7 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
-    let distributor = Address::generate(&env);
+    let blocker = Address::generate(&env);
     let pauser = Address::generate(&env);
 
     // Register SAC token with admin as initial issuer
@@ -64,7 +64,7 @@ pub fn setup() -> TestSetup<'static> {
             &yield_recipient_manager,
             &yield_recipient,
             &forced_transfer_manager,
-            &distributor,
+            &blocker,
             &pauser,
         ),
     );
@@ -74,7 +74,7 @@ pub fn setup() -> TestSetup<'static> {
     sac_admin_client.set_admin(&contract_addr);
 
     // Authorize yield_recipient so claim_yield can mint to it (AUTH_REQUIRED mode)
-    contract.unfreeze_account(&distributor, &yield_recipient);
+    contract.unblock_user(&yield_recipient, &blocker);
 
     TestSetup {
         env,
@@ -86,7 +86,7 @@ pub fn setup() -> TestSetup<'static> {
         yield_recipient_manager,
         yield_recipient,
         forced_transfer_manager,
-        distributor,
+        blocker,
         pauser,
     }
 }

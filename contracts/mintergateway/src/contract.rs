@@ -4,14 +4,13 @@ use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::constants::MAX_BATCH_SIZE;
 use crate::errors::YieldTokenError;
 use crate::events::{
-    emit_account_frozen, emit_account_unfrozen, emit_distributor_set, emit_force_transfer,
-    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set, emit_pauser_set,
-    emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
-    emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_blocker_set, emit_force_transfer, emit_forced_transfer_manager_set,
+    emit_interest_rate_set, emit_minter_set, emit_pauser_set, emit_set_admin, emit_supply_synced,
+    emit_upgraded, emit_yield_claimed, emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    read_distributor, read_forced_transfer_manager, read_minter, read_pauser, read_yield_recipient,
-    read_yield_recipient_manager, require_role_holder, write_distributor,
+    read_blocker, read_forced_transfer_manager, read_minter, read_pauser, read_yield_recipient,
+    read_yield_recipient_manager, require_role_holder, write_blocker,
     write_forced_transfer_manager, write_minter, write_pauser, write_yield_recipient,
     write_yield_recipient_manager,
 };
@@ -24,6 +23,7 @@ use crate::yield_state::{
     update_index,
 };
 use stellar_contract_utils::pausable::{self as pausable, Pausable};
+use stellar_tokens::fungible::blocklist::{emit_user_blocked, emit_user_unblocked};
 
 pub(crate) fn check_positive_amount(amount: i128) -> Result<(), YieldTokenError> {
     if amount <= 0 {
@@ -52,7 +52,7 @@ impl YieldToken {
     /// * `yield_recipient_manager` - Address that can set the yield recipient
     /// * `yield_recipient` - Address that can claim yield
     /// * `forced_transfer_manager` - Address that can authorize accounts and transfer tokens
-    /// * `distributor` - Address that can batch freeze/unfreeze accounts
+    /// * `blocker` - Address that can block/unblock accounts (individually or in batches)
     /// * `pauser` - Address that can pause/unpause the contract
     pub fn __constructor(
         e: Env,
@@ -62,7 +62,7 @@ impl YieldToken {
         yield_recipient_manager: Address,
         yield_recipient: Address,
         forced_transfer_manager: Address,
-        distributor: Address,
+        blocker: Address,
         pauser: Address,
     ) -> Result<(), YieldTokenError> {
         if has_admin(&e) {
@@ -78,7 +78,7 @@ impl YieldToken {
         write_yield_recipient_manager(&e, &yield_recipient_manager);
         write_yield_recipient(&e, &yield_recipient);
         write_forced_transfer_manager(&e, &forced_transfer_manager);
-        write_distributor(&e, &distributor);
+        write_blocker(&e, &blocker);
         write_pauser(&e, &pauser);
         Ok(())
     }
@@ -130,15 +130,15 @@ impl YieldToken {
         emit_forced_transfer_manager_set(&e, old, new_forced_transfer_manager);
     }
 
-    /// Sets a new distributor address. Admin only.
-    pub fn set_distributor(e: Env, new_distributor: Address) {
+    /// Sets a new blocker address. Admin only.
+    pub fn set_blocker(e: Env, new_blocker: Address) {
         require_admin(&e);
         extend_instance_ttl(&e);
 
-        let old = read_distributor(&e);
-        write_distributor(&e, &new_distributor);
+        let old = read_blocker(&e);
+        write_blocker(&e, &new_blocker);
 
-        emit_distributor_set(&e, old, new_distributor);
+        emit_blocker_set(&e, old, new_blocker);
     }
 
     /// Sets a new pauser address. Admin only.
@@ -153,92 +153,91 @@ impl YieldToken {
     }
 
     // =========================================================================
-    // Compliance Functions (Distributor)
+    // BlockList Functions (Blocker)
+    //
+    // Mirrors the `stellar_tokens::fungible::blocklist::FungibleBlockList`
+    // interface: `block_user` / `unblock_user` / `blocked`. Backed by the SAC
+    // allowlist (`set_authorized`) — the SAC is the authoritative source of
+    // authorization state, so we do not mirror into contract storage.
+    //
+    // `blocked` is the inverse of SAC authorization:
+    //   `blocked(a) == true`  ⇔  SAC `authorized(a) == false`
+    //
+    // Note on polarity under AUTH_REQUIRED: untouched accounts are SAC-
+    // unauthorized by default, so `blocked` returns `true` for them.
     // =========================================================================
 
-    /// Freezes an account, preventing it from sending or receiving SAC tokens.
-    /// Distributor only.
-    pub fn freeze_account(
-        e: Env,
-        caller: Address,
-        account: Address,
-    ) -> Result<(), YieldTokenError> {
-        require_role_holder(&caller, &read_distributor(&e))?;
+    /// Blocks a user, preventing them from sending or receiving SAC tokens.
+    /// Blocker only.
+    pub fn block_user(e: Env, user: Address, operator: Address) -> Result<(), YieldTokenError> {
+        require_role_holder(&operator, &read_blocker(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&account, &false);
+        token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &false);
 
-        emit_account_frozen(&e, account);
+        emit_user_blocked(&e, &user);
         Ok(())
     }
 
-    /// Unfreezes an account, restoring its ability to send and receive SAC tokens.
-    /// Distributor only.
-    pub fn unfreeze_account(
-        e: Env,
-        caller: Address,
-        account: Address,
-    ) -> Result<(), YieldTokenError> {
-        require_role_holder(&caller, &read_distributor(&e))?;
+    /// Unblocks a user, restoring their ability to send and receive SAC tokens.
+    /// Blocker only.
+    pub fn unblock_user(e: Env, user: Address, operator: Address) -> Result<(), YieldTokenError> {
+        require_role_holder(&operator, &read_blocker(&e))?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&account, &true);
+        token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &true);
 
-        emit_account_unfrozen(&e, account);
+        emit_user_unblocked(&e, &user);
         Ok(())
     }
 
-    // =========================================================================
-    // Batch Compliance Functions (Distributor)
-    // =========================================================================
-
-    /// Freezes multiple accounts in a single transaction.
-    /// Distributor only. Max 20 accounts per call.
-    pub fn batch_freeze_accounts(
+    /// Blocks multiple users in a single transaction.
+    /// Blocker only. Max 20 users per call.
+    pub fn batch_block_users(
         e: Env,
-        caller: Address,
-        accounts: Vec<Address>,
+        users: Vec<Address>,
+        operator: Address,
     ) -> Result<(), YieldTokenError> {
-        require_role_holder(&caller, &read_distributor(&e))?;
+        require_role_holder(&operator, &read_blocker(&e))?;
         extend_instance_ttl(&e);
 
-        if accounts.len() > MAX_BATCH_SIZE {
+        if users.len() > MAX_BATCH_SIZE {
             return Err(YieldTokenError::BatchTooLargeError);
         }
 
         let sac_addr = read_sac_token(&e);
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
 
-        for account in accounts.iter() {
-            sac_client.set_authorized(&account, &false);
-            emit_account_frozen(&e, account);
+        for user in users.iter() {
+            sac_client.set_authorized(&user, &false);
+            emit_user_blocked(&e, &user);
         }
 
         Ok(())
     }
 
-    /// Unfreezes multiple accounts in a single transaction.
-    /// Distributor only. Max 20 accounts per call.
-    pub fn batch_unfreeze_accounts(
+    /// Unblocks multiple users in a single transaction.
+    /// Blocker only. Max 20 users per call.
+    pub fn batch_unblock_users(
         e: Env,
-        caller: Address,
-        accounts: Vec<Address>,
+        users: Vec<Address>,
+        operator: Address,
     ) -> Result<(), YieldTokenError> {
-        require_role_holder(&caller, &read_distributor(&e))?;
+        require_role_holder(&operator, &read_blocker(&e))?;
         extend_instance_ttl(&e);
 
-        if accounts.len() > MAX_BATCH_SIZE {
+        if users.len() > MAX_BATCH_SIZE {
             return Err(YieldTokenError::BatchTooLargeError);
         }
 
         let sac_addr = read_sac_token(&e);
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
 
-        for account in accounts.iter() {
-            sac_client.set_authorized(&account, &true);
-            emit_account_unfrozen(&e, account);
+        for user in users.iter() {
+            sac_client.set_authorized(&user, &true);
+            emit_user_unblocked(&e, &user);
         }
 
         Ok(())
@@ -445,11 +444,22 @@ impl YieldToken {
     // View Functions
     // =========================================================================
 
-    /// Returns whether the given account is authorized (not frozen) on the SAC.
-    pub fn is_authorized(e: Env, account: Address) -> bool {
+    /// Returns whether the given account is blocked.
+    /// Matches `stellar_tokens::fungible::blocklist::FungibleBlockList::blocked` —
+    /// `true` means the account is blocked (SAC-unauthorized). Untouched
+    /// accounts return `true` because the SAC issuer uses AUTH_REQUIRED.
+    pub fn blocked(e: Env, account: Address) -> bool {
         extend_instance_ttl(&e);
         let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).authorized(&account)
+        !token::StellarAssetClient::new(&e, &sac_addr).authorized(&account)
+    }
+
+    /// Returns the SAC token balance for the given address.
+    /// Delegates to the underlying SAC — balances live on the SAC, not here.
+    pub fn balance(e: Env, id: Address) -> i128 {
+        extend_instance_ttl(&e);
+        let sac_addr = read_sac_token(&e);
+        token::TokenClient::new(&e, &sac_addr).balance(&id)
     }
 
     /// Returns the SAC token address this contract administers.
@@ -525,10 +535,10 @@ impl YieldToken {
         read_forced_transfer_manager(&e)
     }
 
-    /// Returns the distributor address.
-    pub fn distributor(e: Env) -> Address {
+    /// Returns the blocker address.
+    pub fn blocker(e: Env) -> Address {
         extend_instance_ttl(&e);
-        read_distributor(&e)
+        read_blocker(&e)
     }
 
     /// Returns the pauser address.

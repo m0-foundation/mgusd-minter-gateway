@@ -17,7 +17,7 @@ fn test_double_initialization_returns_error() {
     let yrm = s.yield_recipient_manager.clone();
     let yr = s.yield_recipient.clone();
     let ftm = s.forced_transfer_manager.clone();
-    let dist = s.distributor.clone();
+    let dist = s.blocker.clone();
     let pauser = s.pauser.clone();
 
     // Re-invoke __constructor inside the contract's storage context
