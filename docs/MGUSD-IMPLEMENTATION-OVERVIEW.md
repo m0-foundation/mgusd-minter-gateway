@@ -15,7 +15,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Admin or Distributor whitelists (unfreezes) accounts — individually via `unfreeze_account(caller, account)` or in batch via `batch_unfreeze_accounts(caller, accounts)` (up to 20 per call)
+1. Admin or Distributor whitelists (unfreezes) accounts — individually via `unfreeze_account(caller, account)` or in batch via `batch_unfreeze_accounts(caller, accounts)` (up to 40 per call)
 2. Treasury transfers tokens to the user via the SAC's standard SEP-41 `transfer()`
 3. Whitelisted (unfrozen) accounts can freely transfer among themselves
 4. Non-whitelisted (frozen) accounts cannot send or receive tokens
@@ -113,8 +113,8 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 |----------|-----------|-------------|
 | `freeze_account` | `(caller: Address, account: Address)` | Freeze account on SAC (`set_authorized(false)`) |
 | `unfreeze_account` | `(caller: Address, account: Address)` | Unfreeze account on SAC (`set_authorized(true)`) |
-| `batch_freeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Freeze up to 20 accounts in a single transaction |
-| `batch_unfreeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Unfreeze up to 20 accounts in a single transaction |
+| `batch_freeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Freeze up to 40 accounts in a single transaction |
+| `batch_unfreeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Unfreeze up to 40 accounts in a single transaction |
 
 ### Yield Recipient Functions (1)
 
@@ -328,7 +328,7 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 - `unfreeze_account(caller, addr)` → SAC `set_authorized(true)` → account can send/receive
 - `freeze_account(caller, addr)` → SAC `set_authorized(false)` → account is blocked
 - Admin or Distributor can freeze/unfreeze individual accounts
-- **Batch operations:** `batch_freeze_accounts` and `batch_unfreeze_accounts` accept up to 20 accounts per call and can be called by Admin or Distributor
+- **Batch operations:** `batch_freeze_accounts` and `batch_unfreeze_accounts` accept up to 40 accounts per call and can be called by Admin or Distributor
 - The 20-account cap is derived from Soroban's per-transaction resource limits; each account consumes write entries for the SAC authorization state
 - Batch operations are atomic — if any account fails, the entire transaction reverts
 - Each account in a batch emits its own `freeze`/`unfreeze` event for indexer compatibility

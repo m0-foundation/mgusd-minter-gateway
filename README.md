@@ -151,8 +151,8 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 |----------|------|-------------|
 | `freeze_account(caller, account)` | Admin or Distributor | Removes account from allowlist — blocks sending and receiving |
 | `unfreeze_account(caller, account)` | Admin or Distributor | Adds account to allowlist — permits sending and receiving |
-| `batch_freeze_accounts(caller, accounts)` | Admin or Distributor | Freeze up to 20 accounts per call |
-| `batch_unfreeze_accounts(caller, accounts)` | Admin or Distributor | Unfreeze up to 20 accounts per call |
+| `batch_freeze_accounts(caller, accounts)` | Admin or Distributor | Freeze up to 40 accounts per call |
+| `batch_unfreeze_accounts(caller, accounts)` | Admin or Distributor | Unfreeze up to 40 accounts per call |
 | `is_authorized(account)` | (view) | Returns whether an account is authorized |
 
 - `freeze_account` and `unfreeze_account` call the SAC's `set_authorized` under the hood
@@ -197,7 +197,7 @@ Yield Recipient
 
 Distributor
 ├── Freezes/unfreezes individual accounts
-└── Batch freeze/unfreeze (max 20 per call)
+└── Batch freeze/unfreeze (max 40 per call)
 
 Forced Transfer Manager
 └── force_transfer — clawback + mint (bypasses freeze on source)
