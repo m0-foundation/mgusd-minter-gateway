@@ -29,6 +29,7 @@ use soroban_sdk::Env;
 
 use crate::continuous_index::{self, INDEX_SCALE};
 use crate::errors::MinterGatewayError;
+use crate::events::emit_update_index;
 use crate::storage_types::{DataKey, YieldStateValue};
 
 // =============================================================================
@@ -158,11 +159,17 @@ pub fn update_index(env: &Env) {
             current_time - state.last_update_timestamp,
         );
 
+        // Emit only when the index actually changes — rate=0 advances the
+        // timestamp without changing the value, and that's not worth an event.
+        if current_index != state.latest_index {
+            emit_update_index(env, current_index);
+        }
+
         state.latest_index = current_index;
         state.last_update_timestamp = current_time;
-    }
 
-    write_yield_state(env, &state);
+        write_yield_state(env, &state);
+    }
 }
 
 /// Returns the current accrued yield without updating state.

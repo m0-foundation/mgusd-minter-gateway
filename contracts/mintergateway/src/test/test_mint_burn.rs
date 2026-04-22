@@ -1,6 +1,8 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::events::{Burn, Mint, UpdateIndex};
+use crate::gateway_events;
 
 // =============================================================================
 // MINT — mints SAC tokens and updates accumulators
@@ -15,6 +17,15 @@ fn test_mint_increases_both_accumulators_and_sac_balance() {
     // Authorize recipient before mint (AUTH_REQUIRED mode)
     s.contract.unfreeze_account(&s.distributor, &recipient);
     s.contract.mint(&s.minter, &recipient, &amount);
+
+    // Assert emitted event before any view calls — they reset the host event buffer.
+    // At T0 with zero elapsed, update_index is a no-op, so only Mint fires.
+    s.assert_event(Mint {
+        to: recipient.clone(),
+        amount,
+        new_total_principal: amount,
+        new_total_supply: amount,
+    });
 
     assert_eq!(s.contract.total_principal(), amount);
     assert_eq!(s.contract.total_supply(), amount);
@@ -79,6 +90,22 @@ fn test_burn_decreases_principal() {
 
     // Principal reduced by PV of burn amount
     let pv_burn = burn_amount * INDEX_SCALE / idx_at_burn;
+
+    // Assert emitted events before any view calls — they reset the host event buffer.
+    // Time advanced since the last update, so burn emits UpdateIndex first, then Burn.
+    s.assert_events_tail(&gateway_events![
+        s,
+        UpdateIndex {
+            latest_index: idx_at_burn
+        },
+        Burn {
+            from: s.yield_recipient.clone(),
+            amount: burn_amount,
+            new_total_principal: initial - pv_burn,
+            new_total_supply: initial - burn_amount,
+        },
+    ]);
+
     assert_eq!(s.contract.total_principal(), initial - pv_burn);
 
     // Accrued yield should still be there (burn calls update_index first)
