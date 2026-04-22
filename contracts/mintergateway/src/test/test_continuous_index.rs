@@ -238,7 +238,7 @@ fn test_index_stored_after_state_change() {
     assert_eq!(latest_before, INDEX_SCALE); // hasn't been stored yet
 
     // Trigger state change via claim_yield -> calls update_index
-    s.contract.claim_yield(&s.yield_recipient);
+    s.contract.claim_yield(&s.yield_recipient_manager);
 
     let latest_after = s.contract.latest_index();
     assert_eq!(latest_after, current);

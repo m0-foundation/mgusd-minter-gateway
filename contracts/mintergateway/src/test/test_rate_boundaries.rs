@@ -97,7 +97,7 @@ fn test_set_rate_to_zero_finalizes_pending() {
     assert_eq!(s.contract.accrued_yield(), pending);
 
     // Claim to verify the stored yield is claimable
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(claimed, pending);
 }
 
@@ -122,7 +122,7 @@ fn test_yield_accuracy_at_max_rate() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Claim yield
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
     // 5-term Taylor: e^1.0 ≈ 1 + 1 + 1/2 + 1/6 + 1/24 = 2.708333...
     // So yield ≈ 1M × (2.708333... - 1) = 1M × 1.708333...

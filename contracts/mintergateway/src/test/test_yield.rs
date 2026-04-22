@@ -86,7 +86,7 @@ fn test_claim_yield_mints_tokens_to_yield_recipient() {
     let balance_before = s.sac_token.balance(&s.yield_recipient);
     assert_eq!(balance_before, principal);
 
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(claimed, 512_710_937_490);
 
     // Yield recipient now holds principal + claimed in SAC tokens
@@ -104,7 +104,7 @@ fn test_claim_yield_principal_unchanged() {
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    s.contract.claim_yield(&s.yield_recipient);
+    s.contract.claim_yield(&s.yield_recipient_manager);
 
     // Principal unchanged — claimed yield does not earn more yield
     assert_eq!(s.contract.total_principal(), principal);
@@ -122,7 +122,7 @@ fn test_claim_yield_resets_accrued() {
 
     assert!(s.contract.accrued_yield() > 0);
 
-    s.contract.claim_yield(&s.yield_recipient);
+    s.contract.claim_yield(&s.yield_recipient_manager);
 
     assert_eq!(s.contract.accrued_yield(), 0);
 }
@@ -132,7 +132,7 @@ fn test_claim_yield_with_zero_accrued() {
     let s = setup();
 
     // No principal, no rate, no time — claim returns 0
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(claimed, 0);
 }
 
@@ -152,7 +152,7 @@ fn test_yield_no_compounding() {
     // --- First half-year ---
     advance_time(&s.env, half_year);
 
-    let first_claim = s.contract.claim_yield(&s.yield_recipient);
+    let first_claim = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(first_claim, 253_151_204_420);
 
     // Principal is still 1M
@@ -161,7 +161,7 @@ fn test_yield_no_compounding() {
     // --- Second half-year ---
     advance_time(&s.env, half_year);
 
-    let second_claim = s.contract.claim_yield(&s.yield_recipient);
+    let second_claim = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(second_claim, 259_559_757_640);
 
     // Second claim is slightly larger than first because the index grew on a
@@ -191,7 +191,7 @@ fn test_multiple_claims_accumulate_correctly() {
 
     for _ in 0..4 {
         advance_time(&s.env, quarter_year);
-        let claimed = s.contract.claim_yield(&s.yield_recipient);
+        let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
         assert!(claimed > 0);
         total_claimed += claimed;
     }
@@ -285,7 +285,7 @@ fn test_full_flow_mint_rate_claim() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Step 4: Claim yield — yield_recipient gets ~51,271 new tokens
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(claimed, 512_710_937_490);
 
     // Yield recipient token balance = 1M + claimed
@@ -331,7 +331,7 @@ fn test_set_rate_reverts_without_caller_auth() {
 #[test]
 fn test_claim_yield_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
-    let result = s.contract.try_claim_yield(&s.yield_recipient);
+    let result = s.contract.try_claim_yield(&s.yield_recipient_manager);
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort
@@ -347,7 +347,10 @@ fn test_yield_recipient_manager_cannot_set_rate() {
     let s = setup();
 
     let result = s.contract.try_set_rate(&s.yield_recipient_manager, &500);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -355,7 +358,10 @@ fn test_yield_recipient_cannot_set_rate() {
     let s = setup();
 
     let result = s.contract.try_set_rate(&s.yield_recipient, &500);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -363,7 +369,10 @@ fn test_forced_transfer_manager_cannot_set_rate() {
     let s = setup();
 
     let result = s.contract.try_set_rate(&s.forced_transfer_manager, &500);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -372,11 +381,14 @@ fn test_random_cannot_set_rate() {
     let random = Address::generate(&s.env);
 
     let result = s.contract.try_set_rate(&random, &500);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 // =============================================================================
-// ACCESS CONTROL — CLAIM_YIELD (admin or yield_recipient only)
+// ACCESS CONTROL — CLAIM_YIELD (yield_recipient_manager only)
 // =============================================================================
 
 #[test]
@@ -384,15 +396,21 @@ fn test_minter_cannot_claim_yield() {
     let s = setup();
 
     let result = s.contract.try_claim_yield(&s.minter);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
-fn test_yield_recipient_manager_cannot_claim_yield() {
+fn test_yield_recipient_cannot_claim_yield() {
     let s = setup();
 
-    let result = s.contract.try_claim_yield(&s.yield_recipient_manager);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    let result = s.contract.try_claim_yield(&s.yield_recipient);
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -400,7 +418,10 @@ fn test_forced_transfer_manager_cannot_claim_yield() {
     let s = setup();
 
     let result = s.contract.try_claim_yield(&s.forced_transfer_manager);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -409,5 +430,8 @@ fn test_random_cannot_claim_yield() {
     let random = Address::generate(&s.env);
 
     let result = s.contract.try_claim_yield(&random);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }

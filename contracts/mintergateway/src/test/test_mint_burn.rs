@@ -87,7 +87,7 @@ fn test_burn_decreases_principal() {
     // Now yield accrues on reduced principal
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     let second_year_yield = claimed - yield_before_burn;
     assert!(
         second_year_yield < yield_before_burn,
@@ -113,7 +113,7 @@ fn test_burn_exactly_principal() {
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
     // After index growth, PV of `initial` < `initial` (index > INDEX_SCALE),
     // so burning `initial` nominal tokens removes pv_burn < initial from principal.
@@ -142,7 +142,7 @@ fn test_burn_exceeding_principal_reverts() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Claim yield so yield_recipient has more SAC tokens than principal
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
 
     // With PV conversion, we need to burn an amount whose PV exceeds total_principal.
@@ -280,7 +280,10 @@ fn test_yield_recipient_manager_cannot_mint() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -290,7 +293,10 @@ fn test_yield_recipient_cannot_mint() {
     let result = s
         .contract
         .try_mint(&s.yield_recipient, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -302,7 +308,10 @@ fn test_forced_transfer_manager_cannot_mint() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -313,7 +322,10 @@ fn test_random_cannot_mint() {
     let result = s
         .contract
         .try_mint(&random, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 // =============================================================================
@@ -329,7 +341,10 @@ fn test_yield_recipient_manager_cannot_burn() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -339,7 +354,10 @@ fn test_yield_recipient_cannot_burn() {
     let result = s
         .contract
         .try_burn(&s.yield_recipient, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -351,7 +369,10 @@ fn test_forced_transfer_manager_cannot_burn() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -362,5 +383,8 @@ fn test_random_cannot_burn() {
     let result = s
         .contract
         .try_burn(&random, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }

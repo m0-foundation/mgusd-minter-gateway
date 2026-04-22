@@ -25,7 +25,7 @@ fn test_total_supply_increases_on_claim_yield() {
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
 
     // total_supply = principal + claimed, total_principal unchanged
@@ -60,7 +60,7 @@ fn test_total_supply_invariant() {
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
 
     // Invariant: total_supply == total_principal + cumulative_claimed
@@ -219,7 +219,7 @@ fn test_yield_underestimation_after_burn_at_grown_index() {
     // Year 2
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let total_claimed = s.contract.claim_yield(&s.yield_recipient);
+    let total_claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
     // Correct year-2 principal uses PV-adjusted burn
     let pv_of_burn = burn_amount * INDEX_SCALE / index_yr1;

@@ -4,7 +4,10 @@ use crate::errors::MinterGatewayError;
 use crate::storage_types::DataKey;
 
 /// Verifies that `caller` has authorized this invocation and is the specified role holder.
-pub fn require_role_holder(caller: &Address, role_holder: &Address) -> Result<(), MinterGatewayError> {
+pub fn require_role_holder(
+    caller: &Address,
+    role_holder: &Address,
+) -> Result<(), MinterGatewayError> {
     caller.require_auth();
     if *caller != *role_holder {
         return Err(MinterGatewayError::UnauthorizedError);

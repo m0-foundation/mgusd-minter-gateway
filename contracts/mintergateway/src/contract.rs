@@ -90,6 +90,8 @@ impl YieldToken {
     /// Transfers admin role to a new address. Current admin only.
     pub fn set_admin(e: Env, new_admin: Address) {
         let admin = require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         write_admin(&e, &new_admin);
@@ -100,6 +102,8 @@ impl YieldToken {
     /// Sets a new minter address. Admin only.
     pub fn set_minter(e: Env, new_minter: Address) {
         require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_minter(&e);
@@ -111,6 +115,8 @@ impl YieldToken {
     /// Sets a new yield recipient manager address. Admin only.
     pub fn set_yield_recipient_manager(e: Env, new_yield_recipient_manager: Address) {
         require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_yield_recipient_manager(&e);
@@ -122,6 +128,8 @@ impl YieldToken {
     /// Sets a new forced transfer manager address. Admin only.
     pub fn set_forced_transfer_manager(e: Env, new_forced_transfer_manager: Address) {
         require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_forced_transfer_manager(&e);
@@ -133,6 +141,8 @@ impl YieldToken {
     /// Sets a new distributor address. Admin only.
     pub fn set_distributor(e: Env, new_distributor: Address) {
         require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_distributor(&e);
@@ -144,6 +154,8 @@ impl YieldToken {
     /// Sets a new pauser address. Admin only.
     pub fn set_pauser(e: Env, new_pauser: Address) {
         require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_pauser(&e);
@@ -164,6 +176,8 @@ impl YieldToken {
         account: Address,
     ) -> Result<(), MinterGatewayError> {
         require_role_holder(&caller, &read_distributor(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -182,6 +196,8 @@ impl YieldToken {
         account: Address,
     ) -> Result<(), MinterGatewayError> {
         require_role_holder(&caller, &read_distributor(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -204,6 +220,8 @@ impl YieldToken {
         accounts: Vec<Address>,
     ) -> Result<(), MinterGatewayError> {
         require_role_holder(&caller, &read_distributor(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         if accounts.len() > MAX_BATCH_SIZE {
@@ -229,6 +247,8 @@ impl YieldToken {
         accounts: Vec<Address>,
     ) -> Result<(), MinterGatewayError> {
         require_role_holder(&caller, &read_distributor(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         if accounts.len() > MAX_BATCH_SIZE {
@@ -256,6 +276,8 @@ impl YieldToken {
     /// if the new version changes the storage schema.
     pub fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
         let admin = require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         e.deployer()
@@ -270,10 +292,17 @@ impl YieldToken {
 
     /// Mints SAC tokens directly to the recipient and updates accumulators.
     /// Minter only.
-    pub fn mint(e: Env, caller: Address, to: Address, amount: i128) -> Result<(), MinterGatewayError> {
+    pub fn mint(
+        e: Env,
+        caller: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), MinterGatewayError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_role_holder(&caller, &read_minter(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -303,6 +332,8 @@ impl YieldToken {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_role_holder(&caller, &read_minter(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -328,6 +359,8 @@ impl YieldToken {
         pausable::when_not_paused(&e);
         require_admin(&e);
         check_positive_amount(amount)?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -343,7 +376,7 @@ impl YieldToken {
 
         let state = read_yield_state(&e);
         emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
-        
+
         Ok(())
     }
 
@@ -351,6 +384,8 @@ impl YieldToken {
     /// No-op if the new rate equals the current rate.
     pub fn set_rate(e: Env, caller: Address, rate_bps: u32) -> Result<(), MinterGatewayError> {
         require_role_holder(&caller, &read_minter(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         // Early return if rate unchanged
@@ -386,6 +421,7 @@ impl YieldToken {
         check_positive_amount(amount)?;
         require_role_holder(&caller, &read_forced_transfer_manager(&e))?;
 
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         // SAC operations: clawback from source, mint to destination
@@ -411,6 +447,7 @@ impl YieldToken {
     ) -> Result<(), MinterGatewayError> {
         require_role_holder(&caller, &read_yield_recipient_manager(&e))?;
 
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_yield_recipient(&e);
@@ -422,20 +459,20 @@ impl YieldToken {
     }
 
     // =========================================================================
-    // Yield Recipient Functions
+    // Yield Recipient Manager Functions (claim)
     // =========================================================================
 
     /// Claims accrued yield by minting new SAC tokens to the yield recipient.
-    /// Yield recipient or admin only. Returns the amount of yield claimed.
+    /// Yield recipient manager only. Returns the amount of yield claimed.
     ///
     /// Note: Claimed yield is NOT added to principal — it does not earn more yield.
     /// Tokens are always minted to the yield recipient, regardless of who calls.
     pub fn claim_yield(e: Env, caller: Address) -> Result<i128, MinterGatewayError> {
         pausable::when_not_paused(&e);
-
         let recipient = read_yield_recipient(&e);
-        require_role_holder(&caller, &recipient)?; // TODO - review who can claim
+        require_role_holder(&caller, &read_yield_recipient_manager(&e))?;
 
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         update_index(&e);
@@ -571,7 +608,10 @@ impl Pausable for YieldToken {
         if caller != read_pauser(e) {
             panic_with_error!(e, MinterGatewayError::UnauthorizedError);
         }
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(e);
+
         pausable::pause(e);
     }
 
@@ -582,7 +622,10 @@ impl Pausable for YieldToken {
         if caller != read_pauser(e) {
             panic_with_error!(e, MinterGatewayError::UnauthorizedError);
         }
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(e);
+
         pausable::unpause(e);
     }
 }

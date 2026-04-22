@@ -208,7 +208,7 @@ fn test_operations_work_after_failed_issuer_freeze() {
     super::setup::advance_time(&s.env, 365 * 24 * 3600);
 
     // Claim yield still works
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
 
     // Burn still works
