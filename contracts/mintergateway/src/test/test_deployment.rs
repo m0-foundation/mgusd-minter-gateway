@@ -36,7 +36,10 @@ fn test_double_initialization_returns_error() {
         )
     });
 
-    assert_eq!(result, Err(crate::YieldTokenError::AlreadyInitializedError));
+    assert_eq!(
+        result,
+        Err(crate::MinterGatewayError::AlreadyInitializedError)
+    );
 }
 
 #[test]
@@ -49,7 +52,6 @@ fn test_yield_state_defaults_to_zero_on_fresh_contract() {
 
     assert_eq!(state.total_principal, 0);
     assert_eq!(state.total_supply, 0);
-    assert_eq!(state.accrued_yield, 0);
     assert_eq!(state.rate_bps, 0);
     assert_eq!(state.latest_index, INDEX_SCALE);
     assert_eq!(state.last_update_timestamp, 0);

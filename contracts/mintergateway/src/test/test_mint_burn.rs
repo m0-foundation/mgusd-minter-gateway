@@ -1,6 +1,8 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::events::{Burn, Mint, UpdateIndex};
+use crate::gateway_events;
 
 // =============================================================================
 // MINT — mints SAC tokens and updates accumulators
@@ -15,6 +17,15 @@ fn test_mint_increases_both_accumulators_and_sac_balance() {
     // Authorize recipient before mint (AUTH_REQUIRED mode)
     s.contract.unfreeze_account(&s.distributor, &recipient);
     s.contract.mint(&s.minter, &recipient, &amount);
+
+    // Assert emitted event before any view calls — they reset the host event buffer.
+    // At T0 with zero elapsed, update_index is a no-op, so only Mint fires.
+    s.assert_event(Mint {
+        to: recipient.clone(),
+        amount,
+        new_total_principal: amount,
+        new_total_supply: amount,
+    });
 
     assert_eq!(s.contract.total_principal(), amount);
     assert_eq!(s.contract.total_supply(), amount);
@@ -79,6 +90,22 @@ fn test_burn_decreases_principal() {
 
     // Principal reduced by PV of burn amount
     let pv_burn = burn_amount * INDEX_SCALE / idx_at_burn;
+
+    // Assert emitted events before any view calls — they reset the host event buffer.
+    // Time advanced since the last update, so burn emits UpdateIndex first, then Burn.
+    s.assert_events_tail(&gateway_events![
+        s,
+        UpdateIndex {
+            latest_index: idx_at_burn
+        },
+        Burn {
+            from: s.yield_recipient.clone(),
+            amount: burn_amount,
+            new_total_principal: initial - pv_burn,
+            new_total_supply: initial - burn_amount,
+        },
+    ]);
+
     assert_eq!(s.contract.total_principal(), initial - pv_burn);
 
     // Accrued yield should still be there (burn calls update_index first)
@@ -87,7 +114,7 @@ fn test_burn_decreases_principal() {
     // Now yield accrues on reduced principal
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     let second_year_yield = claimed - yield_before_burn;
     assert!(
         second_year_yield < yield_before_burn,
@@ -113,7 +140,7 @@ fn test_burn_exactly_principal() {
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
     // After index growth, PV of `initial` < `initial` (index > INDEX_SCALE),
     // so burning `initial` nominal tokens removes pv_burn < initial from principal.
@@ -142,7 +169,7 @@ fn test_burn_exceeding_principal_reverts() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Claim yield so yield_recipient has more SAC tokens than principal
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
 
     // With PV conversion, we need to burn an amount whose PV exceeds total_principal.
@@ -280,7 +307,10 @@ fn test_yield_recipient_manager_cannot_mint() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -290,7 +320,10 @@ fn test_yield_recipient_cannot_mint() {
     let result = s
         .contract
         .try_mint(&s.yield_recipient, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -302,7 +335,10 @@ fn test_forced_transfer_manager_cannot_mint() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -313,7 +349,10 @@ fn test_random_cannot_mint() {
     let result = s
         .contract
         .try_mint(&random, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 // =============================================================================
@@ -329,7 +368,10 @@ fn test_yield_recipient_manager_cannot_burn() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -339,7 +381,10 @@ fn test_yield_recipient_cannot_burn() {
     let result = s
         .contract
         .try_burn(&s.yield_recipient, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -351,7 +396,10 @@ fn test_forced_transfer_manager_cannot_burn() {
         &s.yield_recipient,
         &(1_000 * DECIMALS),
     );
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -362,5 +410,8 @@ fn test_random_cannot_burn() {
     let result = s
         .contract
         .try_burn(&random, &s.yield_recipient, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }

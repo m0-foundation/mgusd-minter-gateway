@@ -57,7 +57,10 @@ fn test_batch_unfreeze_admin_unauthorized() {
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
     let result = s.contract.try_batch_unfreeze_accounts(&s.admin, &accounts);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -66,7 +69,10 @@ fn test_batch_freeze_admin_unauthorized() {
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
     let result = s.contract.try_batch_freeze_accounts(&s.admin, &accounts);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 // =============================================================================
@@ -140,7 +146,10 @@ fn test_minter_cannot_batch_freeze() {
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
     let result = s.contract.try_batch_freeze_accounts(&s.minter, &accounts);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -150,7 +159,10 @@ fn test_random_cannot_batch_freeze() {
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
     let result = s.contract.try_batch_freeze_accounts(&random, &accounts);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 // =============================================================================
@@ -161,25 +173,28 @@ fn test_random_cannot_batch_freeze() {
 fn test_batch_freeze_exceeds_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..21 {
+    for _ in 0..41 {
         accounts.push_back(Address::generate(&s.env));
     }
 
     let result = s
         .contract
         .try_batch_freeze_accounts(&s.distributor, &accounts);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::BatchTooLargeError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::BatchTooLargeError))
+    );
 }
 
 #[test]
 fn test_batch_unfreeze_at_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..20 {
+    for _ in 0..40 {
         accounts.push_back(Address::generate(&s.env));
     }
 
-    // Should succeed at exactly 20
+    // Should succeed at exactly 40
     s.contract
         .batch_unfreeze_accounts(&s.distributor, &accounts);
 
@@ -191,8 +206,16 @@ fn test_batch_unfreeze_at_max_size() {
 #[test]
 fn test_batch_freeze_at_max_size() {
     let s = setup();
+    // Bypass the Rust SDK test harness's shadow budget, which is consumed by
+    // `get_authenticated_authorizations` serializing auth trees for test
+    // instrumentation — not a constraint enforced on-chain or in preflight.
+    // Real mainnet resource use is asserted in `test_batch_budget.rs` against
+    // live per-tx limits (see https://github.com/stellar/stellar-protocol/blob/master/limits/README.md
+    // and https://lab.stellar.org/network-limits).
+    s.env.cost_estimate().budget().reset_unlimited();
+
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..20 {
+    for _ in 0..40 {
         accounts.push_back(Address::generate(&s.env));
     }
 

@@ -2,7 +2,8 @@ use soroban_sdk::testutils::Address as _;
 use soroban_sdk::Address;
 
 use super::setup::{advance_time, setup, DECIMALS, SECONDS_PER_YEAR};
-use crate::errors::YieldTokenError;
+use crate::errors::MinterGatewayError;
+use crate::events::Reconcile;
 
 // =============================================================================
 // HAPPY PATH
@@ -27,6 +28,14 @@ fn test_reconcile_burn_decreases_both_accumulators() {
 
     // Admin reconciles
     s.contract.reconcile_burn(&reconcile_amount);
+
+    // Assert emitted event before any view calls — they reset the host event buffer.
+    // At T0 with zero elapsed, update_index is a no-op, so only Reconcile fires.
+    s.assert_event(Reconcile {
+        amount: reconcile_amount,
+        new_total_principal: mint_amount - reconcile_amount,
+        new_total_supply: mint_amount - reconcile_amount,
+    });
 
     // Both accumulators decreased
     assert_eq!(s.contract.total_principal(), mint_amount - reconcile_amount);
@@ -120,7 +129,7 @@ fn test_reconcile_burn_rejects_zero_amount() {
     let result = s.contract.try_reconcile_burn(&0);
     assert_eq!(
         result.unwrap_err().unwrap(),
-        YieldTokenError::InvalidAmountError
+        MinterGatewayError::InvalidAmountError
     );
 }
 
@@ -135,7 +144,7 @@ fn test_reconcile_burn_rejects_negative_amount() {
     let result = s.contract.try_reconcile_burn(&-100);
     assert_eq!(
         result.unwrap_err().unwrap(),
-        YieldTokenError::InvalidAmountError
+        MinterGatewayError::InvalidAmountError
     );
 }
 
@@ -253,7 +262,7 @@ fn test_reconcile_burn_rejects_amount_exceeding_total_supply() {
     let result = s.contract.try_reconcile_burn(&overshoot);
     assert_eq!(
         result.unwrap_err().unwrap(),
-        YieldTokenError::BurnExceedsSupply,
+        MinterGatewayError::BurnExceedsSupply,
     );
 
     // Accumulators unchanged

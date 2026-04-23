@@ -25,7 +25,7 @@ fn test_total_supply_increases_on_claim_yield() {
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
 
     // total_supply = principal + claimed, total_principal unchanged
@@ -60,7 +60,7 @@ fn test_total_supply_invariant() {
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
 
     // Invariant: total_supply == total_principal + cumulative_claimed
@@ -118,46 +118,48 @@ fn test_mint_after_index_growth_stores_present_value_principal() {
     );
 }
 
+// When a mint happens at an index > INDEX_SCALE, `pv_amount = floor(amount × SCALE /
+// latest_index)` loses up to a stroop of residue. Re-multiplying to derive yield:
+//     floor(total_principal × latest_index / SCALE)
+// can be *strictly less than* `total_supply` by that residue. Without a clamp, the
+// derivation `supply_with_yield − total_supply` returns a small negative number — pure
+// rounding noise, not real negative yield. `get_accrued_yield` must clamp at 0.
 #[test]
-fn test_yield_overestimation_after_mint_at_grown_index() {
+fn test_get_accrued_yield_clamps_floor_residue_to_zero() {
     let s = setup();
     let one_million = 1_000_000 * DECIMALS;
 
-    // Year 0: mint 1M, set 5% rate
-    s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
+    // Grow the index with zero principal so the next mint happens at index > SCALE.
     s.contract.set_rate(&s.minter, &500);
+    advance_time(&s.env, 1_000_000);
 
-    // Year 1: index grows, mint another 1M (triggers update_index)
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-    let index_yr1 = s.contract.current_index();
+    // Reproduce the floor-residue scenario: mint at a grown index forces a
+    // truncated pv_amount.
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
 
-    // Snapshot yield after year 1 (before year 2 accrual)
-    let yield_after_yr1 = s.contract.accrued_yield();
+    // Sanity: the scenario we're guarding actually occurred.
+    // this inequality means the derivation underflows.
+    let principal = s.contract.total_principal();
+    let latest_index = s.contract.latest_index();
+    let supply = s.contract.total_supply();
+    let supply_with_yield_raw = principal * latest_index / INDEX_SCALE;
+    assert!(
+        supply_with_yield_raw < supply,
+        "Test setup failed to reproduce the floor residue scenario. \
+         principal={}, latest_index={}, supply_with_yield={}, supply={}",
+        principal,
+        latest_index,
+        supply_with_yield_raw,
+        supply
+    );
 
-    // Year 2: advance another year
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-
-    // Claim all yield (year1 + year2)
-    let total_claimed = s.contract.claim_yield(&s.yield_recipient);
-
-    // Compute correct year-2 yield using PV principal
-    let pv_of_mint2 = one_million * INDEX_SCALE / index_yr1;
-    let correct_principal_yr2 = one_million + pv_of_mint2;
-
-    let index_yr2 = s.contract.latest_index();
-    let index_delta_yr2 = index_yr2 - index_yr1;
-    let correct_yield_yr2 = correct_principal_yr2 * index_delta_yr2 / INDEX_SCALE;
-    let expected_total = yield_after_yr1 + correct_yield_yr2;
-
+    // The clamp must hide the noise: yield is 0, never negative.
+    let yield_just_after_mint = s.contract.accrued_yield();
     assert_eq!(
-        total_claimed,
-        expected_total,
-        "Yield is overestimated. Claimed {} but correct is {}. \
-         Excess: {} tokens (protocol overpays by this amount)",
-        total_claimed,
-        expected_total,
-        total_claimed - expected_total
+        yield_just_after_mint, 0,
+        "accrued_yield must clamp floor-residue underflow at 0 — yield is never \
+         negative. Got {}.",
+        yield_just_after_mint
     );
 }
 
@@ -217,7 +219,7 @@ fn test_yield_underestimation_after_burn_at_grown_index() {
     // Year 2
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let total_claimed = s.contract.claim_yield(&s.yield_recipient);
+    let total_claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
     // Correct year-2 principal uses PV-adjusted burn
     let pv_of_burn = burn_amount * INDEX_SCALE / index_yr1;

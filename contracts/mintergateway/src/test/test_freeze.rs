@@ -117,7 +117,10 @@ fn test_freeze_account_rejects_unauthorized_role() {
     let user = Address::generate(&s.env);
     let random = Address::generate(&s.env);
     let result = s.contract.try_freeze_account(&random, &user);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -126,7 +129,10 @@ fn test_unfreeze_account_rejects_unauthorized_role() {
     let user = Address::generate(&s.env);
     let random = Address::generate(&s.env);
     let result = s.contract.try_unfreeze_account(&random, &user);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]

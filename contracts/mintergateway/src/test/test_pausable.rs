@@ -133,10 +133,13 @@ fn test_claim_yield_blocked_when_paused_resumes_after_unpause() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     s.contract.pause(&s.pauser);
 
-    assert!(s.contract.try_claim_yield(&s.yield_recipient).is_err());
+    assert!(s
+        .contract
+        .try_claim_yield(&s.yield_recipient_manager)
+        .is_err());
 
     s.contract.unpause(&s.pauser);
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
 }
 
