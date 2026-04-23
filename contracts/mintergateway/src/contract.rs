@@ -4,9 +4,9 @@ use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::constants::MAX_BATCH_SIZE;
 use crate::errors::MinterGatewayError;
 use crate::events::{
-    emit_account_frozen, emit_account_unfrozen, emit_admin_set, emit_distributor_set,
-    emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set,
-    emit_pauser_set, emit_sac_admin_transferred, emit_supply_synced, emit_upgraded,
+    emit_account_frozen, emit_account_unfrozen, emit_admin_set, emit_burn, emit_distributor_set,
+    emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set, emit_mint,
+    emit_minter_set, emit_pauser_set, emit_reconcile, emit_sac_admin_transferred, emit_upgraded,
     emit_yield_claimed, emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
@@ -329,7 +329,7 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).mint(&to, &amount);
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, amount, state.total_principal, state.total_supply);
+        emit_mint(&e, to, amount, state.total_principal, state.total_supply);
 
         Ok(())
     }
@@ -360,7 +360,7 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).clawback(&from, &amount);
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        emit_burn(&e, from, amount, state.total_principal, state.total_supply);
 
         Ok(())
     }
@@ -388,7 +388,7 @@ impl YieldToken {
         decrease_both_accumulators(&e, amount)?;
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        emit_reconcile(&e, amount, state.total_principal, state.total_supply);
 
         Ok(())
     }
