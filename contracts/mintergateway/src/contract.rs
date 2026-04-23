@@ -6,7 +6,7 @@ use crate::errors::MinterGatewayError;
 use crate::events::{
     emit_admin_set, emit_blocker_added, emit_blocker_removed, emit_burn, emit_force_transfer,
     emit_forced_transfer_manager_set, emit_interest_rate_set, emit_mint, emit_minter_set,
-    emit_pauser_set, emit_reconcile, emit_upgraded, emit_yield_claimed,
+    emit_pauser_set, emit_reconcile, emit_sac_admin_transferred, emit_upgraded, emit_yield_claimed,
     emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
@@ -277,6 +277,19 @@ impl YieldToken {
     // =========================================================================
     // Admin Upgrade Functions
     // =========================================================================
+
+    /// Transfers SAC admin role to another address. Admin only.
+    /// After this call the contract loses the ability to mint, burn,
+    /// clawback and authorize accounts on the SAC.
+    pub fn transfer_sac_admin(e: Env, new_sac_admin: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        let sac_addr = read_sac_token(&e);
+        token::StellarAssetClient::new(&e, &sac_addr).set_admin(&new_sac_admin);
+
+        emit_sac_admin_transferred(&e, new_sac_admin);
+    }
 
     /// Upgrades the contract WASM to a new version. Admin only.
     /// The new WASM must already be uploaded to the ledger.

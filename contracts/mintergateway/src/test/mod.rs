@@ -13,5 +13,6 @@ mod test_pausable;
 mod test_rate_boundaries;
 mod test_reconcile_burn;
 mod test_transfer;
+mod test_transfer_sac_admin;
 mod test_yield;
 mod test_yield_snapshots;

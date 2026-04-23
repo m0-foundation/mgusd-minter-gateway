@@ -205,3 +205,13 @@ pub struct PauserSet {
 pub fn emit_pauser_set(env: &Env, old: Address, new: Address) {
     PauserSet { old, new }.publish(env);
 }
+
+#[contractevent]
+pub struct SacAdminTransferred {
+    #[topic]
+    pub new_sac_admin: Address,
+}
+
+pub fn emit_sac_admin_transferred(env: &Env, new_sac_admin: Address) {
+    SacAdminTransferred { new_sac_admin }.publish(env);
+}

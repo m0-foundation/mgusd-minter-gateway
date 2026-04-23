@@ -60,10 +60,11 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | **Yield Recipient** | `claim_yield` | MoneyGram |
 | **Forced Transfer Manager** | `force_transfer` | Crossmint |
 | **Blocker** | `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users` | Crossmint |
+| **Pauser** | `pause`, `unpause` | M0 |
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_blocker`, `remove_blocker`, `reconcile_burn`, `upgrade`)
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_blocker`, `remove_blocker`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`)
 - All roles are **single-address** except **Blocker**, which is a membership set (any number of addresses can hold the role, granted / revoked by Admin via `add_blocker` / `remove_blocker`)
 - Only Admin can reassign roles (except Yield Recipient, which can be set by the Yield Recipient Manager or Admin)
 - Every role-gated function calls `require_auth()` on the `caller` argument, then verifies the caller is either Admin or the designated role holder — no implicit trust
@@ -75,7 +76,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 > **Note:** Admin can call any function below, not just the admin-exclusive ones. Each non-admin role can only call its own functions.
 
-### Admin-Exclusive Functions (7)
+### Admin-Exclusive Functions (10)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -83,9 +84,11 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `set_minter` | `(new_minter: Address)` | Set a new minter address |
 | `set_yield_recipient_manager` | `(new_yrm: Address)` | Set a new yield recipient manager |
 | `set_forced_transfer_manager` | `(new_ftm: Address)` | Set a new forced transfer manager |
+| `set_pauser` | `(new_pauser: Address)` | Set the address allowed to pause/unpause the contract |
 | `add_blocker` | `(new_blocker: Address)` | Grant the blocker role to an address (membership set; idempotent) |
 | `remove_blocker` | `(blocker: Address)` | Revoke the blocker role from an address (idempotent) |
 | `reconcile_burn` | `(amount: i128)` | Decrease both accumulators to reconcile tokens destroyed outside the contract (e.g., sent to issuer) |
+| `transfer_sac_admin` | `(new_sac_admin: Address)` | Transfer SAC admin role from this contract to another address |
 | `upgrade` | `(new_wasm_hash: BytesN<32>)` | Upgrade contract WASM to a new version |
 
 ### Minter Functions (3)
@@ -125,7 +128,14 @@ Matches the `stellar_tokens::fungible::blocklist` function shape; backed by the 
 |----------|-----------|-------------|
 | `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to yield recipient |
 
-### View / Query Functions (15)
+### Pauser Functions (2)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, force_transfer, reconcile_burn |
+| `unpause` | `(caller: Address)` | Unpause the contract — resumes all blocked operations |
+
+### View / Query Functions (17)
 
 | Function | Returns | Description |
 |----------|---------|-------------|
@@ -144,13 +154,15 @@ Matches the `stellar_tokens::fungible::blocklist` function shape; backed by the 
 | `total_supply` | `i128` | Total outstanding tokens (principal + claimed yield) |
 | `blocked(account)` | `bool` | Whether a user is blocked on the SAC (inverse of SAC authorization) |
 | `balance(id)` | `i128` | SAC-reported balance for an address |
+| `paused` | `bool` | Whether the contract is currently paused |
+| `pauser` | `Address` | Current pauser address |
 
 ### Initialization (Constructor)
 
 The contract is initialized via `__constructor` during deployment:
 
 ```
-__constructor(sac_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager, blocker)
+__constructor(sac_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager, blocker, pauser)
 ```
 
 All 7 addresses are stored in Instance storage. Returns `Err(AlreadyInitializedError)` if the contract has already been initialized (checked via `has_admin()`). The constructor does **not** initialize the yield state — index starts at `1.0` (`INDEX_SCALE`) on first use.
@@ -347,6 +359,35 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 
 ---
 
+## Pausable
+
+The contract implements a pause mechanism via the `stellar-contract-utils` pausable extension.
+
+### Pause / Unpause
+
+```
+pause(caller: Address)
+unpause(caller: Address)
+```
+
+Only the **Pauser** role can call these functions. The Pauser is set by the Admin via `set_pauser`.
+
+### Effect of pausing
+
+When paused, the following operations revert immediately:
+
+| Blocked function | Role |
+|-----------------|------|
+| `mint` | Minter |
+| `burn` | Minter |
+| `reconcile_burn` | Admin |
+| `claim_yield` | Yield Recipient Manager |
+| `force_transfer` | Forced Transfer Manager |
+
+Compliance operations (`freeze_account`, `unfreeze_account`, `batch_freeze_accounts`, `batch_unfreeze_accounts`) and all view functions remain fully accessible while paused so that regulatory actions can still be executed.
+
+---
+
 ## Event Reference
 
 All events emitted by the contract:
@@ -367,6 +408,10 @@ All events emitted by the contract:
 | `UserUnblocked` | `unblock_user`, `batch_unblock_users` | `(user)` — topics `["unblock", user]` |
 | `force_tx` | `force_transfer` | `(from, to, amount)` |
 | `upgraded` | `upgrade` | `(by, new_wasm_hash)` |
+| `sac_admin_transferred` | `transfer_sac_admin` | `(new_sac_admin)` |
+| `set_pauser` | `set_pauser` | `(old, new)` |
+| `paused` | `pause` | *(no payload)* |
+| `unpaused` | `unpause` | *(no payload)* |
 
 ---
 
@@ -378,16 +423,16 @@ The `soroban-fireblocks-sdk` provides a TypeScript client for the Bridge to inte
 
 The SDK exposes dedicated methods for Minter actions and queries:
 
-| SDK Method | Contract Function | Parameters |
-|------------|-------------------|------------|
-| `mint()` | `mint(caller, to, amount)` | `contractId`, `caller: string`, `to: string`, `amount: bigint` |
-| `burn()` | `burn(caller, from, amount)` | `contractId`, `caller: string`, `from: string`, `amount: bigint` |
-| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `caller: string`, `rateBps: number` |
-| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter: string` |
-| `queryAdmin()` | `admin()` | `contractId` |
-| `querySacToken()` | `sac_token()` | `contractId` |
-| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `assetIssuer`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `blocker`, `wasm` |
-| `setupTrustline()` | *(classic changeTrust op)* | `assetCode`, `assetIssuer` |
+| SDK Method | Contract Function | Parameters                                                                                                                                    |
+|------------|-------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `mint()` | `mint(caller, to, amount)` | `contractId`, `caller: string`, `to: string`, `amount: bigint`                                                                                |
+| `burn()` | `burn(caller, from, amount)` | `contractId`, `caller: string`, `from: string`, `amount: bigint`                                                                              |
+| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `caller: string`, `rateBps: number`                                                                                             |
+| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter: string`                                                                                                             |
+| `queryAdmin()` | `admin()` | `contractId`                                                                                                                                  |
+| `querySacToken()` | `sac_token()` | `contractId`                                                                                                                                  |
+| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `assetIssuer`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `blocker`, `pauser`, `wasm` |
+| `setupTrustline()` | *(classic changeTrust op)* | `assetCode`, `assetIssuer`                                                                                                                    |
 
 Other functions are available through the generic `invokeContract({ contractId, method: "..." })` interface.
 
