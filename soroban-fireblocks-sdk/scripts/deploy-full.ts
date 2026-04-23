@@ -57,7 +57,7 @@ async function main(): Promise<void> {
     yieldRecipientManager: minterPublicKey,
     yieldRecipient: minterPublicKey,
     forcedTransferManager: minterPublicKey,
-    distributor: minterPublicKey,
+    blocker: minterPublicKey,
     pauser: minterPublicKey,
   });
 

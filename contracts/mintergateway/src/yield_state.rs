@@ -176,7 +176,9 @@ pub fn update_index(env: &Env) {
 
 /// Returns the current accrued yield without updating state.
 ///
-/// Includes both stored yield and pending yield from index growth.
+/// Yield is derived as
+/// `floor(total_principal × current_index / INDEX_SCALE) − total_supply`,
+/// clamped at 0.
 pub fn get_accrued_yield(env: &Env) -> i128 {
     let state = read_yield_state(env);
 

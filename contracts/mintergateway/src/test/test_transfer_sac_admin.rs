@@ -11,7 +11,7 @@ fn test_transfer_sac_admin_revokes_and_restores_mint_capability() {
     let user = Address::generate(&s.env);
     let external_owner = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.distributor, &user);
+    s.contract.unblock_user(&user, &s.blocker);
 
     // Contract is SAC admin — mint should succeed.
     s.contract.mint(&s.minter, &user, &(100 * DECIMALS));
