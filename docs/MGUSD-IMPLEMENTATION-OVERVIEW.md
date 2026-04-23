@@ -63,7 +63,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_distributor`, `reconcile_burn`, `upgrade`)
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_distributor`, `set_pauser`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`)
 - All roles are **single-address** — exactly one holder per role at any time
 - Only Admin can reassign roles (except Yield Recipient, which can be set by the Yield Recipient Manager or Admin)
 - Every role-gated function calls `require_auth()` on the `caller` argument, then verifies the caller is either Admin or the designated role holder — no implicit trust
@@ -75,7 +75,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 > **Note:** Admin can call any function below, not just the admin-exclusive ones. Each non-admin role can only call its own functions.
 
-### Admin-Exclusive Functions (7)
+### Admin-Exclusive Functions (9)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -84,7 +84,9 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `set_yield_recipient_manager` | `(new_yrm: Address)` | Set a new yield recipient manager |
 | `set_forced_transfer_manager` | `(new_ftm: Address)` | Set a new forced transfer manager |
 | `set_distributor` | `(new_distributor: Address)` | Set a new distributor address |
+| `set_pauser` | `(new_pauser: Address)` | Set the address allowed to pause/unpause the contract |
 | `reconcile_burn` | `(amount: i128)` | Decrease both accumulators to reconcile tokens destroyed outside the contract (e.g., sent to issuer) |
+| `transfer_sac_admin` | `(new_sac_admin: Address)` | Transfer SAC admin role from this contract to another address |
 | `upgrade` | `(new_wasm_hash: BytesN<32>)` | Upgrade contract WASM to a new version |
 
 ### Minter Functions (3)
@@ -362,6 +364,7 @@ All events emitted by the contract:
 | `unfreeze` | `unfreeze_account`, `batch_unfreeze_accounts` | `(account)` |
 | `force_tx` | `force_transfer` | `(from, to, amount)` |
 | `upgraded` | `upgrade` | `(by, new_wasm_hash)` |
+| `sac_admin_transferred` | `transfer_sac_admin` | `(new_sac_admin)` |
 
 ---
 
