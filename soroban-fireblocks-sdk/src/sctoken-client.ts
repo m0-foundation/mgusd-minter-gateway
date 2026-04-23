@@ -162,10 +162,30 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     return Address.fromScVal(retval).toString();
   }
 
-  async queryBlocker(params: QueryParams): Promise<string> {
-    const retval = await this.simulateView({ contractId: params.contractId, method: "blocker" });
-    if (!retval) throw new Error("blocker returned no value");
-    return Address.fromScVal(retval).toString();
+  async queryIsBlocker(params: QueryParams & { account: string }): Promise<boolean> {
+    const retval = await this.simulateView({
+      contractId: params.contractId,
+      method: "is_blocker",
+      args: [addressToScVal(params.account)],
+    });
+    if (!retval) throw new Error("is_blocker returned no value");
+    return scValToNative(retval) as boolean;
+  }
+
+  async addBlocker(params: QueryParams & { newBlocker: string }): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "add_blocker",
+      args: [addressToScVal(params.newBlocker)],
+    });
+  }
+
+  async removeBlocker(params: QueryParams & { blocker: string }): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "remove_blocker",
+      args: [addressToScVal(params.blocker)],
+    });
   }
 
   async queryBlocked(params: QueryParams & { account: string }): Promise<boolean> {

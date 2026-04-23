@@ -4,15 +4,16 @@ use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::constants::MAX_BATCH_SIZE;
 use crate::errors::YieldTokenError;
 use crate::events::{
-    emit_blocker_set, emit_force_transfer, emit_forced_transfer_manager_set,
-    emit_interest_rate_set, emit_minter_set, emit_pauser_set, emit_set_admin, emit_supply_synced,
-    emit_upgraded, emit_yield_claimed, emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_blocker_added, emit_blocker_removed, emit_force_transfer,
+    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set, emit_pauser_set,
+    emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
+    emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    read_blocker, read_forced_transfer_manager, read_minter, read_pauser, read_yield_recipient,
-    read_yield_recipient_manager, require_role_holder, write_blocker,
-    write_forced_transfer_manager, write_minter, write_pauser, write_yield_recipient,
-    write_yield_recipient_manager,
+    delete_blocker, insert_blocker, is_blocker, read_forced_transfer_manager, read_minter,
+    read_pauser, read_yield_recipient, read_yield_recipient_manager, require_blocker,
+    require_role_holder, write_forced_transfer_manager, write_minter, write_pauser,
+    write_yield_recipient, write_yield_recipient_manager,
 };
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
@@ -52,7 +53,8 @@ impl YieldToken {
     /// * `yield_recipient_manager` - Address that can set the yield recipient
     /// * `yield_recipient` - Address that can claim yield
     /// * `forced_transfer_manager` - Address that can authorize accounts and transfer tokens
-    /// * `blocker` - Address that can block/unblock accounts (individually or in batches)
+    /// * `blocker` - Initial blocker address; added to the blocker membership set.
+    ///   Additional blockers can later be granted via `add_blocker`.
     /// * `pauser` - Address that can pause/unpause the contract
     pub fn __constructor(
         e: Env,
@@ -78,7 +80,7 @@ impl YieldToken {
         write_yield_recipient_manager(&e, &yield_recipient_manager);
         write_yield_recipient(&e, &yield_recipient);
         write_forced_transfer_manager(&e, &forced_transfer_manager);
-        write_blocker(&e, &blocker);
+        insert_blocker(&e, &blocker);
         write_pauser(&e, &pauser);
         Ok(())
     }
@@ -130,15 +132,28 @@ impl YieldToken {
         emit_forced_transfer_manager_set(&e, old, new_forced_transfer_manager);
     }
 
-    /// Sets a new blocker address. Admin only.
-    pub fn set_blocker(e: Env, new_blocker: Address) {
+    /// Grants the blocker role to `new_blocker`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address is already a blocker.
+    pub fn add_blocker(e: Env, new_blocker: Address) {
         require_admin(&e);
         extend_instance_ttl(&e);
 
-        let old = read_blocker(&e);
-        write_blocker(&e, &new_blocker);
+        if insert_blocker(&e, &new_blocker) {
+            emit_blocker_added(&e, new_blocker);
+        }
+    }
 
-        emit_blocker_set(&e, old, new_blocker);
+    /// Revokes the blocker role from `blocker`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address is not a blocker.
+    /// Note: removing the last blocker leaves no one able to block/unblock
+    /// until the admin grants the role again via `add_blocker`.
+    pub fn remove_blocker(e: Env, blocker: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        if delete_blocker(&e, &blocker) {
+            emit_blocker_removed(&e, blocker);
+        }
     }
 
     /// Sets a new pauser address. Admin only.
@@ -170,7 +185,7 @@ impl YieldToken {
     /// Blocks a user, preventing them from sending or receiving SAC tokens.
     /// Blocker only.
     pub fn block_user(e: Env, user: Address, operator: Address) -> Result<(), YieldTokenError> {
-        require_role_holder(&operator, &read_blocker(&e))?;
+        require_blocker(&e, &operator)?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -183,7 +198,7 @@ impl YieldToken {
     /// Unblocks a user, restoring their ability to send and receive SAC tokens.
     /// Blocker only.
     pub fn unblock_user(e: Env, user: Address, operator: Address) -> Result<(), YieldTokenError> {
-        require_role_holder(&operator, &read_blocker(&e))?;
+        require_blocker(&e, &operator)?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -200,7 +215,7 @@ impl YieldToken {
         users: Vec<Address>,
         operator: Address,
     ) -> Result<(), YieldTokenError> {
-        require_role_holder(&operator, &read_blocker(&e))?;
+        require_blocker(&e, &operator)?;
         extend_instance_ttl(&e);
 
         if users.len() > MAX_BATCH_SIZE {
@@ -225,7 +240,7 @@ impl YieldToken {
         users: Vec<Address>,
         operator: Address,
     ) -> Result<(), YieldTokenError> {
-        require_role_holder(&operator, &read_blocker(&e))?;
+        require_blocker(&e, &operator)?;
         extend_instance_ttl(&e);
 
         if users.len() > MAX_BATCH_SIZE {
@@ -535,10 +550,10 @@ impl YieldToken {
         read_forced_transfer_manager(&e)
     }
 
-    /// Returns the blocker address.
-    pub fn blocker(e: Env) -> Address {
+    /// Returns whether `addr` currently holds the blocker role.
+    pub fn is_blocker(e: Env, addr: Address) -> bool {
         extend_instance_ttl(&e);
-        read_blocker(&e)
+        is_blocker(&e, &addr)
     }
 
     /// Returns the pauser address.

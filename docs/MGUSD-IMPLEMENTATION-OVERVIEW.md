@@ -63,8 +63,8 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_blocker`, `reconcile_burn`, `upgrade`)
-- All roles are **single-address** — exactly one holder per role at any time
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_blocker`, `remove_blocker`, `reconcile_burn`, `upgrade`)
+- All roles are **single-address** except **Blocker**, which is a membership set (any number of addresses can hold the role, granted / revoked by Admin via `add_blocker` / `remove_blocker`)
 - Only Admin can reassign roles (except Yield Recipient, which can be set by the Yield Recipient Manager or Admin)
 - Every role-gated function calls `require_auth()` on the `caller` argument, then verifies the caller is either Admin or the designated role holder — no implicit trust
 - Roles are stored in **Instance** storage
@@ -83,7 +83,8 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `set_minter` | `(new_minter: Address)` | Set a new minter address |
 | `set_yield_recipient_manager` | `(new_yrm: Address)` | Set a new yield recipient manager |
 | `set_forced_transfer_manager` | `(new_ftm: Address)` | Set a new forced transfer manager |
-| `set_blocker` | `(new_blocker: Address)` | Set a new blocker address |
+| `add_blocker` | `(new_blocker: Address)` | Grant the blocker role to an address (membership set; idempotent) |
+| `remove_blocker` | `(blocker: Address)` | Revoke the blocker role from an address (idempotent) |
 | `reconcile_burn` | `(amount: i128)` | Decrease both accumulators to reconcile tokens destroyed outside the contract (e.g., sent to issuer) |
 | `upgrade` | `(new_wasm_hash: BytesN<32>)` | Upgrade contract WASM to a new version |
 
@@ -357,7 +358,8 @@ All events emitted by the contract:
 | `set_yrmr` | `set_yield_recipient_manager` | `(old, new)` |
 | `set_yrcp` | `set_yield_recipient` | `(old, new)` |
 | `set_ftmr` | `set_forced_transfer_manager` | `(old, new)` |
-| `BlockerSet` | `set_blocker` | `(old, new)` |
+| `BlockerAdded` | `add_blocker` | `(addr)` |
+| `BlockerRemoved` | `remove_blocker` | `(addr)` |
 | `int_rate` | `set_rate` | `(rate_bps)` |
 | `sup_chg` | `mint`, `burn`, `reconcile_burn` | `(delta, total_principal, total_supply)` |
 | `yld_clm` | `claim_yield` | `(recipient, amount)` |

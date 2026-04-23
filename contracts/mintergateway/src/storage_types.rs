@@ -1,4 +1,4 @@
-use soroban_sdk::contracttype;
+use soroban_sdk::{contracttype, Address};
 
 // TTL Constants
 pub const DAY_IN_LEDGERS: u32 = 17280;
@@ -42,6 +42,6 @@ pub enum DataKey {
     YieldRecipientManager, // Instance: Address (can set yield recipient)
     YieldRecipient,        // Instance: Address (can claim yield)
     ForcedTransferManager, // Instance: Address (can authorize + transfer tokens)
-    Blocker, // Instance: Address (can block/unblock accounts, individually or in batches)
-    Pauser,  // Instance: Address (can pause/unpause the contract)
+    Blocker(Address), // Instance: () — membership set; presence of the key grants the blocker role
+    Pauser,           // Instance: Address (can pause/unpause the contract)
 }

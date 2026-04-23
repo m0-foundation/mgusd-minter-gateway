@@ -69,17 +69,42 @@ pub fn write_forced_transfer_manager(env: &Env, addr: &Address) {
 }
 
 // =============================================================================
-// Blocker - Can block/unblock accounts (individually or in batches)
+// Blocker - Can block/unblock accounts (individually or in batches).
+// Stored as a membership set: one instance-storage entry per blocker address.
 // =============================================================================
 
-pub fn read_blocker(env: &Env) -> Address {
-    let key = DataKey::Blocker;
-    env.storage().instance().get(&key).unwrap()
+pub fn is_blocker(env: &Env, addr: &Address) -> bool {
+    env.storage()
+        .instance()
+        .has(&DataKey::Blocker(addr.clone()))
 }
 
-pub fn write_blocker(env: &Env, addr: &Address) {
-    let key = DataKey::Blocker;
-    env.storage().instance().set(&key, addr);
+/// Returns true if this call added a new blocker (false if already present).
+pub fn insert_blocker(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::Blocker(addr.clone());
+    if env.storage().instance().has(&key) {
+        return false;
+    }
+    env.storage().instance().set(&key, &());
+    true
+}
+
+/// Returns true if this call removed an existing blocker (false if not present).
+pub fn delete_blocker(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::Blocker(addr.clone());
+    if !env.storage().instance().has(&key) {
+        return false;
+    }
+    env.storage().instance().remove(&key);
+    true
+}
+
+pub fn require_blocker(env: &Env, caller: &Address) -> Result<(), YieldTokenError> {
+    caller.require_auth();
+    if !is_blocker(env, caller) {
+        return Err(YieldTokenError::UnauthorizedError);
+    }
+    Ok(())
 }
 
 // =============================================================================

@@ -18,7 +18,10 @@ fn test_forced_transfer_manager_view() {
 #[test]
 fn test_blocker_view() {
     let s = setup();
-    assert_eq!(s.contract.blocker(), s.blocker);
+    assert!(s.contract.is_blocker(&s.blocker));
+    // An arbitrary address is not a blocker by default.
+    let someone = Address::generate(&s.env);
+    assert!(!s.contract.is_blocker(&someone));
 }
 
 // =============================================================================
@@ -77,14 +80,40 @@ fn test_set_forced_transfer_manager() {
 }
 
 #[test]
-fn test_set_blocker() {
+fn test_add_and_remove_blocker() {
     let s = setup();
-    let new_blocker = Address::generate(&s.env);
+    let extra = Address::generate(&s.env);
 
-    assert_eq!(s.contract.blocker(), s.blocker);
+    // Initial blocker from the constructor is present; the new one is not.
+    assert!(s.contract.is_blocker(&s.blocker));
+    assert!(!s.contract.is_blocker(&extra));
 
-    s.contract.set_blocker(&new_blocker);
-    assert_eq!(s.contract.blocker(), new_blocker);
+    // Grant: both are blockers simultaneously — the role is not single-holder.
+    s.contract.add_blocker(&extra);
+    assert!(s.contract.is_blocker(&s.blocker));
+    assert!(s.contract.is_blocker(&extra));
+
+    // Revoke the original; `extra` remains.
+    s.contract.remove_blocker(&s.blocker);
+    assert!(!s.contract.is_blocker(&s.blocker));
+    assert!(s.contract.is_blocker(&extra));
+}
+
+#[test]
+fn test_add_blocker_is_idempotent() {
+    let s = setup();
+    // Re-adding an existing blocker should not panic and leaves state unchanged.
+    s.contract.add_blocker(&s.blocker);
+    assert!(s.contract.is_blocker(&s.blocker));
+}
+
+#[test]
+fn test_remove_blocker_is_idempotent() {
+    let s = setup();
+    let never_added = Address::generate(&s.env);
+    // Removing a non-member should not panic.
+    s.contract.remove_blocker(&never_added);
+    assert!(!s.contract.is_blocker(&never_added));
 }
 
 // =============================================================================
@@ -182,12 +211,19 @@ fn test_set_forced_transfer_manager_reverts_without_auth() {
 }
 
 #[test]
-fn test_set_blocker_reverts_without_auth() {
+fn test_add_blocker_reverts_without_auth() {
     let s = setup_no_mock_auth();
-    let new_blocker = Address::generate(&s.env);
+    let new_blk = Address::generate(&s.env);
+    let err = s.contract.try_add_blocker(&new_blk).unwrap_err().unwrap();
+    assert_eq!(err, auth_error());
+}
+
+#[test]
+fn test_remove_blocker_reverts_without_auth() {
+    let s = setup_no_mock_auth();
     let err = s
         .contract
-        .try_set_blocker(&new_blocker)
+        .try_remove_blocker(&s.blocker)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, auth_error());
