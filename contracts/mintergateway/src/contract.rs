@@ -213,7 +213,7 @@ impl YieldToken {
     // =========================================================================
 
     /// Freezes multiple accounts in a single transaction.
-    /// Distributor only. Max 20 accounts per call.
+    /// Distributor only. Max 40 accounts per call.
     pub fn batch_freeze_accounts(
         e: Env,
         caller: Address,
@@ -240,7 +240,7 @@ impl YieldToken {
     }
 
     /// Unfreezes multiple accounts in a single transaction.
-    /// Distributor only. Max 20 accounts per call.
+    /// Distributor only. Max 40 accounts per call.
     pub fn batch_unfreeze_accounts(
         e: Env,
         caller: Address,

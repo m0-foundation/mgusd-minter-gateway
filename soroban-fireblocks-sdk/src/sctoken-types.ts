@@ -1,4 +1,4 @@
-export const MAX_BATCH_SIZE = 20;
+export const MAX_BATCH_SIZE = 40;
 
 export interface MintParams {
   /** Contract ID (C...) */
