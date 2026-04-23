@@ -60,6 +60,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | **Yield Recipient** | `claim_yield` | MoneyGram |
 | **Forced Transfer Manager** | `force_transfer` | Crossmint |
 | **Distributor** | `freeze_account`, `unfreeze_account`, `batch_freeze_accounts`, `batch_unfreeze_accounts` | Crossmint |
+| **Pauser** | `pause`, `unpause` | M0 |
 
 **Design properties:**
 
@@ -124,7 +125,14 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 |----------|-----------|-------------|
 | `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to yield recipient |
 
-### View / Query Functions (14)
+### Pauser Functions (2)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, force_transfer, reconcile_burn |
+| `unpause` | `(caller: Address)` | Unpause the contract — resumes all blocked operations |
+
+### View / Query Functions (15)
 
 | Function | Returns | Description |
 |----------|---------|-------------|
@@ -142,13 +150,15 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `total_principal` | `i128` | Yield-earning base (mints − burns) |
 | `total_supply` | `i128` | Total outstanding tokens (principal + claimed yield) |
 | `is_authorized(account)` | `bool` | Whether an account is unfrozen on the SAC |
+| `paused` | `bool` | Whether the contract is currently paused |
+| `pauser` | `Address` | Current pauser address |
 
 ### Initialization (Constructor)
 
 The contract is initialized via `__constructor` during deployment:
 
 ```
-__constructor(sac_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager, distributor)
+__constructor(sac_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager, distributor, pauser)
 ```
 
 All 7 addresses are stored in Instance storage. Returns `Err(AlreadyInitializedError)` if the contract has already been initialized (checked via `has_admin()`). The constructor does **not** initialize the yield state — index starts at `1.0` (`INDEX_SCALE`) on first use.
@@ -345,6 +355,35 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 
 ---
 
+## Pausable
+
+The contract implements a pause mechanism via the `stellar-contract-utils` pausable extension.
+
+### Pause / Unpause
+
+```
+pause(caller: Address)
+unpause(caller: Address)
+```
+
+Only the **Pauser** role can call these functions. The Pauser is set by the Admin via `set_pauser`.
+
+### Effect of pausing
+
+When paused, the following operations revert immediately:
+
+| Blocked function | Role |
+|-----------------|------|
+| `mint` | Minter |
+| `burn` | Minter |
+| `reconcile_burn` | Admin |
+| `claim_yield` | Yield Recipient Manager |
+| `force_transfer` | Forced Transfer Manager |
+
+Compliance operations (`freeze_account`, `unfreeze_account`, `batch_freeze_accounts`, `batch_unfreeze_accounts`) and all view functions remain fully accessible while paused so that regulatory actions can still be executed.
+
+---
+
 ## Event Reference
 
 All events emitted by the contract:
@@ -365,6 +404,9 @@ All events emitted by the contract:
 | `force_tx` | `force_transfer` | `(from, to, amount)` |
 | `upgraded` | `upgrade` | `(by, new_wasm_hash)` |
 | `sac_admin_transferred` | `transfer_sac_admin` | `(new_sac_admin)` |
+| `set_pauser` | `set_pauser` | `(old, new)` |
+| `paused` | `pause` | *(no payload)* |
+| `unpaused` | `unpause` | *(no payload)* |
 
 ---
 
