@@ -79,12 +79,12 @@ fn test_set_forced_transfer_manager() {
 #[test]
 fn test_set_blocker() {
     let s = setup();
-    let new_dist = Address::generate(&s.env);
+    let new_blocker = Address::generate(&s.env);
 
     assert_eq!(s.contract.blocker(), s.blocker);
 
-    s.contract.set_blocker(&new_dist);
-    assert_eq!(s.contract.blocker(), new_dist);
+    s.contract.set_blocker(&new_blocker);
+    assert_eq!(s.contract.blocker(), new_blocker);
 }
 
 // =============================================================================
@@ -184,8 +184,8 @@ fn test_set_forced_transfer_manager_reverts_without_auth() {
 #[test]
 fn test_set_blocker_reverts_without_auth() {
     let s = setup_no_mock_auth();
-    let new_dist = Address::generate(&s.env);
-    let err = s.contract.try_set_blocker(&new_dist).unwrap_err().unwrap();
+    let new_blocker = Address::generate(&s.env);
+    let err = s.contract.try_set_blocker(&new_blocker).unwrap_err().unwrap();
     assert_eq!(err, auth_error());
 }
 
