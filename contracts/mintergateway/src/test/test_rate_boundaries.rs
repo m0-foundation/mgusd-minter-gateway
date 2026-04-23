@@ -23,7 +23,7 @@ fn test_set_rate_exceeds_maximum() {
 
     // 10_001 bps > 100% — should return RateExceedsMax
     let result = s.contract.try_set_rate(&s.minter, &10_001);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::RateExceedsMax)));
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::RateExceedsMax)));
 
     // Rate unchanged (still default 0)
     assert_eq!(s.contract.interest_rate(), 0);
@@ -76,6 +76,51 @@ fn test_set_rate_zero_to_nonzero() {
     assert_eq!(yield_amount, 512_710_937_490);
 }
 
+/// Regression: `update_index` must advance `last_update_timestamp` every
+/// time `current_time > last_update_timestamp`, even when rate=0 keeps the
+/// index value flat and no `UpdateIndex` event is emitted. If the timestamp
+/// stayed stale across a zero-rate interval, the next non-zero-rate update
+/// would compute `time_elapsed` from the wrong baseline and overcount yield
+/// by the length of the zero-rate period.
+///
+/// With the fix present, accrued yield after (1yr at rate=0) + (1hr at 5%)
+/// equals one hour of accrual on 1M at 5% — about 5.7 tokens. Under the
+/// regression, it would include the full 1yr+1hr baseline and produce
+/// ~52,000 tokens.
+#[test]
+fn test_update_index_advances_timestamp_through_zero_rate_period() {
+    let s = setup();
+    let principal = 1_000_000 * DECIMALS;
+
+    // Mint at rate=0. Internally calls update_index, which must persist
+    // last_update_timestamp = T0 even though the index value stays flat.
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
+
+    // A full year at rate=0 — no yield accrues, and update_index on the
+    // next call must advance the timestamp past this interval.
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+    assert_eq!(s.contract.accrued_yield(), 0);
+
+    // Flip the rate on. set_rate calls update_index first; the bug would
+    // leave last_update_timestamp stuck at its pre-year value because
+    // rate=0 keeps current_index == latest_index and the emit guard false.
+    s.contract.set_rate(&s.minter, &500);
+
+    // Accrue for exactly one hour at 5%.
+    advance_time(&s.env, 3_600);
+
+    // Yield should match one hour at 5% on 1M principal — NOT (1yr + 1hr).
+    let yield_amount = s.contract.accrued_yield();
+    let expected_one_hour =
+        principal * (current_index(INDEX_SCALE, 500, 3_600) - INDEX_SCALE) / INDEX_SCALE;
+    assert_eq!(
+        yield_amount, expected_one_hour,
+        "yield must reflect only the hour post-rate-change; a higher value \
+         would indicate last_update_timestamp wasn't advanced through the \
+         zero-rate year"
+    );
+}
+
 #[test]
 fn test_set_rate_to_zero_finalizes_pending() {
     let s = setup();
@@ -97,7 +142,7 @@ fn test_set_rate_to_zero_finalizes_pending() {
     assert_eq!(s.contract.accrued_yield(), pending);
 
     // Claim to verify the stored yield is claimable
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(claimed, pending);
 }
 
@@ -122,7 +167,7 @@ fn test_yield_accuracy_at_max_rate() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Claim yield
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
     // 5-term Taylor: e^1.0 ≈ 1 + 1 + 1/2 + 1/6 + 1/24 = 2.708333...
     // So yield ≈ 1M × (2.708333... - 1) = 1M × 1.708333...

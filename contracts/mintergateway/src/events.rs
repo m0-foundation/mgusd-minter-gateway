@@ -7,7 +7,7 @@ pub struct AdminSet {
     pub new: Address,
 }
 
-pub fn emit_set_admin(env: &Env, old: Address, new: Address) {
+pub fn emit_admin_set(env: &Env, old: Address, new: Address) {
     AdminSet { old, new }.publish(env);
 }
 
@@ -22,12 +22,89 @@ pub fn emit_interest_rate_set(env: &Env, rate_bps: u32) {
 
 #[contractevent]
 pub struct YieldClaimed {
+    #[topic]
     pub recipient: Address,
     pub amount: i128,
 }
 
 pub fn emit_yield_claimed(env: &Env, recipient: Address, amount: i128) {
     YieldClaimed { recipient, amount }.publish(env);
+}
+
+#[contractevent]
+pub struct UpdateIndex {
+    pub latest_index: i128,
+}
+
+pub fn emit_update_index(env: &Env, latest_index: i128) {
+    UpdateIndex { latest_index }.publish(env);
+}
+
+#[contractevent]
+pub struct Mint {
+    #[topic]
+    pub to: Address,
+    pub amount: i128,
+    pub new_total_principal: i128,
+    pub new_total_supply: i128,
+}
+
+pub fn emit_mint(
+    env: &Env,
+    to: Address,
+    amount: i128,
+    new_total_principal: i128,
+    new_total_supply: i128,
+) {
+    Mint {
+        to,
+        amount,
+        new_total_principal,
+        new_total_supply,
+    }
+    .publish(env);
+}
+
+#[contractevent]
+pub struct Burn {
+    #[topic]
+    pub from: Address,
+    pub amount: i128,
+    pub new_total_principal: i128,
+    pub new_total_supply: i128,
+}
+
+pub fn emit_burn(
+    env: &Env,
+    from: Address,
+    amount: i128,
+    new_total_principal: i128,
+    new_total_supply: i128,
+) {
+    Burn {
+        from,
+        amount,
+        new_total_principal,
+        new_total_supply,
+    }
+    .publish(env);
+}
+
+/// Admin-only accumulator reconciliation (no SAC clawback).
+#[contractevent]
+pub struct Reconcile {
+    pub amount: i128,
+    pub new_total_principal: i128,
+    pub new_total_supply: i128,
+}
+
+pub fn emit_reconcile(env: &Env, amount: i128, new_total_principal: i128, new_total_supply: i128) {
+    Reconcile {
+        amount,
+        new_total_principal,
+        new_total_supply,
+    }
+    .publish(env);
 }
 
 #[contractevent]
@@ -61,27 +138,6 @@ pub struct YieldRecipientSet {
 
 pub fn emit_yield_recipient_set(env: &Env, old: Address, new: Address) {
     YieldRecipientSet { old, new }.publish(env);
-}
-
-#[contractevent]
-pub struct SupplySynced {
-    pub delta: i128,
-    pub new_total_principal: i128,
-    pub new_total_supply: i128,
-}
-
-pub fn emit_supply_synced(
-    env: &Env,
-    delta: i128,
-    new_total_principal: i128,
-    new_total_supply: i128,
-) {
-    SupplySynced {
-        delta,
-        new_total_principal,
-        new_total_supply,
-    }
-    .publish(env);
 }
 
 #[contractevent]

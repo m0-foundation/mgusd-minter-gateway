@@ -126,7 +126,10 @@ fn test_admin_cannot_mint() {
     let user = Address::generate(&s.env);
 
     let result = s.contract.try_mint(&s.admin, &user, &(1_000 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -138,7 +141,10 @@ fn test_admin_cannot_burn() {
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_burn(&s.admin, &user, &(400 * DECIMALS));
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -146,7 +152,10 @@ fn test_admin_cannot_set_rate() {
     let s = setup();
 
     let result = s.contract.try_set_rate(&s.admin, &500);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -154,7 +163,10 @@ fn test_admin_cannot_claim_yield() {
     let s = setup();
 
     let result = s.contract.try_claim_yield(&s.admin);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -163,7 +175,10 @@ fn test_admin_cannot_set_yield_recipient() {
     let new_yr = Address::generate(&s.env);
 
     let result = s.contract.try_set_yield_recipient(&s.admin, &new_yr);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 // =============================================================================
@@ -260,7 +275,10 @@ fn test_minter_cannot_set_yield_recipient() {
     let new_yr = Address::generate(&s.env);
 
     let result = s.contract.try_set_yield_recipient(&s.minter, &new_yr);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -271,7 +289,10 @@ fn test_yield_recipient_cannot_set_yield_recipient() {
     let result = s
         .contract
         .try_set_yield_recipient(&s.yield_recipient, &new_yr);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -282,7 +303,10 @@ fn test_forced_transfer_manager_cannot_set_yield_recipient() {
     let result = s
         .contract
         .try_set_yield_recipient(&s.forced_transfer_manager, &new_yr);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -292,5 +316,8 @@ fn test_random_cannot_set_yield_recipient() {
     let new_yr = Address::generate(&s.env);
 
     let result = s.contract.try_set_yield_recipient(&random, &new_yr);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }

@@ -15,7 +15,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Admin or Blocker whitelists (unblocks) accounts — individually via `unblock_user(user, operator)` or in batch via `batch_unblock_users(users, operator)` (up to 20 per call)
+1. Admin or Blocker whitelists (unblocks) accounts — individually via `unblock_user(user, operator)` or in batch via `batch_unblock_users(users, operator)` (up to 40 per call)
 2. Treasury transfers tokens to the user via the SAC's standard SEP-41 `transfer()`
 3. Whitelisted (unblocked) accounts can freely transfer among themselves
 4. Non-whitelisted (blocked) accounts cannot send or receive tokens
@@ -116,8 +116,8 @@ Matches the `stellar_tokens::fungible::blocklist` function shape; backed by the 
 |----------|-----------|-------------|
 | `block_user` | `(user: Address, operator: Address)` | Block a user on the SAC (`set_authorized(false)`) |
 | `unblock_user` | `(user: Address, operator: Address)` | Unblock a user on the SAC (`set_authorized(true)`) |
-| `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 20 users in a single transaction |
-| `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 20 users in a single transaction |
+| `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 40 users in a single transaction |
+| `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 40 users in a single transaction |
 
 ### Yield Recipient Functions (1)
 
@@ -332,8 +332,8 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 - `unblock_user(user, operator)` → SAC `set_authorized(true)` → user can send/receive
 - `block_user(user, operator)` → SAC `set_authorized(false)` → user is blocked
 - Admin or Blocker can block/unblock individual users
-- **Batch operations:** `batch_block_users` and `batch_unblock_users` accept up to 20 users per call and can be called by Admin or Blocker
-- The 20-user cap is derived from Soroban's per-transaction resource limits; each user consumes write entries for the SAC authorization state
+- **Batch operations:** `batch_block_users` and `batch_unblock_users` accept up to 40 users per call and can be called by Admin or Blocker
+- The 40-user cap is derived from Soroban's per-transaction resource limits; each user consumes write entries for the SAC authorization state
 - Batch operations are atomic — if any user fails, the entire transaction reverts
 - Each user in a batch emits its own `UserBlocked` / `UserUnblocked` event (OZ `stellar_tokens::fungible::blocklist` shape) for indexer compatibility
 

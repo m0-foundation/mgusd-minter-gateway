@@ -34,7 +34,7 @@ fn test_second_mint_snapshots_yield() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Step 5: Claim total yield
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
     // Expected: first_year yield on 1M + second_year yield on PV principal
     let first_year_yield = one_million * (index_1yr - INDEX_SCALE) / INDEX_SCALE;
@@ -63,7 +63,7 @@ fn test_rate_before_principal() {
     // Advance another year — yield accrues on 1M from the higher index base
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    let claimed = s.contract.claim_yield(&s.yield_recipient);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
     // The index grew during year 1 (no principal), so mint at year 1 uses PV conversion:
     // pv_principal = 1M × INDEX_SCALE / index_1yr
@@ -88,11 +88,11 @@ fn test_claim_then_claim_same_timestamp() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // First claim resets accrued yield to 0
-    let first_claim = s.contract.claim_yield(&s.yield_recipient);
+    let first_claim = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(first_claim > 0);
 
     // Second claim at the same timestamp — no time elapsed, no new yield
-    let second_claim = s.contract.claim_yield(&s.yield_recipient);
+    let second_claim = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(second_claim, 0);
 }
 
@@ -106,7 +106,10 @@ fn test_mint_negative_amount() {
     let s = setup();
 
     let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &-1);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::InvalidAmountError))
+    );
 }
 
 #[test]
@@ -114,7 +117,10 @@ fn test_burn_negative_amount() {
     let s = setup();
 
     let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &-1);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::InvalidAmountError))
+    );
 }
 
 #[test]
@@ -122,7 +128,10 @@ fn test_mint_zero_amount() {
     let s = setup();
 
     let result = s.contract.try_mint(&s.minter, &s.yield_recipient, &0);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::InvalidAmountError))
+    );
 }
 
 #[test]
@@ -130,5 +139,8 @@ fn test_burn_zero_amount() {
     let s = setup();
 
     let result = s.contract.try_burn(&s.minter, &s.yield_recipient, &0);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::InvalidAmountError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::InvalidAmountError))
+    );
 }

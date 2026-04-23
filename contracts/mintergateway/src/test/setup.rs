@@ -1,7 +1,7 @@
 pub use soroban_sdk::{
-    testutils::{IssuerFlags, Ledger},
+    testutils::{Events as _, IssuerFlags, Ledger},
     token::{StellarAssetClient, TokenClient},
-    Address, BytesN, Env,
+    xdr, Address, BytesN, Env, Event,
 };
 
 use soroban_sdk::testutils::Address as _;
@@ -97,6 +97,84 @@ pub fn setup_no_mock_auth() -> TestSetup<'static> {
     let s = setup();
     s.env.mock_auths(&[]);
     s
+}
+
+impl TestSetup<'_> {
+    /// Assert the most recent event emitted by the gateway contract equals
+    /// `expected`. Must be called immediately after the emitting invocation —
+    /// any subsequent top-level contract call (including view fns) resets the
+    /// host event buffer.
+    pub fn assert_event<E: Event>(&self, expected: E) {
+        let events = self
+            .env
+            .events()
+            .all()
+            .filter_by_contract(&self.contract.address);
+        let actual = events.events().last().expect("no gateway event").clone();
+        assert_eq!(actual, expected.to_xdr(&self.env, &self.contract.address));
+    }
+
+    /// Assert the last `expected.len()` gateway events match `expected` in
+    /// order. Each entry is the XDR form of a `#[contractevent]` struct,
+    /// built via `Event::to_xdr`.
+    pub fn assert_events_tail(&self, expected: &[xdr::ContractEvent]) {
+        let events = self
+            .env
+            .events()
+            .all()
+            .filter_by_contract(&self.contract.address);
+        let actual = events.events();
+        let n = expected.len();
+        assert!(
+            actual.len() >= n,
+            "expected at least {} gateway events, got {}",
+            n,
+            actual.len(),
+        );
+        let tail = &actual[actual.len() - n..];
+        assert_eq!(tail, expected);
+    }
+
+    /// Assert the gateway contract has not emitted any events since the last
+    /// top-level invocation.
+    pub fn assert_no_events(&self) {
+        let events = self
+            .env
+            .events()
+            .all()
+            .filter_by_contract(&self.contract.address);
+        assert!(
+            events.events().is_empty(),
+            "expected no gateway events, got {}",
+            events.events().len(),
+        );
+    }
+}
+
+/// Build a fixed-size array of `xdr::ContractEvent` from a list of
+/// `#[contractevent]` structs, converting each via `Event::to_xdr`.
+/// Pairs with `TestSetup::assert_events_tail`.
+///
+/// Example:
+/// ```ignore
+/// s.assert_events_tail(&gateway_events![s,
+///     UpdateIndex { latest_index },
+///     Mint { to, amount, new_total_principal, new_total_supply },
+/// ]);
+/// ```
+#[macro_export]
+macro_rules! gateway_events {
+    ($s:expr, $($event:expr),+ $(,)?) => {
+        [
+            $(
+                soroban_sdk::Event::to_xdr(
+                    &$event,
+                    &$s.env,
+                    &$s.contract.address,
+                )
+            ),+
+        ]
+    };
 }
 
 /// The Soroban host error returned when `require_auth()` fails.

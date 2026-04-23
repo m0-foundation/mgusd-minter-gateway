@@ -153,8 +153,8 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 |----------|------|-------------|
 | `block_user(user, operator)` | Admin or Blocker | Blocks a user — removes from allowlist, preventing sending and receiving |
 | `unblock_user(user, operator)` | Admin or Blocker | Unblocks a user — adds to allowlist, permitting sending and receiving |
-| `batch_block_users(users, operator)` | Admin or Blocker | Block up to 20 users per call |
-| `batch_unblock_users(users, operator)` | Admin or Blocker | Unblock up to 20 users per call |
+| `batch_block_users(users, operator)` | Admin or Blocker | Block up to 40 users per call |
+| `batch_unblock_users(users, operator)` | Admin or Blocker | Unblock up to 40 users per call |
 | `blocked(account)` | (view) | Returns whether a user is blocked (inverse of SAC authorization) |
 | `balance(id)` | (view) | Returns the SAC-reported balance for an address |
 
@@ -201,7 +201,7 @@ Yield Recipient
 
 Blocker
 ├── Blocks/unblocks individual users (`block_user` / `unblock_user`)
-└── Batch block/unblock users (max 20 per call) — matches the `stellar_tokens::fungible::blocklist` function shape
+└── Batch block/unblock users (max 40 per call) — matches the `stellar_tokens::fungible::blocklist` function shape
 
 Forced Transfer Manager
 └── force_transfer — clawback + mint (bypasses block on source)

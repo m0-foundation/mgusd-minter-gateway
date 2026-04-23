@@ -11,7 +11,6 @@ pub struct YieldStateValue {
     pub rate_bps: u32,              // Current rate in basis points (10000 = 100%)
     pub latest_index: i128,         // Last stored index (1.0 = 1e12)
     pub last_update_timestamp: u64, // Unix timestamp of last index update
-    pub accrued_yield: i128,        // Accumulated unclaimed yield
     pub total_principal: i128,      // Yield-earning base (mints - burns, excludes claimed yield)
     pub total_supply: i128, // Total outstanding tokens (principal + cumulative claimed yield)
 }
@@ -22,7 +21,6 @@ impl Default for YieldStateValue {
             rate_bps: 0,
             latest_index: crate::constants::INDEX_SCALE, // 1.0 scaled by 1e12
             last_update_timestamp: 0,
-            accrued_yield: 0,
             total_principal: 0,
             total_supply: 0,
         }

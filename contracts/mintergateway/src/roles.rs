@@ -1,13 +1,16 @@
 use soroban_sdk::{Address, Env};
 
-use crate::errors::YieldTokenError;
+use crate::errors::MinterGatewayError;
 use crate::storage_types::DataKey;
 
 /// Verifies that `caller` has authorized this invocation and is the specified role holder.
-pub fn require_role_holder(caller: &Address, role_holder: &Address) -> Result<(), YieldTokenError> {
+pub fn require_role_holder(
+    caller: &Address,
+    role_holder: &Address,
+) -> Result<(), MinterGatewayError> {
     caller.require_auth();
     if *caller != *role_holder {
-        return Err(YieldTokenError::UnauthorizedError);
+        return Err(MinterGatewayError::UnauthorizedError);
     }
     Ok(())
 }
@@ -99,10 +102,10 @@ pub fn delete_blocker(env: &Env, addr: &Address) -> bool {
     true
 }
 
-pub fn require_blocker(env: &Env, caller: &Address) -> Result<(), YieldTokenError> {
+pub fn require_blocker(env: &Env, caller: &Address) -> Result<(), MinterGatewayError> {
     caller.require_auth();
     if !is_blocker(env, caller) {
-        return Err(YieldTokenError::UnauthorizedError);
+        return Err(MinterGatewayError::UnauthorizedError);
     }
     Ok(())
 }

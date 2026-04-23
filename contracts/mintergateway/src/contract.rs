@@ -2,11 +2,11 @@ use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Byte
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::constants::MAX_BATCH_SIZE;
-use crate::errors::YieldTokenError;
+use crate::errors::MinterGatewayError;
 use crate::events::{
-    emit_blocker_added, emit_blocker_removed, emit_force_transfer,
-    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_minter_set, emit_pauser_set,
-    emit_set_admin, emit_supply_synced, emit_upgraded, emit_yield_claimed,
+    emit_admin_set, emit_blocker_added, emit_blocker_removed, emit_burn, emit_force_transfer,
+    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_mint, emit_minter_set,
+    emit_pauser_set, emit_reconcile, emit_upgraded, emit_yield_claimed,
     emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
@@ -18,17 +18,16 @@ use crate::roles::{
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
 use crate::yield_state::{
-    claim_accrued_yield, decrease_both_accumulators, get_accrued_yield, get_current_index,
-    get_interest_rate, get_latest_index, get_total_principal, get_total_supply,
-    increase_both_accumulators, increase_total_supply, read_yield_state, set_interest_rate,
-    update_index,
+    decrease_both_accumulators, get_accrued_yield, get_current_index, get_interest_rate,
+    get_latest_index, get_total_principal, get_total_supply, increase_both_accumulators,
+    increase_total_supply, read_yield_state, set_interest_rate, update_index,
 };
 use stellar_contract_utils::pausable::{self as pausable, Pausable};
 use stellar_tokens::fungible::blocklist::{emit_user_blocked, emit_user_unblocked};
 
-pub(crate) fn check_positive_amount(amount: i128) -> Result<(), YieldTokenError> {
+pub(crate) fn check_positive_amount(amount: i128) -> Result<(), MinterGatewayError> {
     if amount <= 0 {
-        return Err(YieldTokenError::InvalidAmountError);
+        return Err(MinterGatewayError::InvalidAmountError);
     }
     Ok(())
 }
@@ -66,9 +65,9 @@ impl YieldToken {
         forced_transfer_manager: Address,
         blocker: Address,
         pauser: Address,
-    ) -> Result<(), YieldTokenError> {
+    ) -> Result<(), MinterGatewayError> {
         if has_admin(&e) {
-            return Err(YieldTokenError::AlreadyInitializedError);
+            return Err(MinterGatewayError::AlreadyInitializedError);
         }
 
         // Store SAC token address
@@ -82,6 +81,7 @@ impl YieldToken {
         write_forced_transfer_manager(&e, &forced_transfer_manager);
         insert_blocker(&e, &blocker);
         write_pauser(&e, &pauser);
+
         Ok(())
     }
 
@@ -92,16 +92,20 @@ impl YieldToken {
     /// Transfers admin role to a new address. Current admin only.
     pub fn set_admin(e: Env, new_admin: Address) {
         let admin = require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         write_admin(&e, &new_admin);
 
-        emit_set_admin(&e, admin, new_admin);
+        emit_admin_set(&e, admin, new_admin);
     }
 
     /// Sets a new minter address. Admin only.
     pub fn set_minter(e: Env, new_minter: Address) {
         require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_minter(&e);
@@ -113,6 +117,8 @@ impl YieldToken {
     /// Sets a new yield recipient manager address. Admin only.
     pub fn set_yield_recipient_manager(e: Env, new_yield_recipient_manager: Address) {
         require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_yield_recipient_manager(&e);
@@ -124,6 +130,8 @@ impl YieldToken {
     /// Sets a new forced transfer manager address. Admin only.
     pub fn set_forced_transfer_manager(e: Env, new_forced_transfer_manager: Address) {
         require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_forced_transfer_manager(&e);
@@ -136,6 +144,8 @@ impl YieldToken {
     /// Idempotent: silent no-op (no event) if the address is already a blocker.
     pub fn add_blocker(e: Env, new_blocker: Address) {
         require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         if insert_blocker(&e, &new_blocker) {
@@ -159,6 +169,8 @@ impl YieldToken {
     /// Sets a new pauser address. Admin only.
     pub fn set_pauser(e: Env, new_pauser: Address) {
         require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_pauser(&e);
@@ -184,7 +196,7 @@ impl YieldToken {
 
     /// Blocks a user, preventing them from sending or receiving SAC tokens.
     /// Blocker only.
-    pub fn block_user(e: Env, user: Address, operator: Address) -> Result<(), YieldTokenError> {
+    pub fn block_user(e: Env, user: Address, operator: Address) -> Result<(), MinterGatewayError> {
         require_blocker(&e, &operator)?;
         extend_instance_ttl(&e);
 
@@ -197,7 +209,11 @@ impl YieldToken {
 
     /// Unblocks a user, restoring their ability to send and receive SAC tokens.
     /// Blocker only.
-    pub fn unblock_user(e: Env, user: Address, operator: Address) -> Result<(), YieldTokenError> {
+    pub fn unblock_user(
+        e: Env,
+        user: Address,
+        operator: Address,
+    ) -> Result<(), MinterGatewayError> {
         require_blocker(&e, &operator)?;
         extend_instance_ttl(&e);
 
@@ -209,17 +225,17 @@ impl YieldToken {
     }
 
     /// Blocks multiple users in a single transaction.
-    /// Blocker only. Max 20 users per call.
+    /// Blocker only. Max 40 users per call.
     pub fn batch_block_users(
         e: Env,
         users: Vec<Address>,
         operator: Address,
-    ) -> Result<(), YieldTokenError> {
+    ) -> Result<(), MinterGatewayError> {
         require_blocker(&e, &operator)?;
         extend_instance_ttl(&e);
 
         if users.len() > MAX_BATCH_SIZE {
-            return Err(YieldTokenError::BatchTooLargeError);
+            return Err(MinterGatewayError::BatchTooLargeError);
         }
 
         let sac_addr = read_sac_token(&e);
@@ -234,17 +250,17 @@ impl YieldToken {
     }
 
     /// Unblocks multiple users in a single transaction.
-    /// Blocker only. Max 20 users per call.
+    /// Blocker only. Max 40 users per call.
     pub fn batch_unblock_users(
         e: Env,
         users: Vec<Address>,
         operator: Address,
-    ) -> Result<(), YieldTokenError> {
+    ) -> Result<(), MinterGatewayError> {
         require_blocker(&e, &operator)?;
         extend_instance_ttl(&e);
 
         if users.len() > MAX_BATCH_SIZE {
-            return Err(YieldTokenError::BatchTooLargeError);
+            return Err(MinterGatewayError::BatchTooLargeError);
         }
 
         let sac_addr = read_sac_token(&e);
@@ -268,6 +284,8 @@ impl YieldToken {
     /// if the new version changes the storage schema.
     pub fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
         let admin = require_admin(&e);
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         e.deployer()
@@ -282,10 +300,17 @@ impl YieldToken {
 
     /// Mints SAC tokens directly to the recipient and updates accumulators.
     /// Minter only.
-    pub fn mint(e: Env, caller: Address, to: Address, amount: i128) -> Result<(), YieldTokenError> {
+    pub fn mint(
+        e: Env,
+        caller: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), MinterGatewayError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_role_holder(&caller, &read_minter(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -299,7 +324,8 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).mint(&to, &amount);
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, amount, state.total_principal, state.total_supply);
+        emit_mint(&e, to, amount, state.total_principal, state.total_supply);
+
         Ok(())
     }
 
@@ -310,10 +336,12 @@ impl YieldToken {
         caller: Address,
         from: Address,
         amount: i128,
-    ) -> Result<(), YieldTokenError> {
+    ) -> Result<(), MinterGatewayError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_role_holder(&caller, &read_minter(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -327,17 +355,20 @@ impl YieldToken {
         token::StellarAssetClient::new(&e, &sac_addr).clawback(&from, &amount);
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        emit_burn(&e, from, amount, state.total_principal, state.total_supply);
+
         Ok(())
     }
 
     /// Reconciles accumulators after tokens are destroyed by sending to the SAC issuer.
     /// Decreases both accumulators to reflect the reduced supply.
     /// Admin only — this is a reconciliation action, not normal operations.
-    pub fn reconcile_burn(e: Env, amount: i128) -> Result<(), YieldTokenError> {
+    pub fn reconcile_burn(e: Env, amount: i128) -> Result<(), MinterGatewayError> {
         pausable::when_not_paused(&e);
         require_admin(&e);
         check_positive_amount(amount)?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         // Update index before changing principal
@@ -345,21 +376,24 @@ impl YieldToken {
 
         // Guard: can't reconcile more tokens than the contract believes exist
         if amount > get_total_supply(&e) {
-            return Err(YieldTokenError::BurnExceedsSupply);
+            return Err(MinterGatewayError::BurnExceedsSupply);
         }
 
         // Decrease both accumulators (same PV logic as burn)
         decrease_both_accumulators(&e, amount)?;
 
         let state = read_yield_state(&e);
-        emit_supply_synced(&e, -amount, state.total_principal, state.total_supply);
+        emit_reconcile(&e, amount, state.total_principal, state.total_supply);
+
         Ok(())
     }
 
     /// Sets the interest rate in basis points (max 10000 = 100%). Minter only.
     /// No-op if the new rate equals the current rate.
-    pub fn set_rate(e: Env, caller: Address, rate_bps: u32) -> Result<(), YieldTokenError> {
+    pub fn set_rate(e: Env, caller: Address, rate_bps: u32) -> Result<(), MinterGatewayError> {
         require_role_holder(&caller, &read_minter(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         // Early return if rate unchanged
@@ -367,9 +401,13 @@ impl YieldToken {
             return Ok(());
         }
 
+        // First update index at the old rate
+        update_index(&e);
+
         set_interest_rate(&e, rate_bps)?;
 
         emit_interest_rate_set(&e, rate_bps);
+
         Ok(())
     }
 
@@ -386,11 +424,12 @@ impl YieldToken {
         from: Address,
         to: Address,
         amount: i128,
-    ) -> Result<(), YieldTokenError> {
+    ) -> Result<(), MinterGatewayError> {
         pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_role_holder(&caller, &read_forced_transfer_manager(&e))?;
 
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         // SAC operations: clawback from source, mint to destination
@@ -400,6 +439,7 @@ impl YieldToken {
         sac_client.mint(&to, &amount);
 
         emit_force_transfer(&e, from, to, amount);
+
         Ok(())
     }
 
@@ -412,47 +452,52 @@ impl YieldToken {
         e: Env,
         caller: Address,
         new_yield_recipient: Address,
-    ) -> Result<(), YieldTokenError> {
+    ) -> Result<(), MinterGatewayError> {
         require_role_holder(&caller, &read_yield_recipient_manager(&e))?;
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
         let old = read_yield_recipient(&e);
         write_yield_recipient(&e, &new_yield_recipient);
 
         emit_yield_recipient_set(&e, old, new_yield_recipient);
+
         Ok(())
     }
 
     // =========================================================================
-    // Yield Recipient Functions
+    // Yield Recipient Manager Functions (claim)
     // =========================================================================
 
     /// Claims accrued yield by minting new SAC tokens to the yield recipient.
-    /// Yield recipient or admin only. Returns the amount of yield claimed.
+    /// Yield recipient manager only. Returns the amount of yield claimed.
     ///
     /// Note: Claimed yield is NOT added to principal — it does not earn more yield.
     /// Tokens are always minted to the yield recipient, regardless of who calls.
-    pub fn claim_yield(e: Env, caller: Address) -> Result<i128, YieldTokenError> {
+    pub fn claim_yield(e: Env, caller: Address) -> Result<i128, MinterGatewayError> {
         pausable::when_not_paused(&e);
         let recipient = read_yield_recipient(&e);
-        require_role_holder(&caller, &recipient)?;
+        require_role_holder(&caller, &read_yield_recipient_manager(&e))?;
 
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
-        let claimed = claim_accrued_yield(&e);
+        update_index(&e);
 
-        if claimed > 0 {
+        let unclaimed_yield = get_accrued_yield(&e);
+
+        if unclaimed_yield > 0 {
             // Increase total_supply (but NOT total_principal — no compounding)
-            increase_total_supply(&e, claimed);
-
+            increase_total_supply(&e, unclaimed_yield);
             // Mint new tokens to yield recipient
             let sac_addr = read_sac_token(&e);
-            token::StellarAssetClient::new(&e, &sac_addr).mint(&recipient, &claimed);
+            token::StellarAssetClient::new(&e, &sac_addr).mint(&recipient, &unclaimed_yield);
 
-            emit_yield_claimed(&e, recipient, claimed);
+            emit_yield_claimed(&e, recipient, unclaimed_yield);
         }
 
-        Ok(claimed)
+        Ok(unclaimed_yield)
     }
 
     // =========================================================================
@@ -590,9 +635,12 @@ impl Pausable for YieldToken {
     fn pause(e: &Env, caller: Address) {
         caller.require_auth();
         if caller != read_pauser(e) {
-            panic_with_error!(e, YieldTokenError::UnauthorizedError);
+            panic_with_error!(e, MinterGatewayError::UnauthorizedError);
         }
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(e);
+
         pausable::pause(e);
     }
 
@@ -601,9 +649,12 @@ impl Pausable for YieldToken {
     fn unpause(e: &Env, caller: Address) {
         caller.require_auth();
         if caller != read_pauser(e) {
-            panic_with_error!(e, YieldTokenError::UnauthorizedError);
+            panic_with_error!(e, MinterGatewayError::UnauthorizedError);
         }
+
+        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(e);
+
         pausable::unpause(e);
     }
 }
