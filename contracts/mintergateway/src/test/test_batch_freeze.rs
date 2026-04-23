@@ -8,7 +8,7 @@ use super::setup::*;
 // =============================================================================
 
 #[test]
-fn test_batch_unfreeze_by_distributor() {
+fn test_batch_unblock_by_blocker() {
     let s = setup();
     let accounts: Vec<Address> = Vec::from_array(
         &s.env,
@@ -19,16 +19,15 @@ fn test_batch_unfreeze_by_distributor() {
         ],
     );
 
-    s.contract
-        .batch_unfreeze_accounts(&s.distributor, &accounts);
+    s.contract.batch_unblock_users(&accounts, &s.blocker);
 
     for account in accounts.iter() {
-        assert!(s.contract.is_authorized(&account));
+        assert!(!s.contract.blocked(&account));
     }
 }
 
 #[test]
-fn test_batch_freeze_by_distributor() {
+fn test_batch_block_by_blocker() {
     let s = setup();
     let accounts: Vec<Address> = Vec::from_array(
         &s.env,
@@ -40,23 +39,22 @@ fn test_batch_freeze_by_distributor() {
     );
 
     // First authorize all accounts
-    s.contract
-        .batch_unfreeze_accounts(&s.distributor, &accounts);
+    s.contract.batch_unblock_users(&accounts, &s.blocker);
 
     // Then freeze them
-    s.contract.batch_freeze_accounts(&s.distributor, &accounts);
+    s.contract.batch_block_users(&accounts, &s.blocker);
 
     for account in accounts.iter() {
-        assert!(!s.contract.is_authorized(&account));
+        assert!(s.contract.blocked(&account));
     }
 }
 
 #[test]
-fn test_batch_unfreeze_admin_unauthorized() {
+fn test_batch_unblock_admin_unauthorized() {
     let s = setup();
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
-    let result = s.contract.try_batch_unfreeze_accounts(&s.admin, &accounts);
+    let result = s.contract.try_batch_unblock_users(&accounts, &s.admin);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))
@@ -64,11 +62,11 @@ fn test_batch_unfreeze_admin_unauthorized() {
 }
 
 #[test]
-fn test_batch_freeze_admin_unauthorized() {
+fn test_batch_block_admin_unauthorized() {
     let s = setup();
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
-    let result = s.contract.try_batch_freeze_accounts(&s.admin, &accounts);
+    let result = s.contract.try_batch_block_users(&accounts, &s.admin);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))
@@ -80,28 +78,26 @@ fn test_batch_freeze_admin_unauthorized() {
 // =============================================================================
 
 #[test]
-fn test_batch_freeze_single_account() {
+fn test_batch_block_single_user() {
     let s = setup();
     let account = Address::generate(&s.env);
     let accounts: Vec<Address> = Vec::from_array(&s.env, [account.clone()]);
 
-    s.contract
-        .batch_unfreeze_accounts(&s.distributor, &accounts);
-    assert!(s.contract.is_authorized(&account));
+    s.contract.batch_unblock_users(&accounts, &s.blocker);
+    assert!(!s.contract.blocked(&account));
 
-    s.contract.batch_freeze_accounts(&s.distributor, &accounts);
-    assert!(!s.contract.is_authorized(&account));
+    s.contract.batch_block_users(&accounts, &s.blocker);
+    assert!(s.contract.blocked(&account));
 }
 
 #[test]
-fn test_batch_freeze_empty_vec() {
+fn test_batch_block_empty_vec() {
     let s = setup();
     let accounts: Vec<Address> = Vec::new(&s.env);
 
     // Empty vec is a no-op, should not panic
-    s.contract.batch_freeze_accounts(&s.distributor, &accounts);
-    s.contract
-        .batch_unfreeze_accounts(&s.distributor, &accounts);
+    s.contract.batch_block_users(&accounts, &s.blocker);
+    s.contract.batch_unblock_users(&accounts, &s.blocker);
 }
 
 // =============================================================================
@@ -109,13 +105,11 @@ fn test_batch_freeze_empty_vec() {
 // =============================================================================
 
 #[test]
-fn test_batch_freeze_reverts_without_auth() {
+fn test_batch_block_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
-    let result = s
-        .contract
-        .try_batch_freeze_accounts(&s.distributor, &accounts);
+    let result = s.contract.try_batch_block_users(&accounts, &s.blocker);
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort
@@ -123,13 +117,11 @@ fn test_batch_freeze_reverts_without_auth() {
 }
 
 #[test]
-fn test_batch_unfreeze_reverts_without_auth() {
+fn test_batch_unblock_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
-    let result = s
-        .contract
-        .try_batch_unfreeze_accounts(&s.distributor, &accounts);
+    let result = s.contract.try_batch_unblock_users(&accounts, &s.blocker);
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort
@@ -141,11 +133,11 @@ fn test_batch_unfreeze_reverts_without_auth() {
 // =============================================================================
 
 #[test]
-fn test_minter_cannot_batch_freeze() {
+fn test_minter_cannot_batch_block() {
     let s = setup();
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
-    let result = s.contract.try_batch_freeze_accounts(&s.minter, &accounts);
+    let result = s.contract.try_batch_block_users(&accounts, &s.minter);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))
@@ -153,12 +145,12 @@ fn test_minter_cannot_batch_freeze() {
 }
 
 #[test]
-fn test_random_cannot_batch_freeze() {
+fn test_random_cannot_batch_block() {
     let s = setup();
     let random = Address::generate(&s.env);
     let accounts: Vec<Address> = Vec::from_array(&s.env, [Address::generate(&s.env)]);
 
-    let result = s.contract.try_batch_freeze_accounts(&random, &accounts);
+    let result = s.contract.try_batch_block_users(&accounts, &random);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))
@@ -170,16 +162,14 @@ fn test_random_cannot_batch_freeze() {
 // =============================================================================
 
 #[test]
-fn test_batch_freeze_exceeds_max_size() {
+fn test_batch_block_exceeds_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
     for _ in 0..41 {
         accounts.push_back(Address::generate(&s.env));
     }
 
-    let result = s
-        .contract
-        .try_batch_freeze_accounts(&s.distributor, &accounts);
+    let result = s.contract.try_batch_block_users(&accounts, &s.blocker);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::BatchTooLargeError))
@@ -187,24 +177,27 @@ fn test_batch_freeze_exceeds_max_size() {
 }
 
 #[test]
-fn test_batch_unfreeze_at_max_size() {
+fn test_batch_unblock_at_max_size() {
     let s = setup();
+    // Bypass the Rust SDK test harness's shadow budget (see
+    // `test_batch_block_at_max_size` for the full explanation).
+    s.env.cost_estimate().budget().reset_unlimited();
+
     let mut accounts: Vec<Address> = Vec::new(&s.env);
     for _ in 0..40 {
         accounts.push_back(Address::generate(&s.env));
     }
 
     // Should succeed at exactly 40
-    s.contract
-        .batch_unfreeze_accounts(&s.distributor, &accounts);
+    s.contract.batch_unblock_users(&accounts, &s.blocker);
 
     for account in accounts.iter() {
-        assert!(s.contract.is_authorized(&account));
+        assert!(!s.contract.blocked(&account));
     }
 }
 
 #[test]
-fn test_batch_freeze_at_max_size() {
+fn test_batch_block_at_max_size() {
     let s = setup();
     // Bypass the Rust SDK test harness's shadow budget, which is consumed by
     // `get_authenticated_authorizations` serializing auth trees for test
@@ -221,10 +214,10 @@ fn test_batch_freeze_at_max_size() {
 
     // Accounts start unauthorized (AUTH_REQUIRED), so freezing is a no-op
     // on auth state but should succeed without hitting resource limits
-    s.contract.batch_freeze_accounts(&s.distributor, &accounts);
+    s.contract.batch_block_users(&accounts, &s.blocker);
 
     for account in accounts.iter() {
-        assert!(!s.contract.is_authorized(&account));
+        assert!(s.contract.blocked(&account));
     }
 }
 
@@ -233,7 +226,7 @@ fn test_batch_freeze_at_max_size() {
 // =============================================================================
 
 #[test]
-fn test_batch_freeze_blocks_transfers() {
+fn test_batch_block_blocks_transfers() {
     let s = setup();
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
@@ -242,13 +235,13 @@ fn test_batch_freeze_blocks_transfers() {
     // Authorize and mint to both users
     let users: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
-    s.contract.batch_unfreeze_accounts(&s.distributor, &users);
+    s.contract.batch_unblock_users(&users, &s.blocker);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 
     // Batch freeze alice and bob
     let to_freeze: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
-    s.contract.batch_freeze_accounts(&s.distributor, &to_freeze);
+    s.contract.batch_block_users(&to_freeze, &s.blocker);
 
     // Neither can transfer
     let result_alice = s
@@ -263,7 +256,7 @@ fn test_batch_freeze_blocks_transfers() {
 }
 
 #[test]
-fn test_batch_unfreeze_restores_transfers() {
+fn test_batch_unblock_restores_transfers() {
     let s = setup();
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
@@ -272,15 +265,15 @@ fn test_batch_unfreeze_restores_transfers() {
     // Authorize, mint, then freeze
     let all: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
-    s.contract.batch_unfreeze_accounts(&s.distributor, &all);
+    s.contract.batch_unblock_users(&all, &s.blocker);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 
     let users: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
-    s.contract.batch_freeze_accounts(&s.distributor, &users);
+    s.contract.batch_block_users(&users, &s.blocker);
 
     // Batch unfreeze
-    s.contract.batch_unfreeze_accounts(&s.distributor, &users);
+    s.contract.batch_unblock_users(&users, &s.blocker);
 
     // Both can now transfer
     s.sac_token.transfer(&alice, &recipient, &(100 * DECIMALS));

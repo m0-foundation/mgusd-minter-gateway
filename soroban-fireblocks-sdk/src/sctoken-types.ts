@@ -43,20 +43,20 @@ export interface QueryParams {
   contractId: string;
 }
 
-export interface FreezeAccountParams {
+export interface BlockUserParams {
   contractId: string;
-  /** Caller address — must be admin or distributor */
-  caller: string;
-  /** Account to freeze */
-  account: string;
+  /** User (account) to block or unblock */
+  user: string;
+  /** Operator address — must be admin or blocker */
+  operator: string;
 }
 
-export interface BatchFreezeAccountsParams {
+export interface BatchBlockUsersParams {
   contractId: string;
-  /** Caller address — must be admin or distributor */
-  caller: string;
-  /** Accounts to freeze (max 20) */
-  accounts: string[];
+  /** Users (accounts) to block or unblock (max 20) */
+  users: string[];
+  /** Operator address — must be admin or blocker */
+  operator: string;
 }
 
 export interface ForceTransferParams {
@@ -100,8 +100,8 @@ export interface DeployFullParams {
   yieldRecipient: string;
   /** Forced transfer manager address (G... or C...) */
   forcedTransferManager: string;
-  /** Distributor address (G... or C...) */
-  distributor: string;
+  /** Blocker address (G... or C...) */
+  blocker: string;
   /** Pauser address (G... or C...) */
   pauser: string;
 }

@@ -16,9 +16,12 @@ fn test_forced_transfer_manager_view() {
 }
 
 #[test]
-fn test_distributor_view() {
+fn test_blocker_view() {
     let s = setup();
-    assert_eq!(s.contract.distributor(), s.distributor);
+    assert!(s.contract.is_blocker(&s.blocker));
+    // An arbitrary address is not a blocker by default.
+    let someone = Address::generate(&s.env);
+    assert!(!s.contract.is_blocker(&someone));
 }
 
 // =============================================================================
@@ -77,14 +80,40 @@ fn test_set_forced_transfer_manager() {
 }
 
 #[test]
-fn test_set_distributor() {
+fn test_add_and_remove_blocker() {
     let s = setup();
-    let new_dist = Address::generate(&s.env);
+    let extra = Address::generate(&s.env);
 
-    assert_eq!(s.contract.distributor(), s.distributor);
+    // Initial blocker from the constructor is present; the new one is not.
+    assert!(s.contract.is_blocker(&s.blocker));
+    assert!(!s.contract.is_blocker(&extra));
 
-    s.contract.set_distributor(&new_dist);
-    assert_eq!(s.contract.distributor(), new_dist);
+    // Grant: both are blockers simultaneously — the role is not single-holder.
+    s.contract.add_blocker(&extra);
+    assert!(s.contract.is_blocker(&s.blocker));
+    assert!(s.contract.is_blocker(&extra));
+
+    // Revoke the original; `extra` remains.
+    s.contract.remove_blocker(&s.blocker);
+    assert!(!s.contract.is_blocker(&s.blocker));
+    assert!(s.contract.is_blocker(&extra));
+}
+
+#[test]
+fn test_add_blocker_is_idempotent() {
+    let s = setup();
+    // Re-adding an existing blocker should not panic and leaves state unchanged.
+    s.contract.add_blocker(&s.blocker);
+    assert!(s.contract.is_blocker(&s.blocker));
+}
+
+#[test]
+fn test_remove_blocker_is_idempotent() {
+    let s = setup();
+    let never_added = Address::generate(&s.env);
+    // Removing a non-member should not panic.
+    s.contract.remove_blocker(&never_added);
+    assert!(!s.contract.is_blocker(&never_added));
 }
 
 // =============================================================================
@@ -108,7 +137,7 @@ fn test_admin_cannot_burn() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.distributor, &user);
+    s.contract.unblock_user(&user, &s.blocker);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_burn(&s.admin, &user, &(400 * DECIMALS));
@@ -197,12 +226,19 @@ fn test_set_forced_transfer_manager_reverts_without_auth() {
 }
 
 #[test]
-fn test_set_distributor_reverts_without_auth() {
+fn test_add_blocker_reverts_without_auth() {
     let s = setup_no_mock_auth();
-    let new_dist = Address::generate(&s.env);
+    let new_blk = Address::generate(&s.env);
+    let err = s.contract.try_add_blocker(&new_blk).unwrap_err().unwrap();
+    assert_eq!(err, auth_error());
+}
+
+#[test]
+fn test_remove_blocker_reverts_without_auth() {
+    let s = setup_no_mock_auth();
     let err = s
         .contract
-        .try_set_distributor(&new_dist)
+        .try_remove_blocker(&s.blocker)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, auth_error());
