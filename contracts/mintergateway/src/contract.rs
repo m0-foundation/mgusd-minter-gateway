@@ -463,10 +463,20 @@ impl YieldToken {
     /// Matches `stellar_tokens::fungible::blocklist::FungibleBlockList::blocked` —
     /// `true` means the account is blocked (SAC-unauthorized). Untouched
     /// accounts return `true` because the SAC issuer uses AUTH_REQUIRED.
+    ///
+    /// The SAC's `authorized` host function traps (not returns `false`) when
+    /// the account has no classic trustline for the asset — so a naive
+    /// `!authorized(account)` would make `blocked()` unusable for onboarding
+    /// pre-flight checks. We catch that trap via `try_authorized` and treat
+    /// any non-success outcome as "blocked": without a trustline there is no
+    /// authorization state, so denying is the safe and truthful answer.
     pub fn blocked(e: Env, account: Address) -> bool {
         extend_instance_ttl(&e);
         let sac_addr = read_sac_token(&e);
-        !token::StellarAssetClient::new(&e, &sac_addr).authorized(&account)
+        match token::StellarAssetClient::new(&e, &sac_addr).try_authorized(&account) {
+            Ok(Ok(authorized)) => !authorized,
+            _ => true,
+        }
     }
 
     /// Returns the SAC token balance for the given address.
