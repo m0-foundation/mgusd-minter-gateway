@@ -185,7 +185,11 @@ fn test_set_forced_transfer_manager_reverts_without_auth() {
 fn test_set_blocker_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_blocker = Address::generate(&s.env);
-    let err = s.contract.try_set_blocker(&new_blocker).unwrap_err().unwrap();
+    let err = s
+        .contract
+        .try_set_blocker(&new_blocker)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, auth_error());
 }
 
