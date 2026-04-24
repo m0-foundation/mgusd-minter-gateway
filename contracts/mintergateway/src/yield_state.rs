@@ -4,22 +4,32 @@
 //! The index represents cumulative growth: Index(t) = Index(t₀) × e^(r × Δt)
 //!
 //! Two accumulators track token supply:
-//! - `total_principal`: yield-earning base (mints - burns, excludes claimed yield)
+//! - `total_principal`: yield-earning base in present-value terms (PV of mints - PV of burns)
 //! - `total_supply`: total outstanding tokens (principal + cumulative claimed yield)
 //!
 //! Yield accrues on `total_principal` only, not on `total_supply`.
 //! This prevents compounding of claimed yield.
 //!
+//! # Present Value Conversion
+//!
+//! When tokens are minted or burned, the nominal amount is converted to present
+//! value before adjusting `total_principal`: `pv = amount × INDEX_SCALE / latest_index`.
+//! This ensures principal is always denominated in "base index units", making yield
+//! calculations correct regardless of when mints/burns occur relative to index growth.
+//!
 //! # Rounding Policy
 //!
-//! Yield computation (`principal * index_delta / INDEX_SCALE`) rounds **DOWN** (truncation).
-//! This is protocol-favorable — pays slightly less yield than mathematically exact.
-//! See `continuous_index` module for the full rounding policy of the index pipeline.
+//! Unclaimed yield is derived on demand as
+//! `floor(total_principal × current_index / INDEX_SCALE) − total_supply`, clamped at 0.
+//! This keeps yield a pure function of the index and the accumulators, with one rounding
+//! point. See `continuous_index` for the rounding policy of the index pipeline.
 
+use soroban_fixed_point_math::FixedPoint;
 use soroban_sdk::Env;
 
 use crate::continuous_index::{self, INDEX_SCALE};
-use crate::errors::YieldTokenError;
+use crate::errors::MinterGatewayError;
+use crate::events::emit_update_index;
 use crate::storage_types::{DataKey, YieldStateValue};
 
 // =============================================================================
@@ -28,10 +38,7 @@ use crate::storage_types::{DataKey, YieldStateValue};
 
 pub fn read_yield_state(env: &Env) -> YieldStateValue {
     let key = DataKey::YieldState;
-    env.storage()
-        .instance()
-        .get(&key)
-        .unwrap_or(YieldStateValue::default())
+    env.storage().instance().get(&key).unwrap_or_default()
 }
 
 pub fn write_yield_state(env: &Env, state: &YieldStateValue) {
@@ -48,7 +55,7 @@ pub fn write_yield_state(env: &Env, state: &YieldStateValue) {
 /// currentIndex = latestIndex × e^(rate × time_since_last_update)
 ///
 /// This is a view function that calculates the real-time index.
-pub fn get_current_index(env: &Env) -> u128 {
+pub fn get_current_index(env: &Env) -> i128 {
     let state = read_yield_state(env);
     let current_time = env.ledger().timestamp();
 
@@ -62,7 +69,7 @@ pub fn get_current_index(env: &Env) -> u128 {
 }
 
 /// Returns the stored (last updated) index.
-pub fn get_latest_index(env: &Env) -> u128 {
+pub fn get_latest_index(env: &Env) -> i128 {
     read_yield_state(env).latest_index
 }
 
@@ -88,28 +95,43 @@ pub fn increase_total_supply(env: &Env, amount: i128) {
     write_yield_state(env, &state);
 }
 
-/// Increases both total_principal and total_supply by the same amount.
+/// Increases both total_principal and total_supply.
 /// Used by mint (direct SAC mint).
 /// Must call update_index first to finalize yield at current principal.
+///
+/// `total_principal` is adjusted by the present value of the amount
+/// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
+/// by the nominal amount.
 pub fn increase_both_accumulators(env: &Env, amount: i128) {
     let mut state = read_yield_state(env);
-    state.total_principal = state.total_principal.checked_add(amount).unwrap();
+    let pv_amount = amount
+        .fixed_mul_floor(INDEX_SCALE, state.latest_index)
+        .unwrap();
+    state.total_principal = state.total_principal.checked_add(pv_amount).unwrap();
     state.total_supply = state.total_supply.checked_add(amount).unwrap();
     write_yield_state(env, &state);
 }
 
-/// Decreases both total_principal and total_supply by the same amount.
+/// Decreases both total_principal and total_supply.
 /// Used by burn.
 /// Must call update_index first to finalize yield at current principal.
-/// Returns error if amount exceeds total_principal — you cannot burn more than was minted.
-pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), YieldTokenError> {
+///
+/// `total_principal` is adjusted by the present value of the amount
+/// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
+/// by the nominal amount. Returns error if PV amount exceeds total_principal.
+pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), MinterGatewayError> {
     let mut state = read_yield_state(env);
-    if amount > state.total_principal {
-        return Err(YieldTokenError::BurnExceedsPrincipal);
+    let pv_amount = amount
+        .fixed_mul_floor(INDEX_SCALE, state.latest_index)
+        .unwrap();
+    if pv_amount > state.total_principal {
+        return Err(MinterGatewayError::BurnExceedsPrincipal);
     }
-    state.total_principal = state.total_principal.checked_sub(amount).unwrap();
+
+    state.total_principal = state.total_principal.checked_sub(pv_amount).unwrap();
     state.total_supply = state.total_supply.checked_sub(amount).unwrap();
     write_yield_state(env, &state);
+
     Ok(())
 }
 
@@ -129,33 +151,23 @@ pub fn update_index(env: &Env) {
     let mut state = read_yield_state(env);
     let current_time = env.ledger().timestamp();
 
-    // Only update if time has passed
-    if current_time > state.last_update_timestamp {
-        let new_index = continuous_index::current_index(
-            state.latest_index,
-            state.rate_bps,
-            current_time - state.last_update_timestamp,
-        );
+    // Nothing to do if time hasn't advanced (same ledger, repeat call).
+    if current_time <= state.last_update_timestamp {
+        return;
+    }
 
-        // Accrue yield if there's principal and index grew
-        if state.total_principal > 0 && new_index > state.latest_index {
-            let index_delta = new_index - state.latest_index;
+    let current_index = continuous_index::current_index(
+        state.latest_index,
+        state.rate_bps,
+        current_time - state.last_update_timestamp,
+    );
 
-            // yield = principal × index_delta / INDEX_SCALE
-            // Rounding: DOWN (truncation). Protocol-favorable — pays slightly less yield.
-            let yield_amount = (state.total_principal as u128)
-                .checked_mul(index_delta)
-                .unwrap()
-                .checked_div(INDEX_SCALE)
-                .unwrap();
-
-            state.accrued_yield = state
-                .accrued_yield
-                .checked_add(yield_amount as i128)
-                .unwrap();
-        }
-
-        state.latest_index = new_index;
+    // Emit only when the index value actually changed. rate=0 keeps
+    // the index flat even as the timestamp advances — that's not
+    // event-worthy.
+    if current_index != state.latest_index {
+        emit_update_index(env, current_index);
+        state.latest_index = current_index;
     }
 
     state.last_update_timestamp = current_time;
@@ -164,80 +176,55 @@ pub fn update_index(env: &Env) {
 
 /// Returns the current accrued yield without updating state.
 ///
-/// Includes both stored yield and pending yield from index growth.
+/// Yield is derived as
+/// `floor(total_principal × current_index / INDEX_SCALE) − total_supply`,
+/// clamped at 0.
 pub fn get_accrued_yield(env: &Env) -> i128 {
     let state = read_yield_state(env);
-    let current_time = env.ledger().timestamp();
 
-    // Start with stored accrued yield
-    let mut total_yield = state.accrued_yield;
-
-    // Add pending yield from index growth (on principal only)
-    if current_time > state.last_update_timestamp && state.total_principal > 0 && state.rate_bps > 0 {
-        let new_index = continuous_index::current_index(
-            state.latest_index,
-            state.rate_bps,
-            current_time - state.last_update_timestamp,
-        );
-
-        if new_index > state.latest_index {
-            let index_delta = new_index - state.latest_index;
-            // Rounding: DOWN (truncation). Protocol-favorable — same as update_index.
-            let pending_yield = (state.total_principal as u128)
-                .checked_mul(index_delta)
-                .unwrap()
-                .checked_div(INDEX_SCALE)
-                .unwrap();
-
-            total_yield = total_yield.checked_add(pending_yield as i128).unwrap();
-        }
+    if state.total_principal == 0 {
+        return 0;
     }
 
-    total_yield
+    let current_time = env.ledger().timestamp();
+
+    let current_index = continuous_index::current_index(
+        state.latest_index,
+        state.rate_bps,
+        current_time - state.last_update_timestamp,
+    );
+
+    // Rounding: DOWN (truncation). Protocol-favorable — same as update_index.
+    let total_supply_with_yield = state
+        .total_principal
+        .fixed_mul_floor(current_index, INDEX_SCALE)
+        .unwrap();
+
+    // `pv_amount` floors at mint time, so `total_principal × latest_index / SCALE`
+    // can be below `total_supply` by the floor residue and produce a small negative
+    // result; yield is never negative, so clamp at 0.
+    (total_supply_with_yield - state.total_supply).max(0)
 }
 
 // =============================================================================
 // Rate Management
 // =============================================================================
 
-/// Sets the interest rate. Updates index first to finalize yield at old rate.
-pub fn set_interest_rate(env: &Env, rate_bps: u32) -> Result<(), YieldTokenError> {
+/// Sets the interest rate. Caller must call `update_index` first to finalize
+/// yield at the old rate before invoking this.
+pub fn set_interest_rate(env: &Env, rate_bps: u32) -> Result<(), MinterGatewayError> {
     if rate_bps > 10_000 {
-        return Err(YieldTokenError::RateExceedsMax);
+        return Err(MinterGatewayError::RateExceedsMax);
     }
 
-    // First update index at the old rate
-    update_index(env);
-
-    // Then set the new rate
     let mut state = read_yield_state(env);
     state.rate_bps = rate_bps;
     write_yield_state(env, &state);
+
     Ok(())
 }
 
 /// Returns the current interest rate in basis points.
 pub fn get_interest_rate(env: &Env) -> u32 {
     read_yield_state(env).rate_bps
-}
-
-// =============================================================================
-// Yield Claims
-// =============================================================================
-
-/// Claims accrued yield and resets the accumulator.
-///
-/// Returns the amount claimed.
-///
-/// Note: This does NOT increase principal - claimed yield doesn't earn more yield.
-pub fn claim_accrued_yield(env: &Env) -> i128 {
-    // Update to capture latest yield
-    update_index(env);
-
-    let mut state = read_yield_state(env);
-    let claimed = state.accrued_yield;
-    state.accrued_yield = 0;
-    write_yield_state(env, &state);
-
-    claimed
 }

@@ -1,20 +1,16 @@
 use soroban_sdk::{Address, Env};
 
-use crate::admin::read_admin;
-use crate::errors::YieldTokenError;
+use crate::errors::MinterGatewayError;
 use crate::storage_types::DataKey;
 
-/// Verifies that `caller` has authorized this invocation and is either
-/// the admin or the specified role holder.
-pub fn require_admin_or(
-    env: &Env,
+/// Verifies that `caller` has authorized this invocation and is the specified role holder.
+pub fn require_role_holder(
     caller: &Address,
     role_holder: &Address,
-) -> Result<(), YieldTokenError> {
+) -> Result<(), MinterGatewayError> {
     caller.require_auth();
-    let admin = read_admin(env);
-    if *caller != admin && *caller != *role_holder {
-        return Err(YieldTokenError::UnauthorizedError);
+    if *caller != *role_holder {
+        return Err(MinterGatewayError::UnauthorizedError);
     }
     Ok(())
 }
@@ -76,16 +72,54 @@ pub fn write_forced_transfer_manager(env: &Env, addr: &Address) {
 }
 
 // =============================================================================
-// Distributor - Can batch freeze/unfreeze accounts
+// Blocker - Can block/unblock accounts (individually or in batches).
+// Stored as a membership set: one instance-storage entry per blocker address.
 // =============================================================================
 
-pub fn read_distributor(env: &Env) -> Address {
-    let key = DataKey::Distributor;
+pub fn is_blocker(env: &Env, addr: &Address) -> bool {
+    env.storage()
+        .instance()
+        .has(&DataKey::Blocker(addr.clone()))
+}
+
+/// Returns true if this call added a new blocker (false if already present).
+pub fn insert_blocker(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::Blocker(addr.clone());
+    if env.storage().instance().has(&key) {
+        return false;
+    }
+    env.storage().instance().set(&key, &());
+    true
+}
+
+/// Returns true if this call removed an existing blocker (false if not present).
+pub fn delete_blocker(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::Blocker(addr.clone());
+    if !env.storage().instance().has(&key) {
+        return false;
+    }
+    env.storage().instance().remove(&key);
+    true
+}
+
+pub fn require_blocker(env: &Env, caller: &Address) -> Result<(), MinterGatewayError> {
+    caller.require_auth();
+    if !is_blocker(env, caller) {
+        return Err(MinterGatewayError::UnauthorizedError);
+    }
+    Ok(())
+}
+
+// =============================================================================
+// Pauser - Can pause/unpause the contract
+// =============================================================================
+
+pub fn read_pauser(env: &Env) -> Address {
+    let key = DataKey::Pauser;
     env.storage().instance().get(&key).unwrap()
 }
 
-pub fn write_distributor(env: &Env, addr: &Address) {
-    let key = DataKey::Distributor;
+pub fn write_pauser(env: &Env, addr: &Address) {
+    let key = DataKey::Pauser;
     env.storage().instance().set(&key, addr);
 }
-

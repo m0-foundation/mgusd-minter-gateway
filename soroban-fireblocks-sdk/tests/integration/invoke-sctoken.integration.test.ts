@@ -27,12 +27,10 @@ describe("Integration: SCToken contract", () => {
       throw new Error("CONTRACT_ID env var required for integration test");
     }
 
-    const result = await client.queryAdmin({ contractId });
+    const address = await client.queryAdmin({ contractId });
 
-    expect(result.address).toMatch(/^[GC]/);
-    expect(result.txHash).toBeDefined();
-    expect(result.ledger).toBeGreaterThan(0);
-    console.log("queryAdmin result:", result);
+    expect(address).toMatch(/^[GC]/);
+    console.log("queryAdmin address:", address);
   }, 120_000);
 
   it("queries the SAC token address", async () => {
@@ -41,12 +39,10 @@ describe("Integration: SCToken contract", () => {
       throw new Error("CONTRACT_ID env var required for integration test");
     }
 
-    const result = await client.querySacToken({ contractId });
+    const address = await client.querySacToken({ contractId });
 
-    expect(result.address).toMatch(/^C/);
-    expect(result.txHash).toBeDefined();
-    expect(result.ledger).toBeGreaterThan(0);
-    console.log("querySacToken result:", result);
+    expect(address).toMatch(/^C/);
+    console.log("querySacToken address:", address);
   }, 120_000);
 
   it("mints tokens", async () => {

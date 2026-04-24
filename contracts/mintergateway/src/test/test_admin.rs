@@ -9,13 +9,19 @@ use super::setup::*;
 #[test]
 fn test_forced_transfer_manager_view() {
     let s = setup();
-    assert_eq!(s.contract.forced_transfer_manager(), s.forced_transfer_manager);
+    assert_eq!(
+        s.contract.forced_transfer_manager(),
+        s.forced_transfer_manager
+    );
 }
 
 #[test]
-fn test_distributor_view() {
+fn test_blocker_view() {
     let s = setup();
-    assert_eq!(s.contract.distributor(), s.distributor);
+    assert!(s.contract.is_blocker(&s.blocker));
+    // An arbitrary address is not a blocker by default.
+    let someone = Address::generate(&s.env);
+    assert!(!s.contract.is_blocker(&someone));
 }
 
 // =============================================================================
@@ -54,7 +60,8 @@ fn test_set_yield_recipient() {
     let s = setup();
     let new_yr = Address::generate(&s.env);
 
-    s.contract.set_yield_recipient(&s.yield_recipient_manager, &new_yr);
+    s.contract
+        .set_yield_recipient(&s.yield_recipient_manager, &new_yr);
     assert_eq!(s.contract.yield_recipient(), new_yr);
 }
 
@@ -63,88 +70,115 @@ fn test_set_forced_transfer_manager() {
     let s = setup();
     let new_ftm = Address::generate(&s.env);
 
-    assert_eq!(s.contract.forced_transfer_manager(), s.forced_transfer_manager);
+    assert_eq!(
+        s.contract.forced_transfer_manager(),
+        s.forced_transfer_manager
+    );
 
     s.contract.set_forced_transfer_manager(&new_ftm);
     assert_eq!(s.contract.forced_transfer_manager(), new_ftm);
 }
 
 #[test]
-fn test_set_distributor() {
+fn test_add_and_remove_blocker() {
     let s = setup();
-    let new_dist = Address::generate(&s.env);
+    let extra = Address::generate(&s.env);
 
-    assert_eq!(s.contract.distributor(), s.distributor);
+    // Initial blocker from the constructor is present; the new one is not.
+    assert!(s.contract.is_blocker(&s.blocker));
+    assert!(!s.contract.is_blocker(&extra));
 
-    s.contract.set_distributor(&new_dist);
-    assert_eq!(s.contract.distributor(), new_dist);
+    // Grant: both are blockers simultaneously — the role is not single-holder.
+    s.contract.add_blocker(&extra);
+    assert!(s.contract.is_blocker(&s.blocker));
+    assert!(s.contract.is_blocker(&extra));
+
+    // Revoke the original; `extra` remains.
+    s.contract.remove_blocker(&s.blocker);
+    assert!(!s.contract.is_blocker(&s.blocker));
+    assert!(s.contract.is_blocker(&extra));
+}
+
+#[test]
+fn test_add_blocker_is_idempotent() {
+    let s = setup();
+    // Re-adding an existing blocker should not panic and leaves state unchanged.
+    s.contract.add_blocker(&s.blocker);
+    assert!(s.contract.is_blocker(&s.blocker));
+}
+
+#[test]
+fn test_remove_blocker_is_idempotent() {
+    let s = setup();
+    let never_added = Address::generate(&s.env);
+    // Removing a non-member should not panic.
+    s.contract.remove_blocker(&never_added);
+    assert!(!s.contract.is_blocker(&never_added));
 }
 
 // =============================================================================
-// ADMIN SUPER-ROLE — admin bypasses role gates
+// ADMIN IS NOT A SUPER-ROLE — admin cannot bypass role gates
 // =============================================================================
 
 #[test]
-fn test_admin_can_mint() {
+fn test_admin_cannot_mint() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.admin, &user, &1_000_0000000);
-
-    assert_eq!(s.sac_token.balance(&user), 1_000_0000000);
-    assert_eq!(s.contract.total_principal(), 1_000_0000000);
+    let result = s.contract.try_mint(&s.admin, &user, &(1_000 * DECIMALS));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
-fn test_admin_can_burn() {
+fn test_admin_cannot_burn() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unfreeze_account(&s.admin, &user);
-    s.contract.mint(&s.minter, &user, &1_000_0000000);
+    s.contract.unblock_user(&user, &s.blocker);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
-    s.contract.burn(&s.admin, &user, &400_0000000);
-
-    assert_eq!(s.sac_token.balance(&user), 600_0000000);
-    assert_eq!(s.contract.total_principal(), 600_0000000);
+    let result = s.contract.try_burn(&s.admin, &user, &(400 * DECIMALS));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
-fn test_admin_can_set_rate() {
+fn test_admin_cannot_set_rate() {
     let s = setup();
 
-    s.contract.set_rate(&s.admin, &500);
-
-    assert_eq!(s.contract.interest_rate(), 500);
+    let result = s.contract.try_set_rate(&s.admin, &500);
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
-fn test_admin_can_claim_yield() {
+fn test_admin_cannot_claim_yield() {
     let s = setup();
-    let principal = 1_000_000_0000000i128;
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
-
-    advance_time(&s.env, SECONDS_PER_YEAR as u64);
-
-    // Admin calls claim_yield — tokens minted to yield_recipient (not admin)
-    let claimed = s.contract.claim_yield(&s.admin);
-    assert!(claimed > 0);
-
-    // Tokens go to yield_recipient, not admin
-    assert_eq!(s.sac_token.balance(&s.yield_recipient), principal + claimed);
+    let result = s.contract.try_claim_yield(&s.admin);
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
-fn test_admin_can_set_yield_recipient() {
+fn test_admin_cannot_set_yield_recipient() {
     let s = setup();
     let new_yr = Address::generate(&s.env);
 
-    s.contract.set_yield_recipient(&s.admin, &new_yr);
-
-    assert_eq!(s.contract.yield_recipient(), new_yr);
+    let result = s.contract.try_set_yield_recipient(&s.admin, &new_yr);
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 // =============================================================================
@@ -156,7 +190,7 @@ fn test_set_admin_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_admin = Address::generate(&s.env);
     let err = s.contract.try_set_admin(&new_admin).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    assert_eq!(err, auth_error());
 }
 
 #[test]
@@ -164,39 +198,63 @@ fn test_set_minter_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_minter = Address::generate(&s.env);
     let err = s.contract.try_set_minter(&new_minter).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    assert_eq!(err, auth_error());
 }
 
 #[test]
 fn test_set_yield_recipient_manager_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_yrm = Address::generate(&s.env);
-    let err = s.contract.try_set_yield_recipient_manager(&new_yrm).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    let err = s
+        .contract
+        .try_set_yield_recipient_manager(&new_yrm)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, auth_error());
 }
 
 #[test]
 fn test_set_forced_transfer_manager_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let new_ftm = Address::generate(&s.env);
-    let err = s.contract.try_set_forced_transfer_manager(&new_ftm).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    let err = s
+        .contract
+        .try_set_forced_transfer_manager(&new_ftm)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, auth_error());
 }
 
 #[test]
-fn test_set_distributor_reverts_without_auth() {
+fn test_add_blocker_reverts_without_auth() {
     let s = setup_no_mock_auth();
-    let new_dist = Address::generate(&s.env);
-    let err = s.contract.try_set_distributor(&new_dist).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    let new_blk = Address::generate(&s.env);
+    let err = s.contract.try_add_blocker(&new_blk).unwrap_err().unwrap();
+    assert_eq!(err, auth_error());
+}
+
+#[test]
+fn test_remove_blocker_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let err = s
+        .contract
+        .try_remove_blocker(&s.blocker)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, auth_error());
 }
 
 #[test]
 fn test_set_yield_recipient_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
     let new_yr = Address::generate(&s.env);
-    let result = s.contract.try_set_yield_recipient(&s.yield_recipient_manager, &new_yr);
-    assert_eq!(result.unwrap_err().unwrap_err(), soroban_sdk::InvokeError::Abort);
+    let result = s
+        .contract
+        .try_set_yield_recipient(&s.yield_recipient_manager, &new_yr);
+    assert_eq!(
+        result.unwrap_err().unwrap_err(),
+        soroban_sdk::InvokeError::Abort
+    );
 }
 
 #[test]
@@ -204,7 +262,7 @@ fn test_upgrade_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let fake_hash = BytesN::from_array(&s.env, &[0u8; 32]);
     let err = s.contract.try_upgrade(&fake_hash).unwrap_err().unwrap();
-    assert_eq!(soroban_sdk::Error::from(err), auth_error());
+    assert_eq!(err, auth_error());
 }
 
 // =============================================================================
@@ -216,10 +274,11 @@ fn test_minter_cannot_set_yield_recipient() {
     let s = setup();
     let new_yr = Address::generate(&s.env);
 
-    let result = s
-        .contract
-        .try_set_yield_recipient(&s.minter, &new_yr);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    let result = s.contract.try_set_yield_recipient(&s.minter, &new_yr);
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -230,7 +289,10 @@ fn test_yield_recipient_cannot_set_yield_recipient() {
     let result = s
         .contract
         .try_set_yield_recipient(&s.yield_recipient, &new_yr);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -241,7 +303,10 @@ fn test_forced_transfer_manager_cannot_set_yield_recipient() {
     let result = s
         .contract
         .try_set_yield_recipient(&s.forced_transfer_manager, &new_yr);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }
 
 #[test]
@@ -250,8 +315,9 @@ fn test_random_cannot_set_yield_recipient() {
     let random = Address::generate(&s.env);
     let new_yr = Address::generate(&s.env);
 
-    let result = s
-        .contract
-        .try_set_yield_recipient(&random, &new_yr);
-    assert_eq!(result, Err(Ok(crate::YieldTokenError::UnauthorizedError)));
+    let result = s.contract.try_set_yield_recipient(&random, &new_yr);
+    assert_eq!(
+        result,
+        Err(Ok(crate::MinterGatewayError::UnauthorizedError))
+    );
 }

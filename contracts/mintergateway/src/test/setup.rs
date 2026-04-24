@@ -1,7 +1,7 @@
 pub use soroban_sdk::{
-    testutils::{IssuerFlags, Ledger},
+    testutils::{Events as _, IssuerFlags, Ledger},
     token::{StellarAssetClient, TokenClient},
-    Address, BytesN, Env,
+    xdr, Address, BytesN, Env, Event,
 };
 
 use soroban_sdk::testutils::Address as _;
@@ -9,11 +9,12 @@ use soroban_sdk::testutils::Address as _;
 #[allow(unused_imports)]
 pub use crate::continuous_index::{
     convert_from_basis_points, current_index, exponent, get_continuous_index,
-    multiply_indices_down, multiply_indices_up, INDEX_SCALE, SECONDS_PER_YEAR,
+    multiply_indices_down, INDEX_SCALE, SECONDS_PER_YEAR,
 };
 pub use crate::contract::{YieldToken, YieldTokenClient};
 
 pub const T0: u64 = 1_000_000; // Arbitrary start timestamp
+pub const DECIMALS: i128 = 10_000_000; // 1 token = 10^7 stroops
 
 pub struct TestSetup<'a> {
     pub env: Env,
@@ -25,7 +26,8 @@ pub struct TestSetup<'a> {
     pub yield_recipient_manager: Address,
     pub yield_recipient: Address,
     pub forced_transfer_manager: Address,
-    pub distributor: Address,
+    pub blocker: Address,
+    pub pauser: Address,
 }
 
 pub fn setup() -> TestSetup<'static> {
@@ -38,7 +40,8 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
-    let distributor = Address::generate(&env);
+    let blocker = Address::generate(&env);
+    let pauser = Address::generate(&env);
 
     // Register SAC token with admin as initial issuer
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
@@ -61,7 +64,8 @@ pub fn setup() -> TestSetup<'static> {
             &yield_recipient_manager,
             &yield_recipient,
             &forced_transfer_manager,
-            &distributor,
+            &blocker,
+            &pauser,
         ),
     );
     let contract = YieldTokenClient::new(&env, &contract_addr);
@@ -70,7 +74,7 @@ pub fn setup() -> TestSetup<'static> {
     sac_admin_client.set_admin(&contract_addr);
 
     // Authorize yield_recipient so claim_yield can mint to it (AUTH_REQUIRED mode)
-    contract.unfreeze_account(&admin, &yield_recipient);
+    contract.unblock_user(&yield_recipient, &blocker);
 
     TestSetup {
         env,
@@ -82,7 +86,8 @@ pub fn setup() -> TestSetup<'static> {
         yield_recipient_manager,
         yield_recipient,
         forced_transfer_manager,
-        distributor,
+        blocker,
+        pauser,
     }
 }
 
@@ -92,6 +97,84 @@ pub fn setup_no_mock_auth() -> TestSetup<'static> {
     let s = setup();
     s.env.mock_auths(&[]);
     s
+}
+
+impl TestSetup<'_> {
+    /// Assert the most recent event emitted by the gateway contract equals
+    /// `expected`. Must be called immediately after the emitting invocation —
+    /// any subsequent top-level contract call (including view fns) resets the
+    /// host event buffer.
+    pub fn assert_event<E: Event>(&self, expected: E) {
+        let events = self
+            .env
+            .events()
+            .all()
+            .filter_by_contract(&self.contract.address);
+        let actual = events.events().last().expect("no gateway event").clone();
+        assert_eq!(actual, expected.to_xdr(&self.env, &self.contract.address));
+    }
+
+    /// Assert the last `expected.len()` gateway events match `expected` in
+    /// order. Each entry is the XDR form of a `#[contractevent]` struct,
+    /// built via `Event::to_xdr`.
+    pub fn assert_events_tail(&self, expected: &[xdr::ContractEvent]) {
+        let events = self
+            .env
+            .events()
+            .all()
+            .filter_by_contract(&self.contract.address);
+        let actual = events.events();
+        let n = expected.len();
+        assert!(
+            actual.len() >= n,
+            "expected at least {} gateway events, got {}",
+            n,
+            actual.len(),
+        );
+        let tail = &actual[actual.len() - n..];
+        assert_eq!(tail, expected);
+    }
+
+    /// Assert the gateway contract has not emitted any events since the last
+    /// top-level invocation.
+    pub fn assert_no_events(&self) {
+        let events = self
+            .env
+            .events()
+            .all()
+            .filter_by_contract(&self.contract.address);
+        assert!(
+            events.events().is_empty(),
+            "expected no gateway events, got {}",
+            events.events().len(),
+        );
+    }
+}
+
+/// Build a fixed-size array of `xdr::ContractEvent` from a list of
+/// `#[contractevent]` structs, converting each via `Event::to_xdr`.
+/// Pairs with `TestSetup::assert_events_tail`.
+///
+/// Example:
+/// ```ignore
+/// s.assert_events_tail(&gateway_events![s,
+///     UpdateIndex { latest_index },
+///     Mint { to, amount, new_total_principal, new_total_supply },
+/// ]);
+/// ```
+#[macro_export]
+macro_rules! gateway_events {
+    ($s:expr, $($event:expr),+ $(,)?) => {
+        [
+            $(
+                soroban_sdk::Event::to_xdr(
+                    &$event,
+                    &$s.env,
+                    &$s.contract.address,
+                )
+            ),+
+        ]
+    };
 }
 
 /// The Soroban host error returned when `require_auth()` fails.

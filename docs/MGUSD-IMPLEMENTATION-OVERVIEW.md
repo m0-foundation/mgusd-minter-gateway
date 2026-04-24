@@ -15,10 +15,10 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Admin or Distributor whitelists (unfreezes) accounts — individually via `unfreeze_account(caller, account)` or in batch via `batch_unfreeze_accounts(caller, accounts)` (up to 40 per call)
+1. Admin or Blocker whitelists (unblocks) accounts — individually via `unblock_user(user, operator)` or in batch via `batch_unblock_users(users, operator)` (up to 40 per call)
 2. Treasury transfers tokens to the user via the SAC's standard SEP-41 `transfer()`
-3. Whitelisted (unfrozen) accounts can freely transfer among themselves
-4. Non-whitelisted (frozen) accounts cannot send or receive tokens
+3. Whitelisted (unblocked) accounts can freely transfer among themselves
+4. Non-whitelisted (blocked) accounts cannot send or receive tokens
 
 ### 3. Redemption (End User → MoneyGram → Bridge)
 
@@ -59,14 +59,15 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
 | **Forced Transfer Manager** | `force_transfer` | Crossmint |
-| **Distributor** | `freeze_account`, `unfreeze_account`, `batch_freeze_accounts`, `batch_unfreeze_accounts` | Compliance Operator |
+| **Blocker** | `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users` | Crossmint |
+| **Pauser** | `pause`, `unpause` | M0 |
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_distributor`, `upgrade`)
-- All roles are **single-address** — exactly one holder per role at any time
-- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager)
-- Every role-gated function calls `require_auth()` on the role holder — no implicit trust
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_blocker`, `remove_blocker`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`)
+- All roles are **single-address** except **Blocker**, which is a membership set (any number of addresses can hold the role, granted / revoked by Admin via `add_blocker` / `remove_blocker`)
+- Only Admin can reassign roles (except Yield Recipient, which can be set by the Yield Recipient Manager or Admin)
+- Every role-gated function calls `require_auth()` on the `caller` argument, then verifies the caller is either Admin or the designated role holder — no implicit trust
 - Roles are stored in **Instance** storage
 
 ---
@@ -75,7 +76,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 > **Note:** Admin can call any function below, not just the admin-exclusive ones. Each non-admin role can only call its own functions.
 
-### Admin-Exclusive Functions (6)
+### Admin-Exclusive Functions (10)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -83,7 +84,11 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `set_minter` | `(new_minter: Address)` | Set a new minter address |
 | `set_yield_recipient_manager` | `(new_yrm: Address)` | Set a new yield recipient manager |
 | `set_forced_transfer_manager` | `(new_ftm: Address)` | Set a new forced transfer manager |
-| `set_distributor` | `(new_distributor: Address)` | Set a new distributor address |
+| `set_pauser` | `(new_pauser: Address)` | Set the address allowed to pause/unpause the contract |
+| `add_blocker` | `(new_blocker: Address)` | Grant the blocker role to an address (membership set; idempotent) |
+| `remove_blocker` | `(blocker: Address)` | Revoke the blocker role from an address (idempotent) |
+| `reconcile_burn` | `(amount: i128)` | Decrease both accumulators to reconcile tokens destroyed outside the contract (e.g., sent to issuer) |
+| `transfer_sac_admin` | `(new_sac_admin: Address)` | Transfer SAC admin role from this contract to another address |
 | `upgrade` | `(new_wasm_hash: BytesN<32>)` | Upgrade contract WASM to a new version |
 
 ### Minter Functions (3)
@@ -106,14 +111,16 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 |----------|-----------|-------------|
 | `set_yield_recipient` | `(caller: Address, new_yr: Address)` | Set the address that can claim yield |
 
-### Distributor Functions (4)
+### Blocker Functions (4)
+
+Matches the `stellar_tokens::fungible::blocklist` function shape; backed by the SAC allowlist.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `freeze_account` | `(caller: Address, account: Address)` | Freeze account on SAC (`set_authorized(false)`) |
-| `unfreeze_account` | `(caller: Address, account: Address)` | Unfreeze account on SAC (`set_authorized(true)`) |
-| `batch_freeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Freeze up to 40 accounts in a single transaction |
-| `batch_unfreeze_accounts` | `(caller: Address, accounts: Vec<Address>)` | Unfreeze up to 40 accounts in a single transaction |
+| `block_user` | `(user: Address, operator: Address)` | Block a user on the SAC (`set_authorized(false)`) |
+| `unblock_user` | `(user: Address, operator: Address)` | Unblock a user on the SAC (`set_authorized(true)`) |
+| `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 40 users in a single transaction |
+| `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 40 users in a single transaction |
 
 ### Yield Recipient Functions (1)
 
@@ -121,7 +128,14 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 |----------|-----------|-------------|
 | `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to yield recipient |
 
-### View / Query Functions (14)
+### Pauser Functions (2)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, force_transfer, reconcile_burn |
+| `unpause` | `(caller: Address)` | Unpause the contract — resumes all blocked operations |
+
+### View / Query Functions (17)
 
 | Function | Returns | Description |
 |----------|---------|-------------|
@@ -130,15 +144,28 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `yield_recipient_manager` | `Address` | Current yield recipient manager |
 | `yield_recipient` | `Address` | Current yield recipient |
 | `forced_transfer_manager` | `Address` | Current forced transfer manager |
-| `distributor` | `Address` | Current distributor address |
+| `blocker` | `Address` | Current blocker address |
 | `sac_token` | `Address` | SAC token contract address |
 | `interest_rate` | `u32` | Current rate in basis points |
-| `current_index` | `u128` | Real-time index (includes pending growth) |
-| `latest_index` | `u128` | Last stored index (from most recent update) |
-| `accrued_yield` | `i128` | Pending yield available to claim |
+| `current_index` | `i128` | Real-time index (includes pending growth) |
+| `latest_index` | `i128` | Last stored index (from most recent update) |
+| `accrued_yield` | `i128` | Real-time accrued yield (stored + pending from index growth since last update) |
 | `total_principal` | `i128` | Yield-earning base (mints − burns) |
 | `total_supply` | `i128` | Total outstanding tokens (principal + claimed yield) |
-| `is_authorized` | `bool` | Whether an account is unfrozen on the SAC |
+| `blocked(account)` | `bool` | Whether a user is blocked on the SAC (inverse of SAC authorization) |
+| `balance(id)` | `i128` | SAC-reported balance for an address |
+| `paused` | `bool` | Whether the contract is currently paused |
+| `pauser` | `Address` | Current pauser address |
+
+### Initialization (Constructor)
+
+The contract is initialized via `__constructor` during deployment:
+
+```
+__constructor(sac_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager, blocker, pauser)
+```
+
+All 7 addresses are stored in Instance storage. Returns `Err(AlreadyInitializedError)` if the contract has already been initialized (checked via `has_admin()`). The constructor does **not** initialize the yield state — index starts at `1.0` (`INDEX_SCALE`) on first use.
 
 ---
 
@@ -152,10 +179,11 @@ The Minter acts as the **bridge gateway** — the sole entry point for supply ch
 mint(to: Address, amount: i128)
 ```
 
+0. Validates positive amount and caller authorization (Minter or Admin)
 1. Finalizes pending yield via `update_index()`
-2. Increases both `total_principal` and `total_supply` by `amount`
+2. Increases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
 3. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
-4. Emits `sup_sync` event with delta and new accumulator values
+4. Emits `sup_chg` event with delta and new accumulator values
 
 Recipient must already be authorized (unfrozen) on the SAC.
 
@@ -165,12 +193,13 @@ Recipient must already be authorized (unfrozen) on the SAC.
 burn(from: Address, amount: i128)
 ```
 
+0. Validates positive amount and caller authorization (Minter or Admin)
 1. Finalizes pending yield via `update_index()`
-2. Decreases both `total_principal` and `total_supply` by `amount`
+2. Decreases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
 3. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
-4. Emits `sup_sync` event with negative delta
+4. Emits `sup_chg` event with negative delta
 
-Panics if `amount > total_principal` — you cannot burn more than was minted (prevents burning claimed yield). Does **not** require the target account's authorization.
+Returns `Err(BurnExceedsPrincipal)` if the present-value amount exceeds `total_principal` — you cannot burn more than was minted (prevents burning claimed yield). Does **not** require the target account's authorization.
 
 ### Set Rate
 
@@ -180,14 +209,29 @@ set_rate(rate_bps: u32)
 
 1. No-op if rate is unchanged
 2. Calls `set_interest_rate()` which first updates the index at the old rate, then applies the new rate
-3. Emits `interest_rate_set` event
+3. Emits `int_rate` event
 
-Rate is in basis points: 100 = 1%, max 10,000 = 100%.
+Rate is in basis points: 100 = 1%, max 10,000 = 100%. Returns `Err(RateExceedsMax)` if rate exceeds 10,000.
 
 ### Key Properties
 
 - **Always updates the yield index** before modifying supply (prevents yield loss/gain from ordering)
 - Burns use SAC clawback internally (not transfer-to-issuer), bypassing the issuer burn problem
+
+### Reconcile Burn
+
+```
+reconcile_burn(amount: i128)
+```
+
+Admin-only reconciliation for tokens destroyed outside the contract (e.g., sent to the SAC issuer address).
+
+0. Validates positive amount and admin authorization
+1. Finalizes pending yield via `update_index()`
+2. Decreases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
+3. Emits `sup_chg` event with negative delta
+
+Does **not** interact with the SAC — no clawback or burn at the token layer. This is purely an accumulator correction to bring the contract's bookkeeping back in line with the actual circulating supply. See the [Issuer Burn Problem](#the-issuer-burn-problem) section for context.
 
 ---
 
@@ -199,7 +243,7 @@ force_transfer(caller: Address, from: Address, to: Address, amount: i128)
 
 Administrative token movement that does not require the source account's authorization. Forced Transfer Manager or Admin only.
 
-1. Validates non-negative amount and caller role
+1. Validates positive amount and caller role
 2. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
 3. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
 4. Emits `force_tx` event with `(from, to, amount)`
@@ -210,7 +254,7 @@ Administrative token movement that does not require the source account's authori
 - **No source authorization** — only the caller (Forced Transfer Manager or Admin) must authenticate; the `from` account does not need to sign
 - **Works on frozen accounts** — clawback bypasses the SAC's `AUTH_REQUIRED` freeze on the source
 - **Destination must be authorized** — the `to` account must be unfrozen to receive the minted tokens
-- **Dedicated event** — emits `force_tx`, not `sup_sync`, since supply doesn't change
+- **Dedicated event** — emits `force_tx`, not `sup_chg`, since supply doesn't change
 
 ---
 
@@ -236,8 +280,8 @@ The `e^x` approximation uses a 4th-order Taylor series: `1 + x + x²/2 + x³/6 +
 
 | Accumulator | Tracks | Modified By |
 |-------------|--------|-------------|
-| `total_principal` | Yield-earning base (mints − burns) | `mint`, `burn` |
-| `total_supply` | All outstanding tokens (principal + claimed yield) | `mint`, `burn`, `claim_yield` |
+| `total_principal` | Yield-earning base (mints − burns) | `mint`, `burn`, `reconcile_burn` |
+| `total_supply` | All outstanding tokens (principal + claimed yield) | `mint`, `burn`, `reconcile_burn`, `claim_yield` |
 
 ### Yield Accrual Formula
 
@@ -252,14 +296,15 @@ yield = total_principal × (newIndex − oldIndex) / INDEX_SCALE
 ### Non-Compounding
 
 When `claim_yield()` is called:
-1. Accrued yield is minted as new SAC tokens to the yield recipient
-2. `total_supply` increases by the claimed amount
-3. `total_principal` is **unchanged** — claimed yield does not earn more yield
-4. `accrued_yield` resets to zero
+1. Pending yield is finalized via `update_index()`
+2. `accrued_yield` is captured and reset to zero
+3. `total_supply` increases by the claimed amount
+4. New SAC tokens are minted to the yield recipient
+5. `total_principal` is **unchanged** — claimed yield does not earn more yield
 
 ### Index Update Ordering
 
-The index is updated **before** every state-changing operation (`mint`, `burn`, `claim_yield`, `set_rate`). This ensures yield is finalized at the correct principal and rate before any changes take effect.
+The index is updated **before** every state-changing operation (`mint`, `burn`, `reconcile_burn`, `claim_yield`, `set_rate`). This ensures yield is finalized at the correct principal and rate before any changes take effect.
 
 ---
 
@@ -279,39 +324,94 @@ On classic Stellar, sending tokens to the **issuer address** burns them automati
 - The wrapper contract's `total_principal` and `total_supply` are **never updated**
 - Yield keeps accruing on phantom principal — breaking the yield invariant
 
-### Prevention: AUTH_REQUIRED + Whitelist Model
+### Mitigation: AUTH_REQUIRED + Whitelist Model
 
 The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by default.
 
-1. Accounts can only transact after Admin or Distributor calls `unfreeze_account()`
-2. The issuer account is **never** unfrozen — it has no trustline for its own asset
-3. Unfrozen accounts form a closed transfer network that cannot reach the issuer
-4. Frozen accounts hold tokens but cannot move them (including to the issuer)
+1. Accounts can only transact after Admin or Blocker calls `unblock_user()`
+2. The issuer account has no trustline for its own asset and cannot be blocked or unblocked
+3. Blocked accounts hold tokens but cannot move them (including to the issuer)
 
-**Current approach (whitelist):** Admin or Distributor whitelists accounts via `unfreeze_account()`. Whitelisted accounts can freely transfer among themselves using the SAC's standard SEP-41 `transfer()`. Since the issuer is never part of the whitelist, tokens cannot be accidentally sent to the issuer.
+**Important caveat:** The issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level. This means authorized (unfrozen) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. The whitelist model reduces accidental issuer burns by limiting who can transact, but does not eliminate the possibility entirely. If tokens are sent to the issuer, Admin can call `reconcile_burn(amount)` to decrease both accumulators and bring the contract's bookkeeping back in line with actual circulating supply. See the [Issuer Burn Prevention section in the README](../README.md#issuer-burn-prevention) and Note 2 for details.
 
 ---
 
 ## Compliance & Safety
 
-### Freeze / Unfreeze
+### Block / Unblock
 
-- SAC operates in `AUTH_REQUIRED` mode — accounts are unauthorized (frozen) by default
-- `unfreeze_account(caller, addr)` → SAC `set_authorized(true)` → account can send/receive
-- `freeze_account(caller, addr)` → SAC `set_authorized(false)` → account is blocked
-- Admin or Distributor can freeze/unfreeze individual accounts
-- **Batch operations:** `batch_freeze_accounts` and `batch_unfreeze_accounts` accept up to 40 accounts per call and can be called by Admin or Distributor
-- The 40-account cap is derived from Soroban's per-transaction write entry limit of 50 (SLP-0001); each account consumes 1 write entry plus 1 overhead for the contract instance
-- Batch operations are atomic — if any account fails, the entire transaction reverts
-- Each account in a batch emits its own `freeze`/`unfreeze` event for indexer compatibility
+- SAC operates in `AUTH_REQUIRED` mode — accounts are unauthorized (blocked) by default
+- `unblock_user(user, operator)` → SAC `set_authorized(true)` → user can send/receive
+- `block_user(user, operator)` → SAC `set_authorized(false)` → user is blocked
+- Admin or Blocker can block/unblock individual users
+- **Batch operations:** `batch_block_users` and `batch_unblock_users` accept up to 40 users per call and can be called by Admin or Blocker
+- The 40-user cap is derived from Soroban's per-transaction resource limits; each user consumes write entries for the SAC authorization state
+- Batch operations are atomic — if any user fails, the entire transaction reverts
+- Each user in a batch emits its own `UserBlocked` / `UserUnblocked` event (OZ `stellar_tokens::fungible::blocklist` shape) for indexer compatibility
 
 ### Token Transfers
 
 - Transfers use the SAC's standard SEP-41 `transfer()` — the wrapper contract has no transfer function
 - Both sender and receiver must be whitelisted (unfrozen) for a transfer to succeed
-- Admin or Distributor whitelists accounts via `unfreeze_account()` and can revoke via `freeze_account()`
+- Admin or Blocker whitelists accounts via `unblock_user()` and can revoke via `block_user()`
 - Transfers do **not** update accumulators — they are balance redistributions, not mints/burns
-- The issuer is never whitelisted, preventing accidental issuer burn
+- The issuer is exempt from `AUTH_REQUIRED` — authorized users can send tokens to the issuer, which destroys them without updating accumulators (see [Issuer Burn Problem](#the-issuer-burn-problem))
+
+---
+
+## Pausable
+
+The contract implements a pause mechanism via the `stellar-contract-utils` pausable extension.
+
+### Pause / Unpause
+
+```
+pause(caller: Address)
+unpause(caller: Address)
+```
+
+Only the **Pauser** role can call these functions. The Pauser is set by the Admin via `set_pauser`.
+
+### Effect of pausing
+
+When paused, the following operations revert immediately:
+
+| Blocked function | Role |
+|-----------------|------|
+| `mint` | Minter |
+| `burn` | Minter |
+| `reconcile_burn` | Admin |
+| `claim_yield` | Yield Recipient Manager |
+| `force_transfer` | Forced Transfer Manager |
+
+Compliance operations (`freeze_account`, `unfreeze_account`, `batch_freeze_accounts`, `batch_unfreeze_accounts`) and all view functions remain fully accessible while paused so that regulatory actions can still be executed.
+
+---
+
+## Event Reference
+
+All events emitted by the contract:
+
+| Event | Emitted By | Payload |
+|-------|-----------|---------|
+| `set_admin` | `set_admin` | `(old, new)` |
+| `set_mntr` | `set_minter` | `(old, new)` |
+| `set_yrmr` | `set_yield_recipient_manager` | `(old, new)` |
+| `set_yrcp` | `set_yield_recipient` | `(old, new)` |
+| `set_ftmr` | `set_forced_transfer_manager` | `(old, new)` |
+| `BlockerAdded` | `add_blocker` | `(addr)` |
+| `BlockerRemoved` | `remove_blocker` | `(addr)` |
+| `int_rate` | `set_rate` | `(rate_bps)` |
+| `sup_chg` | `mint`, `burn`, `reconcile_burn` | `(delta, total_principal, total_supply)` |
+| `yld_clm` | `claim_yield` | `(recipient, amount)` |
+| `UserBlocked` | `block_user`, `batch_block_users` | `(user)` — topics `["block", user]` |
+| `UserUnblocked` | `unblock_user`, `batch_unblock_users` | `(user)` — topics `["unblock", user]` |
+| `force_tx` | `force_transfer` | `(from, to, amount)` |
+| `upgraded` | `upgrade` | `(by, new_wasm_hash)` |
+| `sac_admin_transferred` | `transfer_sac_admin` | `(new_sac_admin)` |
+| `set_pauser` | `set_pauser` | `(old, new)` |
+| `paused` | `pause` | *(no payload)* |
+| `unpaused` | `unpause` | *(no payload)* |
 
 ---
 
@@ -323,15 +423,16 @@ The `soroban-fireblocks-sdk` provides a TypeScript client for the Bridge to inte
 
 The SDK exposes dedicated methods for Minter actions and queries:
 
-| SDK Method | Contract Function | Parameters |
-|------------|-------------------|------------|
-| `mint()` | `mint(caller, to, amount)` | `contractId`, `to: string`, `amount: bigint` |
-| `burn()` | `burn(caller, from, amount)` | `contractId`, `from: string`, `amount: bigint` |
-| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `rateBps: number` |
-| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter: string` |
-| `queryAdmin()` | `admin()` | `contractId` |
-| `querySacToken()` | `sac_token()` | `contractId` |
-| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `distributor`, `wasm` |
+| SDK Method | Contract Function | Parameters                                                                                                                                    |
+|------------|-------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `mint()` | `mint(caller, to, amount)` | `contractId`, `caller: string`, `to: string`, `amount: bigint`                                                                                |
+| `burn()` | `burn(caller, from, amount)` | `contractId`, `caller: string`, `from: string`, `amount: bigint`                                                                              |
+| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `caller: string`, `rateBps: number`                                                                                             |
+| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter: string`                                                                                                             |
+| `queryAdmin()` | `admin()` | `contractId`                                                                                                                                  |
+| `querySacToken()` | `sac_token()` | `contractId`                                                                                                                                  |
+| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `assetIssuer`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `blocker`, `pauser`, `wasm` |
+| `setupTrustline()` | *(classic changeTrust op)* | `assetCode`, `assetIssuer`                                                                                                                    |
 
 Other functions are available through the generic `invokeContract({ contractId, method: "..." })` interface.
 
@@ -358,8 +459,9 @@ Build Tx → Simulate & Prepare → SHA-256 Hash → Fireblocks RAW Sign → Att
 1. **Build** — Construct the Soroban invoke transaction with the source account's sequence number
 2. **Simulate** — Soroban RPC simulates the transaction, returning resource fees and auth entries
 3. **Prepare** — Assemble the simulation result into the transaction envelope
-4. **Sign** — Send the 32-byte transaction hash to Fireblocks for MPC-based Ed25519 signing (`MPC_EDDSA_ED25519`)
-5. **Submit** — Submit the signed transaction to the Stellar network and poll until terminal
+4. **Hash** — Compute the 32-byte SHA-256 transaction hash
+5. **Sign** — Send the hash to Fireblocks for MPC-based Ed25519 signing (`MPC_EDDSA_ED25519`)
+6. **Submit** — Attach signature, submit to the Stellar network, and poll until terminal
 
 > Note: RAW signing is a premium Fireblocks feature that requires explicit enablement on your vault.
 

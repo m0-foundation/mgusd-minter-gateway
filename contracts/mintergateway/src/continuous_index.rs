@@ -12,12 +12,8 @@
 //! This is the protocol-favorable direction: yield calculations slightly underestimate,
 //! which is the safe/conservative behavior.
 //!
-//! **Exception**: `multiply_indices_up` uses `fixed_mul_ceil` to round **UP**, preventing
-//! cumulative index underestimation across successive compounding steps.
-//!
-//! Net effect: the index pipeline is conservative in every step except the final
-//! index multiplication, which rounds up to ensure the index never drifts below
-//! the mathematically exact value.
+//! Net effect: the index pipeline is conservative at every step, slightly
+//! underestimating cumulative growth. This is the safe/conservative behavior.
 
 use soroban_fixed_point_math::FixedPoint;
 
@@ -31,10 +27,10 @@ pub use crate::constants::{INDEX_SCALE, RATE_SCALE, SECONDS_PER_YEAR};
 ///
 /// # Returns
 /// Rate scaled by RATE_SCALE (e.g., 500 bps → 50_000_000_000)
-pub fn convert_from_basis_points(bps: u32) -> u128 {
+pub fn convert_from_basis_points(bps: u32) -> i128 {
     // bps / 10000 * RATE_SCALE = bps * RATE_SCALE / 10000
     // Rounding: DOWN (truncation). Slightly underestimates the rate. Protocol-favorable.
-    (bps as u128) * RATE_SCALE / 10_000
+    (bps as i128) * RATE_SCALE / 10_000
 }
 
 /// Calculates e^x using a simplified Taylor series approximation.
@@ -42,10 +38,13 @@ pub fn convert_from_basis_points(bps: u32) -> u128 {
 /// For small x (typical interest rate × time combinations), we use:
 /// e^x ≈ 1 + x + x²/2 + x³/6 + x⁴/24
 ///
+/// Uses the recurrence: term_n = term_{n-1} * x / n, computed via
+/// `fixed_mul_floor` (i.e., mulDivDown) to minimize truncation points.
+///
 /// This is accurate for x < 0.2 (20% per year) which covers all realistic rates.
 ///
 /// # Rounding
-/// Every division in the Taylor series rounds DOWN (truncation), so the result
+/// Every term division rounds DOWN (via `fixed_mul_floor`), so the result
 /// underestimates the true e^x. This is protocol-favorable — accrues less yield.
 ///
 /// # Arguments
@@ -53,44 +52,31 @@ pub fn convert_from_basis_points(bps: u32) -> u128 {
 ///
 /// # Returns
 /// e^x scaled by INDEX_SCALE
-pub fn exponent(x: u128) -> u128 {
+pub fn exponent(x: i128) -> i128 {
     if x == 0 {
         return INDEX_SCALE;
     }
 
-    // Taylor series: e^x = 1 + x + x²/2! + x³/3! + x⁴/4! + ...
-    // All terms need to be at the same scale (INDEX_SCALE = 1e12)
-    //
-    // Since x is scaled by 1e12:
-    // - x represents x_real * 1e12
-    // - x² = x_real² * 1e24 → need to divide by 1e12 to get back to scale
-    // - x³ = x_real³ * 1e36 → need to divide by 1e24 to get back to scale
-    // - x⁴ = x_real⁴ * 1e48 → need to divide by 1e36 to get back to scale
+    // Taylor series: e^x = 1 + x + x²/2 + x³/6 + x⁴/24
+    // Each term builds on the previous: term_n = term_{n-1} * x / n
+    // The factorial is absorbed incrementally (e.g., /2 then /3 = /6, then /4 = /24).
+    let first_term = x; // x
+    let second_term = first_term
+        .fixed_mul_floor(first_term, 2 * INDEX_SCALE)
+        .unwrap(); // x * x / 2 = x²/2
+    let third_term = second_term
+        .fixed_mul_floor(first_term, 3 * INDEX_SCALE)
+        .unwrap(); // x²/2 * x / 3 = x³/6
+    let fourth_term = third_term
+        .fixed_mul_floor(first_term, 4 * INDEX_SCALE)
+        .unwrap(); // x³/6 * x / 4 = x⁴/24
 
-    // term1 = 1.0 * 1e12
-    let term1 = INDEX_SCALE;
-
-    // term2 = x (already at 1e12 scale)
-    let term2 = x;
-
-    // term3 = x² / (2 * 1e12)
-    // x can be up to ~1e12 (100% rate), so x² could be 1e24 which fits in u128
-    let x2 = x.checked_mul(x).unwrap();
-    let term3 = x2 / (2 * INDEX_SCALE); // Rounding: DOWN
-
-    // term4 = x³ / (6 * 1e24)
-    // x³ could overflow, so we do: (x² / 1e12) * x / 6 / 1e12
-    let x2_scaled = x2 / INDEX_SCALE; // Rounding: DOWN (intermediate scaling)
-    let x3_scaled = x2_scaled.checked_mul(x).unwrap() / INDEX_SCALE; // Rounding: DOWN (intermediate scaling)
-    let term4 = x3_scaled / 6; // Rounding: DOWN
-
-    // term5 = x⁴ / (24 * 1e36)
-    // (x³_scaled / 1e12) * x / 24 / 1e12
-    let x4_scaled = x3_scaled.checked_mul(x).unwrap() / INDEX_SCALE; // Rounding: DOWN (intermediate scaling)
-    let term5 = x4_scaled / 24; // Rounding: DOWN
-
-    // Sum all terms
-    term1 + term2 + term3 + term4 + term5
+    INDEX_SCALE
+        .checked_add(first_term)
+        .and_then(|s| s.checked_add(second_term))
+        .and_then(|s| s.checked_add(third_term))
+        .and_then(|s| s.checked_add(fourth_term))
+        .unwrap()
 }
 
 /// Calculates the continuous index growth factor for a given rate and time period.
@@ -103,7 +89,7 @@ pub fn exponent(x: u128) -> u128 {
 ///
 /// # Returns
 /// Index growth factor (delta index) scaled by INDEX_SCALE
-pub fn get_continuous_index(yearly_rate: u128, time_elapsed: u64) -> u128 {
+pub fn get_continuous_index(yearly_rate: i128, time_elapsed: u64) -> i128 {
     if yearly_rate == 0 || time_elapsed == 0 {
         return INDEX_SCALE; // No growth, return 1.0
     }
@@ -111,31 +97,12 @@ pub fn get_continuous_index(yearly_rate: u128, time_elapsed: u64) -> u128 {
     // exponent = rate × time / SECONDS_PER_YEAR
     // Rounding: DOWN (truncation). Slightly underestimates the exponent. Protocol-favorable.
     let exp = yearly_rate
-        .checked_mul(time_elapsed as u128)
+        .checked_mul(time_elapsed as i128)
         .unwrap()
         .checked_div(SECONDS_PER_YEAR)
         .unwrap();
 
     exponent(exp)
-}
-
-/// Multiplies two indices together (compounds them).
-///
-/// result = (index × delta_index) / INDEX_SCALE
-///
-/// Rounding: UP (`fixed_mul_ceil`). Favors the yield recipient — ensures the
-/// index never underestimates cumulative growth.
-///
-/// # Arguments
-/// * `index` - Base index scaled by INDEX_SCALE
-/// * `delta_index` - Growth factor scaled by INDEX_SCALE
-///
-/// # Returns
-/// Compounded index scaled by INDEX_SCALE
-pub fn multiply_indices_up(index: u128, delta_index: u128) -> u128 {
-    (index as i128)
-        .fixed_mul_ceil(delta_index as i128, INDEX_SCALE as i128)
-        .unwrap() as u128
 }
 
 /// Multiplies two indices together (compounds them).
@@ -150,10 +117,8 @@ pub fn multiply_indices_up(index: u128, delta_index: u128) -> u128 {
 ///
 /// # Returns
 /// Compounded index scaled by INDEX_SCALE
-pub fn multiply_indices_down(index: u128, delta_index: u128) -> u128 {
-    (index as i128)
-        .fixed_mul_floor(delta_index as i128, INDEX_SCALE as i128)
-        .unwrap() as u128
+pub fn multiply_indices_down(index: i128, delta_index: i128) -> i128 {
+    index.fixed_mul_floor(delta_index, INDEX_SCALE).unwrap()
 }
 
 /// Calculates the current index given the last stored index, rate, and time elapsed.
@@ -167,7 +132,7 @@ pub fn multiply_indices_down(index: u128, delta_index: u128) -> u128 {
 ///
 /// # Returns
 /// Current index scaled by INDEX_SCALE
-pub fn current_index(latest_index: u128, rate_bps: u32, time_elapsed: u64) -> u128 {
+pub fn current_index(latest_index: i128, rate_bps: u32, time_elapsed: u64) -> i128 {
     if rate_bps == 0 || time_elapsed == 0 {
         return latest_index;
     }
@@ -175,8 +140,8 @@ pub fn current_index(latest_index: u128, rate_bps: u32, time_elapsed: u64) -> u1
     let yearly_rate = convert_from_basis_points(rate_bps);
     let delta_index = get_continuous_index(yearly_rate, time_elapsed);
 
-    // Rounding: UP via `multiply_indices_up` — the only rounding-up step in the index pipeline.
-    multiply_indices_up(latest_index, delta_index)
+    // Rounding: DOWN via `multiply_indices_down` — favors the protocol (matches EVM m-core).
+    multiply_indices_down(latest_index, delta_index)
 }
 
 #[cfg(test)]
@@ -249,7 +214,7 @@ mod tests {
         assert_eq!(multiply_indices_down(INDEX_SCALE, INDEX_SCALE), INDEX_SCALE);
 
         // 1.05 × 1.05 ≈ 1.1025
-        let idx = 1_050_000_000_000u128;
+        let idx = 1_050_000_000_000i128;
         let result = multiply_indices_down(idx, idx);
         assert!(result > 1_102_000_000_000);
         assert!(result < 1_103_000_000_000);

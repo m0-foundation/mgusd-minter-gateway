@@ -11,3 +11,7 @@ export function i128ToScVal(value: bigint): xdr.ScVal {
 export function u32ToScVal(value: number): xdr.ScVal {
   return nativeToScVal(value, { type: "u32" });
 }
+
+export function addressVecToScVal(addresses: string[]): xdr.ScVal {
+  return xdr.ScVal.scvVec(addresses.map(addressToScVal));
+}

@@ -1,6 +1,7 @@
 import { Fireblocks } from "@fireblocks/ts-sdk";
-import { Address, rpc } from "@stellar/stellar-sdk";
+import { Address, rpc, xdr } from "@stellar/stellar-sdk";
 import { createFireblocksClient, signHash } from "./fireblocks-signer";
+import { SimulationError } from "./errors";
 import {
   addSignatureToTransaction,
   buildChangeTrustTransaction,
@@ -38,6 +39,22 @@ export class SorobanFireblocksClient {
     this.config = config;
     this.server = createRpcServer(config.sorobanRpcUrl);
     this.fireblocks = createFireblocksClient(config);
+  }
+
+  protected async simulateView(params: InvokeContractParams): Promise<xdr.ScVal | undefined> {
+    const tx = await buildInvokeTransaction(this.server, this.config, params);
+    const simResponse = await this.server.simulateTransaction(tx);
+
+    if (rpc.Api.isSimulationError(simResponse)) {
+      const errorMsg = "error" in simResponse ? String(simResponse.error) : "Unknown simulation error";
+      throw new SimulationError(`View simulation failed: ${errorMsg}`);
+    }
+
+    if (!rpc.Api.isSimulationSuccess(simResponse)) {
+      throw new SimulationError("View simulation did not return a success response");
+    }
+
+    return simResponse.result?.retval;
   }
 
   async invokeContract(params: InvokeContractParams): Promise<InvokeContractResult> {

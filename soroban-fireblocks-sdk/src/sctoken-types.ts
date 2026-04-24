@@ -1,3 +1,5 @@
+export const MAX_BATCH_SIZE = 40;
+
 export interface MintParams {
   /** Contract ID (C...) */
   contractId: string;
@@ -41,13 +43,44 @@ export interface QueryParams {
   contractId: string;
 }
 
-export interface QueryAddressResult {
-  /** Decoded Stellar address (G... or C...) */
-  address: string;
-  /** Transaction hash */
-  txHash: string;
-  /** Ledger the transaction was included in */
-  ledger: number;
+export interface BlockUserParams {
+  contractId: string;
+  /** User (account) to block or unblock */
+  user: string;
+  /** Operator address — must be admin or blocker */
+  operator: string;
+}
+
+export interface BatchBlockUsersParams {
+  contractId: string;
+  /** Users (accounts) to block or unblock (max 20) */
+  users: string[];
+  /** Operator address — must be admin or blocker */
+  operator: string;
+}
+
+export interface ForceTransferParams {
+  contractId: string;
+  /** Caller address — must be admin or forced_transfer_manager */
+  caller: string;
+  /** Source account */
+  from: string;
+  /** Destination account */
+  to: string;
+  /** Amount in stroops */
+  amount: bigint;
+}
+
+export interface ReconcileBurnParams {
+  contractId: string;
+  /** Amount to reconcile in stroops */
+  amount: bigint;
+}
+
+export interface ClaimYieldParams {
+  contractId: string;
+  /** Caller address — must be admin or yield_recipient */
+  caller: string;
 }
 
 export interface DeployFullParams {
@@ -67,6 +100,10 @@ export interface DeployFullParams {
   yieldRecipient: string;
   /** Forced transfer manager address (G... or C...) */
   forcedTransferManager: string;
+  /** Blocker address (G... or C...) */
+  blocker: string;
+  /** Pauser address (G... or C...) */
+  pauser: string;
 }
 
 export interface DeployFullResult {

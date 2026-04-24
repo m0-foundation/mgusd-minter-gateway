@@ -121,7 +121,7 @@ The contract never holds user funds. Users hold tokens directly in their account
 
 ### Token Distribution
 
-Admin whitelists (unfreezes) recipient accounts via `unfreeze_account()`. Once whitelisted, tokens can be transferred to the recipient using the SAC's standard SEP-41 `transfer()`. Whitelisted accounts can freely transfer among themselves. Accumulators are not affected by transfers — they are balance redistributions, not mints/burns.
+The Blocker whitelists (unblocks) recipient accounts via `unblock_user()`. Once whitelisted, tokens can be transferred to the recipient using the SAC's standard SEP-41 `transfer()`. Whitelisted accounts can freely transfer among themselves. Accumulators are not affected by transfers — they are balance redistributions, not mints/burns.
 
 ## Authorization & Allowlist
 
@@ -131,17 +131,19 @@ The SAC issuer is configured with **AUTH_REQUIRED**, **REVOCABLE**, and **CLAWBA
 
 1. Issuer flags are set on the SAC issuer account via classic Stellar (not from within Soroban)
 2. New accounts are **unauthorized by default** — they cannot hold, send, or receive the token
-3. The admin calls `unfreeze_account(addr)` to authorize approved accounts
+3. The Blocker calls `unblock_user(addr, operator)` to authorize approved accounts
 4. Both **sender and receiver** must be authorized for any SAC transfer to succeed
 
 | State | Can Send | Can Receive | How to enter |
 |-------|:--------:|:-----------:|--------------|
-| **Authorized** | ✓ | ✓ | Admin calls `unfreeze_account` |
-| **Unauthorized** (default) | ✗ | ✗ | Default state, or admin calls `freeze_account` |
+| **Authorized** | ✓ | ✓ | Blocker calls `unblock_user` |
+| **Unauthorized** (default) | ✗ | ✗ | Default state, or Blocker calls `block_user` |
+
+The contract exposes the `stellar_tokens::fungible::blocklist` function shape (`block_user`, `unblock_user`, `blocked`, `balance`) directly against the SAC's `set_authorized`. Because the SAC issuer runs with AUTH_REQUIRED, `blocked(account)` returns `true` for any account that has never been unblocked.
 
 ### Issuer Burn Prevention
 
-The issuer account is never whitelisted (it has no trustline for its own asset). Since unfrozen accounts form a closed transfer network that cannot reach the issuer, tokens cannot be accidentally sent to the issuer address — which would burn them at the SAC layer without updating the yield accumulators.
+The issuer account has no trustline for its own asset and cannot be frozen or unfrozen. However, the issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level — authorized (unfrozen) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. Tokens sent to the issuer are destroyed (un-issued) without updating the contract's yield accumulators. See [Note 2](#note-2--send-to-issuer-bypasses-yield-accrual) for operational implications.
 
 ## Compliance Controls
 
@@ -149,11 +151,15 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 
 | Function | Role | Description |
 |----------|------|-------------|
-| `freeze_account(account)` | Admin | Removes account from allowlist — blocks sending and receiving |
-| `unfreeze_account(account)` | Admin | Adds account to allowlist — permits sending and receiving |
-| `is_authorized(account)` | (view) | Returns whether an account is authorized |
+| `block_user(user, operator)` | Admin or Blocker | Blocks a user — removes from allowlist, preventing sending and receiving |
+| `unblock_user(user, operator)` | Admin or Blocker | Unblocks a user — adds to allowlist, permitting sending and receiving |
+| `batch_block_users(users, operator)` | Admin or Blocker | Block up to 40 users per call |
+| `batch_unblock_users(users, operator)` | Admin or Blocker | Unblock up to 40 users per call |
+| `blocked(account)` | (view) | Returns whether a user is blocked (inverse of SAC authorization) |
+| `balance(id)` | (view) | Returns the SAC-reported balance for an address |
 
-- `freeze_account` and `unfreeze_account` call the SAC's `set_authorized` under the hood
+- `block_user` and `unblock_user` call the SAC's `set_authorized` under the hood
+- Events match the OZ standard (`UserBlocked` / `UserUnblocked` with topics `["block", user]` / `["unblock", user]`)
 
 ## Roles
 
@@ -163,13 +169,14 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
-| **Forced Transfer Manager** | *(role stored but no active function)* | Crossmint |
+| **Blocker** | `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users` | Crossmint |
+| **Forced Transfer Manager** | `force_transfer` | *(configurable)* |
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `freeze_account`, `unfreeze_account`, `upgrade`)
-- All roles are **single-address** — exactly one holder per role at any time
-- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager)
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_blocker`, `remove_blocker`, `block_user`, `unblock_user`, `upgrade`)
+- All roles are **single-address** except **Blocker**, which is a membership set (any number of addresses can hold the role)
+- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager). Admin grants / revokes the blocker role via `add_blocker` / `remove_blocker`
 - Every role-gated function calls `require_auth()` on the role holder — no implicit trust
 - Roles are stored in **Instance** storage
 
@@ -178,8 +185,8 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 ```
 Admin
 ├── Top-level authority
-├── Can set/change Minter, Yield Recipient Manager, Forced Transfer Manager
-└── Compliance: freeze, unfreeze accounts
+├── Can set/change Minter, Yield Recipient Manager, Forced Transfer Manager, Blocker
+└── Compliance: block, unblock users
 
 Minter (Bridge / Issuer)
 ├── Mints SAC tokens directly via mint()
@@ -192,8 +199,12 @@ Yield Recipient Manager
 Yield Recipient
 └── Can claim accrued yield
 
+Blocker
+├── Blocks/unblocks individual users (`block_user` / `unblock_user`)
+└── Batch block/unblock users (max 40 per call) — matches the `stellar_tokens::fungible::blocklist` function shape
+
 Forced Transfer Manager
-└── (role stored but no active function)
+└── force_transfer — clawback + mint (bypasses block on source)
 ```
 
 ---
@@ -213,6 +224,22 @@ The `soroban-fireblocks-sdk/` directory contains a TypeScript SDK that wraps the
 | `queryAdmin()` | `admin` | Query the admin address |
 | `querySacToken()` | `sac_token` | Query the SAC token address |
 | `deployFull(...)` | — | Full deploy pipeline (configure issuer, deploy SAC, upload WASM, deploy wrapper, transfer admin) |
+
+---
+
+## Notes
+
+### Note 1 — Trustline + Authorization Required for Token Distribution
+
+- Recipient accounts must establish a classic Stellar **trustline** (`ChangeTrust` operation) for the MGUSD asset before they can hold tokens — the contract and SAC do not create trustlines on behalf of recipients
+- All accounts start **unauthorized** due to `AUTH_REQUIRED` on the issuer — the Blocker (Crossmint) must call `batch_unblock_users` to authorize recipients before they can receive tokens
+- Distribution flow: recipient creates trustline → Blocker batch-unblocks recipients → tokens can be transferred via SAC `transfer()`
+
+### Note 2 — Send-to-Issuer Bypasses Yield Accrual
+
+- Because MGUSD is a Stellar-native asset (SAC-wrapped), authorized users can send tokens directly to the issuer address using standard Stellar operations (SAC `transfer()`, classic `PaymentOp`) — the issuer is exempt from `AUTH_REQUIRED` and cannot be frozen
+- Tokens sent to the issuer are destroyed at the protocol level (un-issued), but the contract's accumulators (`total_principal`, `total_supply`) are **not updated** — the contract has no visibility into these direct transfers
+- M0 must account for this in its off-chain yield calculations by reconciling actual circulating supply against the contract's reported `total_supply`
 
 ---
 

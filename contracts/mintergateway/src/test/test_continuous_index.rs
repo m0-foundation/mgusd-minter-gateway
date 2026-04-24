@@ -10,9 +10,15 @@ fn test_constructor() {
 
     assert_eq!(s.contract.admin(), s.admin);
     assert_eq!(s.contract.minter(), s.minter);
-    assert_eq!(s.contract.yield_recipient_manager(), s.yield_recipient_manager);
+    assert_eq!(
+        s.contract.yield_recipient_manager(),
+        s.yield_recipient_manager
+    );
     assert_eq!(s.contract.yield_recipient(), s.yield_recipient);
-    assert_eq!(s.contract.forced_transfer_manager(), s.forced_transfer_manager);
+    assert_eq!(
+        s.contract.forced_transfer_manager(),
+        s.forced_transfer_manager
+    );
     assert_eq!(s.contract.sac_token(), s.sac_token.address);
 
     assert_eq!(s.contract.current_index(), INDEX_SCALE);
@@ -92,16 +98,9 @@ fn test_get_continuous_index_5pct_one_day() {
     let yearly_rate = convert_from_basis_points(500);
     let one_day = 86_400u64;
     let result = get_continuous_index(yearly_rate, one_day);
-    let exp = 50_000_000_000u128 * 86_400 / SECONDS_PER_YEAR;
+    let exp = 50_000_000_000i128 * 86_400 / SECONDS_PER_YEAR;
     let expected = exponent(exp);
     assert_eq!(result, expected);
-}
-
-#[test]
-fn test_multiply_indices_up_rounds_up() {
-    assert_eq!(multiply_indices_up(INDEX_SCALE, INDEX_SCALE), INDEX_SCALE);
-    assert_eq!(multiply_indices_up(7, 3), 1);
-    assert_eq!(multiply_indices_down(7, 3), 0);
 }
 
 #[test]
@@ -120,7 +119,7 @@ fn test_current_index_no_change_cases() {
 fn test_current_index_5pct_one_year() {
     let result = current_index(INDEX_SCALE, 500, SECONDS_PER_YEAR as u64);
     let delta = get_continuous_index(convert_from_basis_points(500), SECONDS_PER_YEAR as u64);
-    let expected = multiply_indices_up(INDEX_SCALE, delta);
+    let expected = multiply_indices_down(INDEX_SCALE, delta);
     assert_eq!(result, expected);
     assert_eq!(result, 1_051_271_093_749);
 }
@@ -154,10 +153,10 @@ fn test_current_index_10pct_one_year() {
 
 #[test]
 fn test_current_index_from_non_unity_base() {
-    let base = 1_050_000_000_000u128;
+    let base = 1_050_000_000_000i128;
     let result = current_index(base, 500, SECONDS_PER_YEAR as u64);
     let delta = get_continuous_index(convert_from_basis_points(500), SECONDS_PER_YEAR as u64);
-    let expected = multiply_indices_up(base, delta);
+    let expected = multiply_indices_down(base, delta);
     assert_eq!(result, expected);
     assert!(result > 1_103_000_000_000);
     assert!(result < 1_104_000_000_000);
@@ -187,7 +186,8 @@ fn test_current_index_returns_stored_when_no_time_elapsed() {
 fn test_index_unchanged_with_zero_rate() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &10_000_0000000);
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &(10_000 * DECIMALS));
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -212,7 +212,7 @@ fn test_index_unchanged_with_zero_principal() {
 #[test]
 fn test_index_grows_after_mint_and_rate_set() {
     let s = setup();
-    let one_million = 1_000_000_0000000i128;
+    let one_million = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
     s.contract.set_rate(&s.minter, &500);
@@ -227,7 +227,8 @@ fn test_index_grows_after_mint_and_rate_set() {
 fn test_index_stored_after_state_change() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -237,7 +238,7 @@ fn test_index_stored_after_state_change() {
     assert_eq!(latest_before, INDEX_SCALE); // hasn't been stored yet
 
     // Trigger state change via claim_yield -> calls update_index
-    s.contract.claim_yield(&s.yield_recipient);
+    s.contract.claim_yield(&s.yield_recipient_manager);
 
     let latest_after = s.contract.latest_index();
     assert_eq!(latest_after, current);
@@ -247,7 +248,8 @@ fn test_index_stored_after_state_change() {
 fn test_index_growth_1_day() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, 86_400);
@@ -261,7 +263,8 @@ fn test_index_growth_1_day() {
 fn test_index_growth_1_hour() {
     let s = setup();
 
-    s.contract.mint(&s.minter, &s.yield_recipient, &1_000_0000000);
+    s.contract
+        .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
     s.contract.set_rate(&s.minter, &500);
 
     advance_time(&s.env, 3_600);
