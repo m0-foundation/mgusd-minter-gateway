@@ -59,7 +59,6 @@ fn test_transfer_sac_admin_to_second_contract() {
         .is_err());
 
     // Contract B is SAC admin
-    contract2.unblock_user(&user, &blocker2);
     contract2.mint(&minter2, &user, &(100 * DECIMALS));
 
     // SAC balance increased; contract B tracks its own supply
