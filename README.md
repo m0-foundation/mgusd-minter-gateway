@@ -151,10 +151,10 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 
 | Function | Role | Description |
 |----------|------|-------------|
-| `block_user(user, operator)` | Admin or Blocker | Blocks a user — removes from allowlist, preventing sending and receiving |
-| `unblock_user(user, operator)` | Admin or Blocker | Unblocks a user — adds to allowlist, permitting sending and receiving |
-| `batch_block_users(users, operator)` | Admin or Blocker | Block up to 40 users per call |
-| `batch_unblock_users(users, operator)` | Admin or Blocker | Unblock up to 40 users per call |
+| `block_user(user, operator)` | Blocker | Blocks a user — removes from allowlist, preventing sending and receiving |
+| `unblock_user(user, operator)` | Blocker | Unblocks a user — adds to allowlist, permitting sending and receiving |
+| `batch_block_users(users, operator)` | Blocker | Block up to 40 users per call |
+| `batch_unblock_users(users, operator)` | Blocker | Unblock up to 40 users per call |
 | `blocked(account)` | (view) | Returns whether a user is blocked (inverse of SAC authorization) |
 | `balance(id)` | (view) | Returns the SAC-reported balance for an address |
 
@@ -165,18 +165,19 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 
 | Role | Permissions | Intended Actor |
 |------|------------|----------------|
-| **Admin** | All contract functions (super-role) | M0 |
+| **Admin** | Role rotation + contract-level operations (`set_admin`, `set_minter`, `set_pauser`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_blocker`, `remove_blocker`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`) | M0 |
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
-| **Yield Recipient Manager** | `set_yield_recipient` | M0 |
-| **Yield Recipient** | `claim_yield` | MoneyGram |
+| **Yield Recipient Manager** | `set_yield_recipient`, `claim_yield` | M0 |
+| **Yield Recipient** | Receives minted yield tokens (payout destination; does not call `claim_yield`) | MoneyGram |
 | **Blocker** | `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users` | Crossmint |
 | **Forced Transfer Manager** | `force_transfer` | *(configurable)* |
+| **Pauser** | `pause`, `unpause` | *(configurable)* |
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_blocker`, `remove_blocker`, `block_user`, `unblock_user`, `upgrade`)
+- **Admin is not a super-role.** Admin can only call the functions listed above. Every operational function is gated by its specific role holder via `require_role_holder`, with no admin fallback.
 - All roles are **single-address** except **Blocker**, which is a membership set (any number of addresses can hold the role)
-- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager). Admin grants / revokes the blocker role via `add_blocker` / `remove_blocker`
+- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager). Admin grants / revokes the blocker role via `add_blocker` / `remove_blocker`.
 - Every role-gated function calls `require_auth()` on the role holder — no implicit trust
 - Roles are stored in **Instance** storage
 
@@ -184,9 +185,10 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 
 ```
 Admin
-├── Top-level authority
-├── Can set/change Minter, Yield Recipient Manager, Forced Transfer Manager, Blocker
-└── Compliance: block, unblock users
+├── Role rotation: set_admin, set_minter, set_pauser, set_yield_recipient_manager,
+│                   set_forced_transfer_manager, add_blocker, remove_blocker
+└── Contract operations: reconcile_burn, transfer_sac_admin, upgrade
+    (no operational privileges — cannot mint, burn, block, force-transfer, pause, or claim)
 
 Minter (Bridge / Issuer)
 ├── Mints SAC tokens directly via mint()
@@ -194,18 +196,26 @@ Minter (Bridge / Issuer)
 └── Sets interest rate for yield accrual via set_rate()
 
 Yield Recipient Manager
-└── Can set/change Yield Recipient address
+├── Sets / changes the Yield Recipient address via set_yield_recipient()
+└── Claims accrued yield to the current Yield Recipient via claim_yield()
 
 Yield Recipient
-└── Can claim accrued yield
+└── Receives yield tokens minted by claim_yield (payout destination only;
+    does not call claim_yield itself)
 
-Blocker
+Blocker (membership set — multiple holders)
 ├── Blocks/unblocks individual users (`block_user` / `unblock_user`)
 └── Batch block/unblock users (max 40 per call) — matches the `stellar_tokens::fungible::blocklist` function shape
 
 Forced Transfer Manager
 └── force_transfer — clawback + mint (bypasses block on source)
+
+Pauser
+└── pause / unpause — halts mint, burn, reconcile_burn, force_transfer, claim_yield
+    (block/unblock and views remain callable while paused)
 ```
+
+**Incident-response note:** because admin is not in the blocker set by default, admin cannot call `block_user`/`unblock_user` directly during an incident. To give the admin compliance authority, admin must first call `add_blocker(admin_address)` to join the blocker set.
 
 ---
 
