@@ -35,8 +35,9 @@ use alloc::rc::Rc;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::xdr::{
     AccountEntry, AccountEntryExt, AccountId, Asset, LedgerEntry, LedgerEntryData, LedgerEntryExt,
-    LedgerKey, LedgerKeyAccount, LedgerKeyTrustLine, PublicKey, ScAddress, SequenceNumber, String32,
-    Thresholds, TrustLineAsset, TrustLineEntry, TrustLineEntryExt, TrustLineFlags, Uint256,
+    LedgerKey, LedgerKeyAccount, LedgerKeyTrustLine, PublicKey, ScAddress, SequenceNumber,
+    String32, Thresholds, TrustLineAsset, TrustLineEntry, TrustLineEntryExt, TrustLineFlags,
+    Uint256,
 };
 use soroban_sdk::{Address, Env, TryIntoVal};
 
