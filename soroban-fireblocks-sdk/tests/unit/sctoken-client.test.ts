@@ -1,6 +1,11 @@
+import { createHash } from "crypto";
 import { Address, Keypair, Networks, rpc, xdr } from "@stellar/stellar-sdk";
 import { SctokenFireblocksClient } from "../../src/sctoken-client";
+import { WasmHashMismatchError } from "../../src/errors";
 import { SorobanFireblocksConfig } from "../../src/types";
+
+const TEST_WASM = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
+const TEST_WASM_SHA256 = createHash("sha256").update(TEST_WASM).digest();
 
 // Mock all dependencies
 jest.mock("../../src/soroban-tx-builder");
@@ -289,7 +294,7 @@ describe("SctokenFireblocksClient", () => {
 
       const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
       const sacScVal = new Address(sacContractId).toScVal();
-      const wasmHashBytes = Buffer.alloc(32, 0xab);
+      const wasmHashBytes = TEST_WASM_SHA256;
       const wasmReturnValue = xdr.ScVal.scvBytes(wasmHashBytes);
       const wrapperContractId = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
       const wrapperScVal = new Address(wrapperContractId).toScVal();
@@ -494,6 +499,82 @@ describe("SctokenFireblocksClient", () => {
       consoleSpy.mockRestore();
     });
 
+    it("throws WasmHashMismatchError before signing the deploy tx when RPC-returned hash diverges from sha256(params.wasm)", async () => {
+      const fakeHash = Buffer.from("a".repeat(64), "hex");
+      const mockTx = {
+        hash: jest.fn().mockReturnValue(fakeHash),
+        source: "GABC",
+        operations: [],
+        signatures: [],
+        addSignature: jest.fn(),
+      };
+
+      const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
+      const sacScVal = new Address(sacContractId).toScVal();
+      const attackerHashBytes = Buffer.alloc(32, 0xab); // not sha256(TEST_WASM)
+      const spoofedReturnValue = xdr.ScVal.scvBytes(attackerHashBytes);
+
+      mockedTxBuilder.createRpcServer.mockReturnValue({} as rpc.Server);
+      mockedFbSigner.createFireblocksClient.mockReturnValue({} as never);
+      mockedTxBuilder.buildConfigureIssuerTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.buildDeploySacTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.buildUploadWasmTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.buildDeployContractTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.buildInvokeTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.simulateAndPrepare.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+
+      mockedTxBuilder.submitAndPoll
+        .mockResolvedValueOnce({
+          status: rpc.Api.GetTransactionStatus.SUCCESS,
+          ledger: 10,
+        } as unknown as rpc.Api.GetSuccessfulTransactionResponse)
+        .mockResolvedValueOnce({
+          status: rpc.Api.GetTransactionStatus.SUCCESS,
+          ledger: 11,
+          returnValue: sacScVal,
+        } as unknown as rpc.Api.GetSuccessfulTransactionResponse)
+        .mockResolvedValueOnce({
+          // Step 3: malicious RPC returns a hash that does NOT match sha256(TEST_WASM)
+          status: rpc.Api.GetTransactionStatus.SUCCESS,
+          ledger: 12,
+          returnValue: spoofedReturnValue,
+        } as unknown as rpc.Api.GetSuccessfulTransactionResponse);
+
+      mockedFbSigner.signHash.mockResolvedValue({
+        signatureHex: "b".repeat(128),
+        fireblocksTransactionId: "fb-tx-spoof",
+      });
+
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      await expect(
+        client.deployFull({
+          assetCode: "TMGUSD",
+          assetIssuer: config.sourcePublicKey,
+          wasm: TEST_WASM,
+          admin: config.sourcePublicKey,
+          minter: config.sourcePublicKey,
+          yieldRecipientManager: config.sourcePublicKey,
+          yieldRecipient: config.sourcePublicKey,
+          forcedTransferManager: config.sourcePublicKey,
+          blocker: config.sourcePublicKey,
+          pauser: config.sourcePublicKey,
+        }),
+      ).rejects.toBeInstanceOf(WasmHashMismatchError);
+
+      // Critical: the deploy and set_admin txs were never built or signed.
+      // Step 3 itself signs once (the upload), so signHash must be exactly 3
+      // (configureIssuer, deploySac, uploadWasm) — never 4 or 5.
+      expect(mockedTxBuilder.buildDeployContractTransaction).not.toHaveBeenCalled();
+      expect(mockedTxBuilder.buildInvokeTransaction).not.toHaveBeenCalled();
+      expect(mockedFbSigner.signHash).toHaveBeenCalledTimes(3);
+
+      consoleSpy.mockRestore();
+    });
+
     it("throws when uploadWasm fails (step 3)", async () => {
       const fakeHash = Buffer.from("a".repeat(64), "hex");
       const mockTx = {
@@ -569,7 +650,7 @@ describe("SctokenFireblocksClient", () => {
 
       const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
       const sacScVal = new Address(sacContractId).toScVal();
-      const wasmHashBytes = Buffer.alloc(32, 0xab);
+      const wasmHashBytes = TEST_WASM_SHA256;
       const wasmReturnValue = xdr.ScVal.scvBytes(wasmHashBytes);
 
       mockedTxBuilder.createRpcServer.mockReturnValue({} as rpc.Server);
@@ -640,7 +721,7 @@ describe("SctokenFireblocksClient", () => {
 
       const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
       const sacScVal = new Address(sacContractId).toScVal();
-      const wasmHashBytes = Buffer.alloc(32, 0xab);
+      const wasmHashBytes = TEST_WASM_SHA256;
       const wasmReturnValue = xdr.ScVal.scvBytes(wasmHashBytes);
       const wrapperContractId = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
       const wrapperScVal = new Address(wrapperContractId).toScVal();

@@ -28,3 +28,15 @@ export class SubmissionError extends Error {
     this.name = "SubmissionError";
   }
 }
+
+export class WasmHashMismatchError extends Error {
+  constructor(
+    message: string,
+    public readonly expectedHash: string,
+    public readonly actualHash: string | undefined,
+    public readonly txHash?: string,
+  ) {
+    super(message);
+    this.name = "WasmHashMismatchError";
+  }
+}

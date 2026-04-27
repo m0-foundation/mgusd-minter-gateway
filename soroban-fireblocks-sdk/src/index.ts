@@ -1,7 +1,7 @@
 // Base SDK
 export { SorobanFireblocksClient } from "./client";
 export { loadConfigFromEnv, loadIssuerConfigFromEnv, loadMinterConfigFromEnv, validateConfig, readFireblocksSecret } from "./config";
-export { ConfigError, SimulationError, FireblocksSigningError, SubmissionError } from "./errors";
+export { ConfigError, SimulationError, FireblocksSigningError, SubmissionError, WasmHashMismatchError } from "./errors";
 export { createFireblocksClient, signHash } from "./fireblocks-signer";
 export {
   createRpcServer,
