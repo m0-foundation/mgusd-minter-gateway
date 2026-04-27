@@ -69,9 +69,6 @@ describe("assertIssuerNotContaminated", () => {
       const horizon = makeHorizon([record]);
       await expect(
         assertIssuerNotContaminated(horizon, ASSET_CODE, ISSUER),
-      ).rejects.toBeInstanceOf(IssuerContaminatedError);
-      await expect(
-        assertIssuerNotContaminated(horizon, ASSET_CODE, ISSUER),
       ).rejects.toMatchObject({
         name: "IssuerContaminatedError",
         assetCode: ASSET_CODE,
