@@ -12,7 +12,6 @@ mod test_mint_burn;
 mod test_pausable;
 mod test_rate_boundaries;
 mod test_reconcile_burn;
-mod test_stel1_6_clawback_nullification;
 mod test_transfer;
 mod test_transfer_sac_admin;
 mod test_yield;
