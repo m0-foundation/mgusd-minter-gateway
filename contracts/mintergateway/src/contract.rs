@@ -18,9 +18,9 @@ use crate::roles::{
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
 use crate::yield_state::{
-    decrease_both_accumulators, get_accrued_yield, get_current_index, get_interest_rate,
-    get_latest_index, get_total_principal, get_total_supply, increase_both_accumulators,
-    increase_total_supply, read_yield_state, set_interest_rate, update_index,
+    claim_accrued_yield, decrease_both_accumulators, get_accrued_yield, get_current_index,
+    get_interest_rate, get_latest_index, get_total_principal, get_total_supply,
+    increase_both_accumulators, set_interest_rate, update_index,
 };
 use stellar_contract_utils::pausable::{self as pausable, Pausable};
 use stellar_tokens::fungible::blocklist::{emit_user_blocked, emit_user_unblocked};
@@ -326,17 +326,19 @@ impl YieldToken {
         // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
-        // Update index before changing principal
+        // Update index before changing principal so accrued yield is captured
+        // against the existing principal before the mint changes the multiplicand.
         update_index(&e);
 
-        // Increase both accumulators
-        increase_both_accumulators(&e, amount);
+        // Bump principal and total_supply together (nominal) in a single write.
+        // The returned state is used to populate the event payload without
+        // re-reading storage.
+        let state = increase_both_accumulators(&e, amount);
 
         // Mint SAC tokens to recipient
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).mint(&to, &amount);
 
-        let state = read_yield_state(&e);
         emit_mint(&e, to, amount, state.total_principal, state.total_supply);
 
         Ok(())
@@ -357,17 +359,16 @@ impl YieldToken {
         // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
-        // Update index before changing principal
+        // Update index before changing principal so accrued yield through
         update_index(&e);
 
-        // Decrease both accumulators
-        decrease_both_accumulators(&e, amount)?;
+        // BurnExceedsPrincipal guard is inside decrease_both_accumulators.
+        let state = decrease_both_accumulators(&e, amount)?;
 
         // Remove SAC tokens from account via SAC clawback
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).clawback(&from, &amount);
 
-        let state = read_yield_state(&e);
         emit_burn(&e, from, amount, state.total_principal, state.total_supply);
 
         Ok(())
@@ -387,15 +388,14 @@ impl YieldToken {
         // Update index before changing principal
         update_index(&e);
 
-        // Guard: can't reconcile more tokens than the contract believes exist
+        // Guard: can't reconcile more tokens than the contract believes exist.
         if amount > get_total_supply(&e) {
             return Err(MinterGatewayError::BurnExceedsSupply);
         }
 
-        // Decrease both accumulators (same PV logic as burn)
-        decrease_both_accumulators(&e, amount)?;
+        // Decrease principal (nominal) and total_supply (nominal counter).
+        let state = decrease_both_accumulators(&e, amount)?;
 
-        let state = read_yield_state(&e);
         emit_reconcile(&e, amount, state.total_principal, state.total_supply);
 
         Ok(())
@@ -498,12 +498,12 @@ impl YieldToken {
 
         update_index(&e);
 
-        let unclaimed_yield = get_accrued_yield(&e);
+        // Atomically drains the accrued bucket into total_supply (claimed
+        // yield becomes circulating supply but does not earn further yield,
+        // so principal is untouched).
+        let unclaimed_yield = claim_accrued_yield(&e);
 
         if unclaimed_yield > 0 {
-            // Increase total_supply (but NOT total_principal — no compounding)
-            increase_total_supply(&e, unclaimed_yield);
-            // Mint new tokens to yield recipient
             let sac_addr = read_sac_token(&e);
             token::StellarAssetClient::new(&e, &sac_addr).mint(&recipient, &unclaimed_yield);
 

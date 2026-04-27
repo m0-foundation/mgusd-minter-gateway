@@ -341,6 +341,196 @@ fn test_no_yield_accrues_after_principal_zero() {
 }
 
 // =============================================================================
+// STEL1-2 — burn-before-claim leaves PV of accrued yield in total_principal,
+// which keeps generating phantom yield after the position has fully exited.
+// =============================================================================
+//
+// Regression tests for the audit finding STEL1-2. The shared pattern:
+//
+//   1. mint N
+//   2. set rate, advance 1 year (index grows; accrued yield is now non-zero)
+//   3. burn / reconcile the full nominal N         <-- bug enters here
+//   4. claim_yield
+//   5. advance another year
+//
+// After step 5 nothing should be left to claim — every minted token has either
+// been burned or already claimed as yield. With the current accumulator math,
+// `decrease_both_accumulators` only subtracts `pv_burn = N * SCALE / index`
+// from `total_principal`, leaving the present-value of the yet-unclaimed yield
+// stranded inside `total_principal`. `claim_yield` then increments
+// `total_supply` without ever touching `total_principal`, so the residue keeps
+// compounding on every subsequent index update — an over-mint to the yield
+// recipient against principal that no longer exists.
+
+// One-year-at-5% claim against `1_000 * DECIMALS` of principal. The math
+// matches `test_full_flow_mint_rate_claim` (which uses 1_000_000 * DECIMALS
+// and gets 512_710_937_490) scaled down by 1_000×.
+const ONE_YEAR_YIELD_ON_1K: i128 = 512_710_937;
+
+// Under the canonical (nominal-principal) model there is no PV ↔ nominal
+// conversion in mint/burn, so a full nominal exit drives `total_principal` to
+// exactly zero — no rounding residue at the burn boundary. The tests assert
+// strict equality.
+
+#[test]
+fn test_burn_before_claim_leaves_no_phantom_yield() {
+    let s = setup();
+    let amount = 1_000 * DECIMALS;
+
+    // -----------------------------------------------------------------------
+    // Step 1: mint N → both accumulators at N (PV=nominal at index 1.0)
+    // -----------------------------------------------------------------------
+    s.contract.mint(&s.minter, &s.yield_recipient, &amount);
+    s.contract.set_rate(&s.minter, &500);
+    assert_eq!(s.contract.total_principal(), amount);
+    assert_eq!(s.contract.total_supply(), amount);
+
+    // -----------------------------------------------------------------------
+    // Step 2: Index grows for a year. No state-mutating call → accumulators
+    // unchanged; only `accrued_yield` (a derived view) reflects the growth.
+    // -----------------------------------------------------------------------
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    // Pre-burn state: stored accumulators still at the post-mint values
+    // (`update_index` only fires on state-mutating ops), but the derived
+    // `accrued_yield` has caught up to one year of growth.
+    assert_eq!(s.contract.total_principal(), amount);
+    assert_eq!(s.contract.total_supply(), amount);
+    assert_eq!(s.contract.accrued_yield(), ONE_YEAR_YIELD_ON_1K);
+
+    // -----------------------------------------------------------------------
+    // Step 3: burn the entire nominal supply. Position is fully exited.
+    //
+    // Expected post-burn (any correct fix):
+    //   total_supply    == 0                       (exact — burn subtracts nominal)
+    //   total_principal <= 1                       (≤1 wei floor residue)
+    //   accrued_yield   == ONE_YEAR_YIELD_ON_1K    (still owed to recipient)
+    //
+    // Current buggy behaviour: total_principal = 487_705_732 (the PV of the
+    // accrued-but-unclaimed yield, stranded inside the principal accumulator).
+    // -----------------------------------------------------------------------
+    s.contract.burn(&s.minter, &s.yield_recipient, &amount);
+
+    assert_eq!(
+        s.contract.total_supply(),
+        0,
+        "after full nominal burn, total_supply should be exactly 0",
+    );
+    assert_eq!(
+        s.contract.total_principal(),
+        0,
+        "STEL1-2: after a full nominal burn the canonical model leaves \
+         total_principal at exactly 0 — no PV residue",
+    );
+    assert_eq!(
+        s.contract.accrued_yield(),
+        ONE_YEAR_YIELD_ON_1K,
+        "yield accrued during year 1 must still be owed to the recipient \
+         after the user exits — the burn shouldn't destroy it",
+    );
+
+    // -----------------------------------------------------------------------
+    // Step 4: claim_yield mints the year-1 yield to the recipient.
+    //
+    // Expected post-claim:
+    //   total_supply    == ONE_YEAR_YIELD_ON_1K    (recipient was paid)
+    //   total_principal == 0                       (untouched by claim)
+    //   accrued_yield   == 0                       (bucket drained)
+    // -----------------------------------------------------------------------
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
+    assert_eq!(claimed, ONE_YEAR_YIELD_ON_1K);
+
+    assert_eq!(
+        s.contract.total_supply(),
+        ONE_YEAR_YIELD_ON_1K,
+        "post-claim, total_supply equals exactly the yield minted to recipient",
+    );
+    assert_eq!(s.contract.total_principal(), 0);
+    assert_eq!(s.contract.accrued_yield(), 0);
+
+    // -----------------------------------------------------------------------
+    // Step 5: time advances another year. With no live principal, no new
+    // yield should accrue. Under the bug this used to compound ~26.3M wei of
+    // phantom yield against the stranded 487_705_732 of PV residue.
+    // -----------------------------------------------------------------------
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    assert_eq!(
+        s.contract.total_principal(),
+        0,
+        "phantom principal must not compound through subsequent index updates",
+    );
+    assert_eq!(
+        s.contract.accrued_yield(),
+        0,
+        "STEL1-2: no live principal must mean no further yield; positive \
+         accrual here is unbacked over-mint to the recipient",
+    );
+}
+
+#[test]
+fn test_reconcile_burn_before_claim_leaves_no_phantom_yield() {
+    let s = setup();
+    let user = soroban_sdk::Address::generate(&s.env);
+    let amount = 1_000 * DECIMALS;
+
+    // Step 1: mint N to a non-issuer holder so the SAC transfer path works.
+    s.contract.unblock_user(&user, &s.blocker);
+    s.contract.mint(&s.minter, &user, &amount);
+    s.contract.set_rate(&s.minter, &500);
+    assert_eq!(s.contract.total_principal(), amount);
+    assert_eq!(s.contract.total_supply(), amount);
+
+    // Step 2: a year of yield accrues before the admin reconciles.
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    // Pre-reconcile state — same shape as the burn() test. Accumulators
+    // unchanged from mint time, derived yield reflects one year of growth.
+    assert_eq!(s.contract.total_principal(), amount);
+    assert_eq!(s.contract.total_supply(), amount);
+    assert_eq!(s.contract.accrued_yield(), ONE_YEAR_YIELD_ON_1K);
+
+    // Step 3: the documented `reconcile_burn` flow — user destroys the
+    // nominal balance by transferring it to the issuer, then admin
+    // reconciles the accumulators. Both `burn` and `reconcile_burn` go
+    // through `decrease_principal` + `decrease_total_supply` (nominal).
+    s.sac_token.transfer(&user, &s.issuer, &amount);
+    s.contract.reconcile_burn(&amount);
+
+    assert_eq!(s.contract.total_supply(), 0);
+    assert_eq!(
+        s.contract.total_principal(),
+        0,
+        "STEL1-2: after a full nominal reconcile_burn the canonical model \
+         leaves total_principal at exactly 0 — no PV residue",
+    );
+    assert_eq!(s.contract.accrued_yield(), ONE_YEAR_YIELD_ON_1K);
+
+    // Step 4: claim_yield pays out the year-1 yield.
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
+    assert_eq!(claimed, ONE_YEAR_YIELD_ON_1K);
+
+    assert_eq!(s.contract.total_supply(), ONE_YEAR_YIELD_ON_1K);
+    assert_eq!(s.contract.total_principal(), 0);
+    assert_eq!(s.contract.accrued_yield(), 0);
+
+    // Step 5: time advances. With no live principal, no new yield.
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    assert_eq!(
+        s.contract.total_principal(),
+        0,
+        "phantom principal must not compound through reconcile_burn either",
+    );
+    assert_eq!(
+        s.contract.accrued_yield(),
+        0,
+        "STEL1-2: no live principal must mean no further yield; positive \
+         accrual after reconcile_burn is unbacked over-mint to the recipient",
+    );
+}
+
+// =============================================================================
 // AUTH ENFORCEMENT — require_auth reverts without signature
 // =============================================================================
 

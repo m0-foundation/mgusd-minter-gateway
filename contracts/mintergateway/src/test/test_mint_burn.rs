@@ -82,14 +82,12 @@ fn test_burn_decreases_principal() {
     let yield_before_burn = s.contract.accrued_yield();
     assert!(yield_before_burn > 0);
 
-    // Burn half — PV conversion: pv_burn = burn_amount * INDEX_SCALE / current_index
-    // Use current_index because burn() calls update_index() which advances latest_index
+    // Burn half. Under the canonical (nominal) model `total_principal` drops
+    // by exactly `burn_amount`; the year-1 yield is already in the bucket
+    // because `burn` calls `update_index` first.
     let burn_amount = 500_000 * DECIMALS;
     let idx_at_burn = s.contract.current_index();
     s.contract.burn(&s.minter, &s.yield_recipient, &burn_amount);
-
-    // Principal reduced by PV of burn amount
-    let pv_burn = burn_amount * INDEX_SCALE / idx_at_burn;
 
     // Assert emitted events before any view calls — they reset the host event buffer.
     // Time advanced since the last update, so burn emits UpdateIndex first, then Burn.
@@ -101,17 +99,18 @@ fn test_burn_decreases_principal() {
         Burn {
             from: s.yield_recipient.clone(),
             amount: burn_amount,
-            new_total_principal: initial - pv_burn,
+            new_total_principal: initial - burn_amount,
             new_total_supply: initial - burn_amount,
         },
     ]);
 
-    assert_eq!(s.contract.total_principal(), initial - pv_burn);
+    assert_eq!(s.contract.total_principal(), initial - burn_amount);
 
     // Accrued yield should still be there (burn calls update_index first)
     assert!(s.contract.accrued_yield() > 0);
 
-    // Now yield accrues on reduced principal
+    // Now yield accrues on the reduced (nominal) principal. Year-2 yield
+    // ≈ year-1 × 0.5 since principal is exactly half.
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
@@ -120,12 +119,11 @@ fn test_burn_decreases_principal() {
         second_year_yield < yield_before_burn,
         "Second year yield on half principal should be less than first year"
     );
-    // With PV conversion, burned PV < nominal burn amount, so more principal
-    // remains earning yield. The ratio is slightly above 0.5.
     let ratio = (second_year_yield as f64) / (yield_before_burn as f64);
     assert!(
-        ratio > 0.45 && ratio < 0.60,
-        "Expected ~0.5 ratio, got {}",
+        ratio > 0.45 && ratio < 0.55,
+        "Expected ~0.5 ratio under nominal-form principal (half the principal \
+         earning at the same rate), got {}",
         ratio
     );
 }
@@ -142,14 +140,12 @@ fn test_burn_exactly_principal() {
 
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
-    // After index growth, PV of `initial` < `initial` (index > INDEX_SCALE),
-    // so burning `initial` nominal tokens removes pv_burn < initial from principal.
-    let latest_idx = s.contract.latest_index();
-    let pv_burn = initial * INDEX_SCALE / latest_idx;
+    // Under canonical nominal-form principal, burning the full nominal
+    // `initial` after a year of growth drives `total_principal` to exactly 0.
+    // No PV-residue remains.
     s.contract.burn(&s.minter, &s.yield_recipient, &initial);
 
-    // Principal has a small residual from PV rounding
-    assert_eq!(s.contract.total_principal(), initial - pv_burn);
+    assert_eq!(s.contract.total_principal(), 0);
     // total_supply = claimed yield portion (initial was subtracted from total_supply)
     assert_eq!(s.contract.total_supply(), claimed);
 }

@@ -234,10 +234,12 @@ fn test_reconcile_burn_multiple_calls() {
     assert_eq!(s.contract.total_supply(), 0);
 }
 
-/// Regression test: when index > 1.0, PV conversion shrinks the amount
-/// (`pv = amount * INDEX_SCALE / latest_index < amount`). Without a nominal
-/// guard, an amount exceeding `total_supply` could pass the PV check and
-/// create negative `total_supply`. The `BurnExceedsSupply` guard prevents this.
+/// Regression test: `reconcile_burn` rejects amounts greater than the
+/// wrapper's nominal `total_supply`. Both `total_principal` and
+/// `total_supply` are nominal under the canonical model, so this is a
+/// straight nominal compare — no PV gymnastics involved. The
+/// `BurnExceedsSupply` guard fires before either accumulator can go
+/// negative.
 #[test]
 fn test_reconcile_burn_rejects_amount_exceeding_total_supply() {
     let s = setup();

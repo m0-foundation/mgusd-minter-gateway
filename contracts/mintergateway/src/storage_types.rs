@@ -11,8 +11,9 @@ pub struct YieldStateValue {
     pub rate_bps: u32,              // Current rate in basis points (10000 = 100%)
     pub latest_index: i128,         // Last stored index (1.0 = 1e12)
     pub last_update_timestamp: u64, // Unix timestamp of last index update
-    pub total_principal: i128,      // Yield-earning base (mints - burns, excludes claimed yield)
-    pub total_supply: i128, // Total outstanding tokens (principal + cumulative claimed yield)
+    pub total_principal: i128,      // Nominal yield-earning principal (mints - burns; excludes claimed yield)
+    pub total_supply: i128, // Nominal outstanding tokens (informational counter; mint/burn/claim_yield mutate it)
+    pub accrued_yield: i128, // Stored bucket of unclaimed yield. update_index accumulates principal × index_delta into this; claim_yield drains it.
 }
 
 impl Default for YieldStateValue {
@@ -23,6 +24,7 @@ impl Default for YieldStateValue {
             last_update_timestamp: 0,
             total_principal: 0,
             total_supply: 0,
+            accrued_yield: 0,
         }
     }
 }
