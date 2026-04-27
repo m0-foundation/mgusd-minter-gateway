@@ -1,5 +1,6 @@
-import { Address, scValToNative } from "@stellar/stellar-sdk";
+import { Address, Horizon, scValToNative } from "@stellar/stellar-sdk";
 import { SorobanFireblocksClient } from "./client";
+import { assertIssuerNotContaminated } from "./deploy-checks";
 import { addressToScVal, addressVecToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
 import {
   MAX_BATCH_SIZE,
@@ -245,6 +246,15 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
   }
 
   async deployFull(params: DeployFullParams): Promise<DeployFullResult> {
+    // Step 0: Refuse to deploy if any pre-flag trustline exists on the
+    // issuer for this asset. Anything observed here is pre-flag by
+    // definition (the AUTH_CLAWBACK_ENABLED flag is set in step 1, below)
+    // and would be permanently unclawbackable. See audit STEL1-6.
+    console.log("Step 0/5: Checking issuer for pre-flag trustline contamination...");
+    const horizon = new Horizon.Server(this.config.horizonUrl);
+    await assertIssuerNotContaminated(horizon, params.assetCode, params.assetIssuer);
+    console.log("  Issuer is clean — no pre-existing trustlines or claimable balances");
+
     // Step 1: Configure issuer flags (AUTH_REQUIRED + AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED — clawback enabled is required for burn)
     console.log("Step 1/5: Configuring issuer flags...");
     const issuerResult = await this.configureIssuer();

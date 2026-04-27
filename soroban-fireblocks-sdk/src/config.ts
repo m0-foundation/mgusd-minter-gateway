@@ -14,6 +14,7 @@ export function readFireblocksSecret(secretPath: string): string {
 export function validateConfig(config: SorobanFireblocksConfig): void {
   const required: Array<[keyof SorobanFireblocksConfig, string]> = [
     ["sorobanRpcUrl", "SOROBAN_RPC_URL"],
+    ["horizonUrl", "HORIZON_URL"],
     ["networkPassphrase", "SOROBAN_NETWORK_PASSPHRASE"],
     ["fireblocksApiKey", "FIREBLOCKS_API_KEY"],
     ["fireblocksSecretKey", "Fireblocks secret key"],
@@ -43,6 +44,7 @@ export function loadConfigFromEnv(): SorobanFireblocksConfig {
 
   const config: SorobanFireblocksConfig = {
     sorobanRpcUrl: process.env.SOROBAN_RPC_URL ?? "",
+    horizonUrl: process.env.HORIZON_URL ?? "",
     networkPassphrase: process.env.SOROBAN_NETWORK_PASSPHRASE ?? "",
     fireblocksApiKey: process.env.FIREBLOCKS_API_KEY ?? "",
     fireblocksSecretKey,
@@ -69,6 +71,7 @@ function loadRoleConfigFromEnv(role: "ISSUER" | "MINTER"): SorobanFireblocksConf
 
   const config: SorobanFireblocksConfig = {
     sorobanRpcUrl: process.env.SOROBAN_RPC_URL ?? "",
+    horizonUrl: process.env.HORIZON_URL ?? "",
     networkPassphrase: process.env.SOROBAN_NETWORK_PASSPHRASE ?? "",
     fireblocksApiKey: process.env.FIREBLOCKS_API_KEY ?? "",
     fireblocksSecretKey,

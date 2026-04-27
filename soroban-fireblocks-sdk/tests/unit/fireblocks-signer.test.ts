@@ -6,6 +6,7 @@ import { SorobanFireblocksConfig } from "../../src/types";
 function makeConfig(): SorobanFireblocksConfig {
   return {
     sorobanRpcUrl: "https://soroban-testnet.stellar.org",
+    horizonUrl: "https://horizon-testnet.stellar.org",
     networkPassphrase: "Test SDF Network ; September 2015",
     fireblocksApiKey: "key",
     fireblocksSecretKey: "secret",

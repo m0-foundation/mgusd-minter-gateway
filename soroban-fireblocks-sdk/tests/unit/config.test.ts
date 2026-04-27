@@ -10,6 +10,7 @@ const mockedFs = fs as jest.Mocked<typeof fs>;
 function validConfig(): SorobanFireblocksConfig {
   return {
     sorobanRpcUrl: "https://soroban-testnet.stellar.org",
+    horizonUrl: "https://horizon-testnet.stellar.org",
     networkPassphrase: "Test SDF Network ; September 2015",
     fireblocksApiKey: "fb-api-key",
     fireblocksSecretKey: "-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
@@ -26,6 +27,7 @@ describe("validateConfig", () => {
 
   it.each([
     ["sorobanRpcUrl", "SOROBAN_RPC_URL"],
+    ["horizonUrl", "HORIZON_URL"],
     ["networkPassphrase", "SOROBAN_NETWORK_PASSPHRASE"],
     ["fireblocksApiKey", "FIREBLOCKS_API_KEY"],
     ["fireblocksSecretKey", "Fireblocks secret key"],
@@ -71,6 +73,7 @@ describe("loadConfigFromEnv", () => {
     process.env = {
       ...originalEnv,
       SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org",
+      HORIZON_URL: "https://horizon-testnet.stellar.org",
       SOROBAN_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
       FIREBLOCKS_API_KEY: "fb-api-key",
       FIREBLOCKS_SECRET_PATH: "/path/to/secret.key",
@@ -106,6 +109,7 @@ describe("loadIssuerConfigFromEnv", () => {
     process.env = {
       ...originalEnv,
       SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org",
+      HORIZON_URL: "https://horizon-testnet.stellar.org",
       SOROBAN_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
       FIREBLOCKS_API_KEY: "fb-api-key",
       FIREBLOCKS_SECRET_PATH: "/path/to/secret.key",
@@ -151,6 +155,7 @@ describe("loadMinterConfigFromEnv", () => {
     process.env = {
       ...originalEnv,
       SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org",
+      HORIZON_URL: "https://horizon-testnet.stellar.org",
       SOROBAN_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
       FIREBLOCKS_API_KEY: "fb-api-key",
       FIREBLOCKS_SECRET_PATH: "/path/to/secret.key",
