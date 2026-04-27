@@ -38,6 +38,7 @@
 import * as fs from "fs";
 import * as dotenv from "dotenv";
 import { SctokenFireblocksClient, loadIssuerConfigFromEnv } from "../src";
+import { Keypair } from "@stellar/stellar-sdk";
 
 dotenv.config();
 
@@ -51,10 +52,10 @@ function requireRolePubkey(name: string): string {
   if (!v) {
     throw new Error(`Missing required env var: ${name}`);
   }
-  if (!v.startsWith("G")) {
-    throw new Error(
-      `${name} must be a Stellar pubkey starting with "G", got: ${v}`,
-    );
+  try {
+    Keypair.fromPublicKey(v);
+  } catch {
+    throw new Error(`${name} is not a valid Stellar pubkey: ${v}`);
   }
   return v;
 }
@@ -68,6 +69,8 @@ async function main(): Promise<void> {
   const wasmPath =
     process.env.WASM_PATH ||
     "./target/wasm32v1-none/release/mintergateway.wasm";
+  
+  if (!fs.existsSync(wasmPath)) throw new Error(`WASM not found: ${wasmPath}`);
 
   // STEL1-5: each privileged role is read from its own env var. Failing
   // to set any one of them aborts the deploy — collapsing roles into a
@@ -81,6 +84,11 @@ async function main(): Promise<void> {
     blocker: requireRolePubkey("BLOCKER_PUBLIC_KEY"),
     pauser: requireRolePubkey("PAUSER_PUBLIC_KEY"),
   };
+  
+  const uniqueRoles = new Set(Object.values(roles));
+  if (uniqueRoles.size < Object.keys(roles).length) {
+    console.warn("WARNING: multiple roles share the same pubkey — role separation is reduced");
+  }
 
   const wasm = fs.readFileSync(wasmPath);
 
@@ -114,7 +122,14 @@ async function main(): Promise<void> {
   console.log(`  Wrapper Contract ID: ${result.wrapperContractId}`);
 }
 
-main().catch((err) => {
-  console.error("Error:", err);
-  process.exit(1);
-});
+export { main };
+
+// Only auto-run when executed directly (`npm run deploy`), not when
+// imported by tests. Without this guard every `require()` in tests
+// would kick off a live deploy attempt.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("Error:", err);
+    process.exit(1);
+  });
+}

@@ -15,14 +15,6 @@ import * as os from "os";
 import * as path from "path";
 import { Keypair } from "@stellar/stellar-sdk";
 
-// The deploy script calls `dotenv.config()` at module load. The local
-// `.env` would otherwise repopulate any role var the test deletes,
-// breaking fail-closed assertions. Stub the module so test process.env
-// is the only source of truth.
-jest.mock("dotenv", () => ({
-  config: jest.fn(),
-}));
-
 const ROLE_ENV_VARS = [
   "ADMIN_PUBLIC_KEY",
   "MINTER_PUBLIC_KEY",
@@ -42,6 +34,9 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
 
   beforeEach(() => {
     jest.resetModules();
+
+    jest.doMock("dotenv", () => ({ config: jest.fn() }));
+
     jest.restoreAllMocks();
 
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stel1-5-deploy-"));
@@ -98,17 +93,16 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
         wrapperContractId: "C".padEnd(56, "B"),
       });
 
-    const exitSpy = jest
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as typeof process.exit);
-
     jest.spyOn(console, "log").mockImplementation(() => undefined);
     jest.spyOn(console, "error").mockImplementation(() => undefined);
 
-    require("../../scripts/deploy-full");
-    await new Promise((resolve) => setImmediate(resolve));
+    const { main } = require("../../scripts/deploy-full") as {
+      main: () => Promise<void>;
+    };
 
-    expect(exitSpy).not.toHaveBeenCalled();
+    // Directly await main() — no setImmediate guessing needed.
+    await main();
+
     expect(deploySpy).toHaveBeenCalledTimes(1);
 
     const [params] = deploySpy.mock.calls[0];
@@ -155,31 +149,18 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
           wrapperContractId: "C".padEnd(56, "B"),
         });
 
-      // Capture the script's process.exit(1) on the catch path
-      // without throwing — throwing here would surface as an unhandled
-      // rejection from the script's `main().catch(...)` block.
-      let exitCode: number | undefined;
-      jest
-        .spyOn(process, "exit")
-        .mockImplementation(((code?: number) => {
-          exitCode = code;
-          return undefined as never;
-        }) as typeof process.exit);
+      jest.spyOn(console, "log").mockImplementation(() => undefined);
+      jest.spyOn(console, "error").mockImplementation(() => undefined);
 
-      const errorSpy = jest.spyOn(console, "error").mockImplementation();
-      jest.spyOn(console, "log").mockImplementation();
+      const { main } = require("../../scripts/deploy-full") as {
+        main: () => Promise<void>;
+      };
 
-      require("../../scripts/deploy-full");
-      // Allow the unhandled-rejection → catch → process.exit chain to run.
-      await new Promise((resolve) => setImmediate(resolve));
+      // main() rejects — await and assert the rejection names the missing var.
+      // No process.exit mocking needed.
+      await expect(main()).rejects.toThrow(missing);
 
       expect(deploySpy).not.toHaveBeenCalled();
-      expect(exitCode).toBe(1);
-      // The error message must name the offending env var so the
-      // operator knows what to set.
-      expect(errorSpy).toHaveBeenCalled();
-      const errorArgs = errorSpy.mock.calls.flat().map(String).join(" ");
-      expect(errorArgs).toMatch(missing);
     },
   );
 
@@ -196,24 +177,15 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
         wrapperContractId: "C".padEnd(56, "B"),
       });
 
-    let exitCode: number | undefined;
-    jest
-      .spyOn(process, "exit")
-      .mockImplementation(((code?: number) => {
-        exitCode = code;
-        return undefined as never;
-      }) as typeof process.exit);
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
 
-    const errorSpy = jest.spyOn(console, "error").mockImplementation();
-    jest.spyOn(console, "log").mockImplementation();
+    const { main } = require("../../scripts/deploy-full") as {
+      main: () => Promise<void>;
+    };
 
-    require("../../scripts/deploy-full");
-    await new Promise((resolve) => setImmediate(resolve));
+    await expect(main()).rejects.toThrow(/ADMIN_PUBLIC_KEY/);
 
     expect(deploySpy).not.toHaveBeenCalled();
-    expect(exitCode).toBe(1);
-    const errorArgs = errorSpy.mock.calls.flat().map(String).join(" ");
-    expect(errorArgs).toMatch(/ADMIN_PUBLIC_KEY/);
-    expect(errorArgs).toMatch(/G/);
   });
 });
