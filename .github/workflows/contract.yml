@@ -51,10 +51,11 @@ jobs:
           target: wasm32v1-none
 
       - name: Install stellar CLI
-        # Pinned — bump in lockstep with .tool-versions and the soroban-sdk
-        # version's minimum-CLI requirement. Do not switch to @latest; the
-        # CI must be reproducible against a known CLI build.
-        uses: stellar/stellar-cli@v26.0.0
+        # Pinned to the soroban-sdk's minimum-CLI requirement. Bump in
+        # lockstep with .tool-versions when soroban-sdk raises that
+        # minimum. Do not switch to @latest; CI must be reproducible
+        # against a known CLI build.
+        uses: stellar/stellar-cli@v25.2.0
 
       - name: Build contract
         run: stellar contract build

@@ -5,19 +5,19 @@ A Soroban smart contract that acts as a SAC (Stellar Asset Contract) admin, enab
 ## Prerequisites
 
 - [Rust](https://rustup.rs/) (stable toolchain)
-- [Stellar CLI](https://developers.stellar.org/docs/tools/cli/install-cli) — pinned to **v26.0.0** (see `.tool-versions`)
+- [Stellar CLI](https://developers.stellar.org/docs/tools/cli/install-cli) — pinned to **v25.2.0** (the soroban-sdk's minimum-CLI requirement; see `.tool-versions`)
 
 ### Install Rust + Stellar CLI
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup target add wasm32v1-none
-cargo install --locked stellar-cli@26.0.0
+cargo install --locked stellar-cli@25.2.0
 ```
 
 If you use [mise](https://mise.jdx.dev/) or [asdf](https://asdf-vm.com/), `mise install` (or `asdf install`) will pick up the pin from `.tool-versions` automatically.
 
-CI installs the same pinned version via the official [`stellar/stellar-cli@v26.0.0`](https://github.com/stellar/stellar-cli) GitHub Action. **Do not bump to `@latest` in CI** — pin in lockstep with the soroban-sdk's minimum-CLI requirement. This matches how [Blend](https://github.com/blend-capital/blend-contracts-v2) and Soroswap operate.
+CI installs the same pinned version via the official [`stellar/stellar-cli@v25.2.0`](https://github.com/stellar/stellar-cli) GitHub Action. **Do not bump to `@latest` in CI** — bump in lockstep with the soroban-sdk's minimum-CLI requirement. This matches how [Blend](https://github.com/blend-capital/blend-contracts-v2) and Soroswap operate.
 
 ---
 
