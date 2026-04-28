@@ -144,6 +144,25 @@ fn test_remove_unblock_operator_is_idempotent() {
     assert!(!s.contract.is_unblock_operator(&never_added));
 }
 
+#[test]
+fn test_added_blocker_can_block_and_unblock() {
+    // Confirms that a blocker added via `add_blocker` — not the one wired up in
+    // the constructor — can exercise the `block_user` / `unblock_user` capability.
+    // Guards against a `require_blocker` regression that checks a single address
+    // rather than set membership.
+    let s = setup();
+    let new_blocker = Address::generate(&s.env);
+    let user = Address::generate(&s.env);
+
+    s.contract.add_blocker(&new_blocker);
+
+    s.contract.unblock_user(&user, &new_blocker);
+    assert!(!s.contract.blocked(&user));
+
+    s.contract.block_user(&user, &new_blocker);
+    assert!(s.contract.blocked(&user));
+}
+
 // =============================================================================
 // ADMIN IS NOT A SUPER-ROLE — admin cannot bypass role gates
 // =============================================================================

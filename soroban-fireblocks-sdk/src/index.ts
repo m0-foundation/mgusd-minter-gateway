@@ -36,6 +36,7 @@ export type {
 // SCToken extensions
 export { SctokenFireblocksClient } from "./sctoken-client";
 export { addressToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
+export { MAX_BATCH_SIZE } from "./sctoken-types";
 export type {
   MintParams,
   BurnParams,
@@ -49,6 +50,5 @@ export type {
   QueryParams,
   DeployFullParams,
   DeployFullResult,
-  MAX_BATCH_SIZE,
 } from "./sctoken-types";
 export { addressVecToScVal } from "./scval-helpers";
