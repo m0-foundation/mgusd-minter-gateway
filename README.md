@@ -121,7 +121,7 @@ The contract never holds user funds. Users hold tokens directly in their account
 
 ### Token Distribution
 
-The Blocker whitelists (unblocks) recipient accounts via `unblock_user()`. Once whitelisted, tokens can be transferred to the recipient using the SAC's standard SEP-41 `transfer()`. Whitelisted accounts can freely transfer among themselves. Accumulators are not affected by transfers — they are balance redistributions, not mints/burns.
+The unblock operator (or Admin) whitelists recipient accounts via `unblock_user()`. Once whitelisted, tokens can be transferred to the recipient using the SAC's standard SEP-41 `transfer()`. Whitelisted accounts can freely transfer among themselves. Accumulators are not affected by transfers — they are balance redistributions, not mints/burns.
 
 ## Authorization & Allowlist
 
@@ -131,13 +131,13 @@ The SAC issuer is configured with **AUTH_REQUIRED**, **REVOCABLE**, and **CLAWBA
 
 1. Issuer flags are set on the SAC issuer account via classic Stellar (not from within Soroban)
 2. New accounts are **unauthorized by default** — they cannot hold, send, or receive the token
-3. The Blocker calls `unblock_user(addr, operator)` to authorize approved accounts
+3. An **unblock operator** (or Admin) calls `unblock_user(addr, operator)` to authorize approved accounts
 4. Both **sender and receiver** must be authorized for any SAC transfer to succeed
 
 | State | Can Send | Can Receive | How to enter |
 |-------|:--------:|:-----------:|--------------|
-| **Authorized** | ✓ | ✓ | Blocker calls `unblock_user` |
-| **Unauthorized** (default) | ✗ | ✗ | Default state, or Blocker calls `block_user` |
+| **Authorized** | ✓ | ✓ | Unblock operator (or Admin) calls `unblock_user` |
+| **Unauthorized** (default) | ✗ | ✗ | Default state, or block operator (or Admin) calls `block_user` |
 
 The contract exposes the `stellar_tokens::fungible::blocklist` function shape (`block_user`, `unblock_user`, `blocked`, `balance`) directly against the SAC's `set_authorized`. Because the SAC issuer runs with AUTH_REQUIRED, `blocked(account)` returns `true` for any account that has never been unblocked.
 
@@ -151,10 +151,10 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 
 | Function | Role | Description |
 |----------|------|-------------|
-| `block_user(user, operator)` | Admin or Blocker | Blocks a user — removes from allowlist, preventing sending and receiving |
-| `unblock_user(user, operator)` | Admin or Blocker | Unblocks a user — adds to allowlist, permitting sending and receiving |
-| `batch_block_users(users, operator)` | Admin or Blocker | Block up to 40 users per call |
-| `batch_unblock_users(users, operator)` | Admin or Blocker | Unblock up to 40 users per call |
+| `block_user(user, operator)` | Admin or **block operator** | Blocks a user — removes from allowlist, preventing sending and receiving |
+| `unblock_user(user, operator)` | Admin or **unblock operator** | Unblocks a user — adds to allowlist, permitting sending and receiving |
+| `batch_block_users(users, operator)` | Admin or **block operator** | Block up to 40 users per call |
+| `batch_unblock_users(users, operator)` | Admin or **unblock operator** | Unblock up to 40 users per call |
 | `blocked(account)` | (view) | Returns whether a user is blocked (inverse of SAC authorization) |
 | `balance(id)` | (view) | Returns the SAC-reported balance for an address |
 
@@ -169,14 +169,15 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient` | M0 |
 | **Yield Recipient** | `claim_yield` | MoneyGram |
-| **Blocker** | `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users` | Crossmint |
+| **Block operator** (membership) | `block_user`, `batch_block_users` | Crossmint (typical) |
+| **Unblock operator** (membership) | `unblock_user`, `batch_unblock_users` | Crossmint (typical) |
 | **Forced Transfer Manager** | `force_transfer` | *(configurable)* |
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_blocker`, `remove_blocker`, `block_user`, `unblock_user`, `upgrade`)
-- All roles are **single-address** except **Blocker**, which is a membership set (any number of addresses can hold the role)
-- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager). Admin grants / revokes the blocker role via `add_blocker` / `remove_blocker`
+- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `block_user`, `unblock_user`, `upgrade`)
+- All roles are **single-address** except **Block operator** and **Unblock operator**, each a membership set (Admin grants and revokes via `add_block_operator` / `remove_block_operator` and `add_unblock_operator` / `remove_unblock_operator`)
+- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager)
 - Every role-gated function calls `require_auth()` on the role holder — no implicit trust
 - Roles are stored in **Instance** storage
 
@@ -185,7 +186,7 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 ```
 Admin
 ├── Top-level authority
-├── Can set/change Minter, Yield Recipient Manager, Forced Transfer Manager, Blocker
+├── Can set/change Minter, Yield Recipient Manager, Forced Transfer Manager, block/unblock operator membership
 └── Compliance: block, unblock users
 
 Minter (Bridge / Issuer)
@@ -199,9 +200,12 @@ Yield Recipient Manager
 Yield Recipient
 └── Can claim accrued yield
 
-Blocker
-├── Blocks/unblocks individual users (`block_user` / `unblock_user`)
-└── Batch block/unblock users (max 40 per call) — matches the `stellar_tokens::fungible::blocklist` function shape
+Block operator
+├── `block_user`, `batch_block_users` (max 40 per batch)
+
+Unblock operator
+├── `unblock_user`, `batch_unblock_users` (max 40 per batch)
+└── Matches the `stellar_tokens::fungible::blocklist` function shape
 
 Forced Transfer Manager
 └── force_transfer — clawback + mint (bypasses block on source)
@@ -232,8 +236,8 @@ The `soroban-fireblocks-sdk/` directory contains a TypeScript SDK that wraps the
 ### Note 1 — Trustline + Authorization Required for Token Distribution
 
 - Recipient accounts must establish a classic Stellar **trustline** (`ChangeTrust` operation) for the MGUSD asset before they can hold tokens — the contract and SAC do not create trustlines on behalf of recipients
-- All accounts start **unauthorized** due to `AUTH_REQUIRED` on the issuer — the Blocker (Crossmint) must call `batch_unblock_users` to authorize recipients before they can receive tokens
-- Distribution flow: recipient creates trustline → Blocker batch-unblocks recipients → tokens can be transferred via SAC `transfer()`
+- All accounts start **unauthorized** due to `AUTH_REQUIRED` on the issuer — an **unblock operator** (e.g. Crossmint) must call `batch_unblock_users` to authorize recipients before they can receive tokens
+- Distribution flow: recipient creates trustline → batch-unblock recipients → tokens can be transferred via SAC `transfer()`
 
 ### Note 2 — Send-to-Issuer Bypasses Yield Accrual
 

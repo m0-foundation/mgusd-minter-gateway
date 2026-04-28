@@ -47,15 +47,15 @@ export interface BlockUserParams {
   contractId: string;
   /** User (account) to block or unblock */
   user: string;
-  /** Operator address — must be admin or blocker */
+  /** Operator: for `block_user`, admin or a block operator; for `unblock_user`, admin or an unblock operator */
   operator: string;
 }
 
 export interface BatchBlockUsersParams {
   contractId: string;
-  /** Users (accounts) to block or unblock (max 20) */
+  /** Users (accounts) to block or unblock (max 40) */
   users: string[];
-  /** Operator address — must be admin or blocker */
+  /** Operator: for `batch_block_users`, admin or a block operator; for `batch_unblock_users`, admin or an unblock operator */
   operator: string;
 }
 
@@ -100,8 +100,10 @@ export interface DeployFullParams {
   yieldRecipient: string;
   /** Forced transfer manager address (G... or C...) */
   forcedTransferManager: string;
-  /** Blocker address (G... or C...) */
-  blocker: string;
+  /** Initial **block** operator; may match `unblockOperator` (G... or C...) */
+  blockOperator: string;
+  /** Initial **unblock** operator; may match `blockOperator` (G... or C...) */
+  unblockOperator: string;
   /** Pauser address (G... or C...) */
   pauser: string;
 }

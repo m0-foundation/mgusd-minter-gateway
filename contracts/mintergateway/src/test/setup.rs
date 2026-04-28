@@ -42,7 +42,7 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
     let block_operator = Address::generate(&env);
-    // Default tests use one address for both permissions (same as legacy single "blocker").
+    // Default tests use one address for both block and unblock permissions.
     let unblock_operator = block_operator.clone();
     let pauser = Address::generate(&env);
 

@@ -8,7 +8,7 @@ use super::setup::*;
 // =============================================================================
 
 #[test]
-fn test_batch_unblock_by_blocker() {
+fn test_batch_unblock_by_unblock_operator() {
     let s = setup();
     let accounts: Vec<Address> = Vec::from_array(
         &s.env,
@@ -28,7 +28,7 @@ fn test_batch_unblock_by_blocker() {
 }
 
 #[test]
-fn test_batch_block_by_blocker() {
+fn test_batch_block_by_block_operator() {
     let s = setup();
     let accounts: Vec<Address> = Vec::from_array(
         &s.env,

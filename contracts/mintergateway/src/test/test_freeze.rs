@@ -172,7 +172,7 @@ fn test_unblock_only_operator_cannot_block() {
 }
 
 #[test]
-fn test_blocker_can_block_user() {
+fn test_block_operator_can_block_user() {
     let s = setup();
     let user = Address::generate(&s.env);
 
@@ -184,7 +184,7 @@ fn test_blocker_can_block_user() {
 }
 
 #[test]
-fn test_blocker_can_unblock_user() {
+fn test_unblock_operator_can_unblock_user() {
     let s = setup();
     let user = Address::generate(&s.env);
 

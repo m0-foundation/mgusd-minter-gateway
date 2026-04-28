@@ -383,7 +383,7 @@ fn test_yield_recipient_manager_cannot_force_transfer() {
 }
 
 #[test]
-fn test_blocker_cannot_force_transfer() {
+fn test_block_operator_cannot_force_transfer() {
     let s = setup();
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
