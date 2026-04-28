@@ -17,7 +17,8 @@ fn test_batch_at_max_size_within_resource_limits() {
         accounts.push_back(Address::generate(&s.env));
     }
 
-    s.contract.batch_unblock_users(&accounts, &s.blocker);
+    s.contract
+        .batch_unblock_users(&accounts, &s.unblock_operator);
     let est = s.env.cost_estimate().resources();
 
     // SLP-0001 per-transaction limits (with safety margin)

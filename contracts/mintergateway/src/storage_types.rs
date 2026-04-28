@@ -40,6 +40,9 @@ pub enum DataKey {
     YieldRecipientManager, // Instance: Address (can set yield recipient)
     YieldRecipient,        // Instance: Address (can claim yield)
     ForcedTransferManager, // Instance: Address (can authorize + transfer tokens)
-    Blocker(Address), // Instance: () — membership set; presence of the key grants the blocker role
-    Pauser,           // Instance: Address (can pause/unpause the contract)
+    /// Instance: () — membership set; presence allows `block_user` / `batch_block_users`
+    BlockOperator(Address),
+    /// Instance: () — membership set; presence allows `unblock_user` / `batch_unblock_users`
+    UnblockOperator(Address),
+    Pauser, // Instance: Address (can pause/unpause the contract)
 }

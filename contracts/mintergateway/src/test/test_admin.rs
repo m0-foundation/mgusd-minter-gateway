@@ -16,12 +16,13 @@ fn test_forced_transfer_manager_view() {
 }
 
 #[test]
-fn test_blocker_view() {
+fn test_block_unblock_operator_views() {
     let s = setup();
-    assert!(s.contract.is_blocker(&s.blocker));
-    // An arbitrary address is not a blocker by default.
+    assert!(s.contract.is_block_operator(&s.block_operator));
+    assert!(s.contract.is_unblock_operator(&s.unblock_operator));
     let someone = Address::generate(&s.env);
-    assert!(!s.contract.is_blocker(&someone));
+    assert!(!s.contract.is_block_operator(&someone));
+    assert!(!s.contract.is_unblock_operator(&someone));
 }
 
 // =============================================================================
@@ -80,40 +81,67 @@ fn test_set_forced_transfer_manager() {
 }
 
 #[test]
-fn test_add_and_remove_blocker() {
+fn test_add_and_remove_block_operator() {
     let s = setup();
     let extra = Address::generate(&s.env);
 
-    // Initial blocker from the constructor is present; the new one is not.
-    assert!(s.contract.is_blocker(&s.blocker));
-    assert!(!s.contract.is_blocker(&extra));
+    assert!(s.contract.is_block_operator(&s.block_operator));
+    assert!(!s.contract.is_block_operator(&extra));
 
-    // Grant: both are blockers simultaneously — the role is not single-holder.
-    s.contract.add_blocker(&extra);
-    assert!(s.contract.is_blocker(&s.blocker));
-    assert!(s.contract.is_blocker(&extra));
+    s.contract.add_block_operator(&extra);
+    assert!(s.contract.is_block_operator(&s.block_operator));
+    assert!(s.contract.is_block_operator(&extra));
 
-    // Revoke the original; `extra` remains.
-    s.contract.remove_blocker(&s.blocker);
-    assert!(!s.contract.is_blocker(&s.blocker));
-    assert!(s.contract.is_blocker(&extra));
+    s.contract.remove_block_operator(&s.block_operator);
+    assert!(!s.contract.is_block_operator(&s.block_operator));
+    assert!(s.contract.is_block_operator(&extra));
 }
 
 #[test]
-fn test_add_blocker_is_idempotent() {
+fn test_add_and_remove_unblock_operator() {
     let s = setup();
-    // Re-adding an existing blocker should not panic and leaves state unchanged.
-    s.contract.add_blocker(&s.blocker);
-    assert!(s.contract.is_blocker(&s.blocker));
+    let extra = Address::generate(&s.env);
+
+    assert!(s.contract.is_unblock_operator(&s.unblock_operator));
+    assert!(!s.contract.is_unblock_operator(&extra));
+
+    s.contract.add_unblock_operator(&extra);
+    assert!(s.contract.is_unblock_operator(&s.unblock_operator));
+    assert!(s.contract.is_unblock_operator(&extra));
+
+    s.contract.remove_unblock_operator(&s.unblock_operator);
+    assert!(!s.contract.is_unblock_operator(&s.unblock_operator));
+    assert!(s.contract.is_unblock_operator(&extra));
 }
 
 #[test]
-fn test_remove_blocker_is_idempotent() {
+fn test_add_block_operator_is_idempotent() {
+    let s = setup();
+    s.contract.add_block_operator(&s.block_operator);
+    assert!(s.contract.is_block_operator(&s.block_operator));
+}
+
+#[test]
+fn test_remove_block_operator_is_idempotent() {
     let s = setup();
     let never_added = Address::generate(&s.env);
-    // Removing a non-member should not panic.
-    s.contract.remove_blocker(&never_added);
-    assert!(!s.contract.is_blocker(&never_added));
+    s.contract.remove_block_operator(&never_added);
+    assert!(!s.contract.is_block_operator(&never_added));
+}
+
+#[test]
+fn test_add_unblock_operator_is_idempotent() {
+    let s = setup();
+    s.contract.add_unblock_operator(&s.unblock_operator);
+    assert!(s.contract.is_unblock_operator(&s.unblock_operator));
+}
+
+#[test]
+fn test_remove_unblock_operator_is_idempotent() {
+    let s = setup();
+    let never_added = Address::generate(&s.env);
+    s.contract.remove_unblock_operator(&never_added);
+    assert!(!s.contract.is_unblock_operator(&never_added));
 }
 
 // =============================================================================
@@ -137,7 +165,7 @@ fn test_admin_cannot_burn() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.blocker);
+    s.contract.unblock_user(&user, &s.unblock_operator);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_burn(&s.admin, &user, &(400 * DECIMALS));
@@ -226,19 +254,46 @@ fn test_set_forced_transfer_manager_reverts_without_auth() {
 }
 
 #[test]
-fn test_add_blocker_reverts_without_auth() {
+fn test_add_block_operator_reverts_without_auth() {
     let s = setup_no_mock_auth();
-    let new_blk = Address::generate(&s.env);
-    let err = s.contract.try_add_blocker(&new_blk).unwrap_err().unwrap();
+    let new_addr = Address::generate(&s.env);
+    let err = s
+        .contract
+        .try_add_block_operator(&new_addr)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, auth_error());
 }
 
 #[test]
-fn test_remove_blocker_reverts_without_auth() {
+fn test_remove_block_operator_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let err = s
         .contract
-        .try_remove_blocker(&s.blocker)
+        .try_remove_block_operator(&s.block_operator)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, auth_error());
+}
+
+#[test]
+fn test_add_unblock_operator_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let new_addr = Address::generate(&s.env);
+    let err = s
+        .contract
+        .try_add_unblock_operator(&new_addr)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, auth_error());
+}
+
+#[test]
+fn test_remove_unblock_operator_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let err = s
+        .contract
+        .try_remove_unblock_operator(&s.unblock_operator)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, auth_error());
