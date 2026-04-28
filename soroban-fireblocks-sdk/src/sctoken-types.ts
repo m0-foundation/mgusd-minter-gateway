@@ -47,7 +47,7 @@ export interface BlockUserParams {
   contractId: string;
   /** User (account) to block or unblock */
   user: string;
-  /** Operator: for `block_user`, admin or a block operator; for `unblock_user`, admin or an unblock operator */
+  /** Operator address — for `block_user` must hold the block operator role; for `unblock_user` must hold the unblock operator role (admin alone cannot block/unblock) */
   operator: string;
 }
 
@@ -55,13 +55,13 @@ export interface BatchBlockUsersParams {
   contractId: string;
   /** Users (accounts) to block or unblock (max 40) */
   users: string[];
-  /** Operator: for `batch_block_users`, admin or a block operator; for `batch_unblock_users`, admin or an unblock operator */
+  /** Operator address — for `batch_block_users` must hold the block operator role; for `batch_unblock_users` must hold the unblock operator role (admin alone cannot block/unblock) */
   operator: string;
 }
 
 export interface ForceTransferParams {
   contractId: string;
-  /** Caller address — must be admin or forced_transfer_manager */
+  /** Caller address — must be the configured forced_transfer_manager (admin alone cannot force-transfer) */
   caller: string;
   /** Source account */
   from: string;
@@ -79,7 +79,12 @@ export interface ReconcileBurnParams {
 
 export interface ClaimYieldParams {
   contractId: string;
-  /** Caller address — must be admin or yield_recipient */
+  /**
+   * Caller address — must be the configured yield_recipient_manager.
+   * The yield_recipient is the *destination* of the minted SAC tokens
+   * (passive); it does not call this method. Admin alone cannot claim
+   * yield without first granting itself the manager role.
+   */
   caller: string;
 }
 

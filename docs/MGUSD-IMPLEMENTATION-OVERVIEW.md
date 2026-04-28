@@ -15,7 +15,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Admin or an **unblock operator** whitelists (unblocks) accounts — individually via `unblock_user(user, operator)` or in batch via `batch_unblock_users(users, operator)` (up to 40 per call)
+1. Unblock operator whitelists (unblocks) accounts — individually via `unblock_user(user, operator)` or in batch via `batch_unblock_users(users, operator)` (up to 40 per call)
 2. Treasury transfers tokens to the user via the SAC's standard SEP-41 `transfer()`
 3. Whitelisted (unblocked) accounts can freely transfer among themselves
 4. Non-whitelisted (blocked) accounts cannot send or receive tokens
@@ -31,12 +31,12 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 1. Bridge calls `set_rate(rate_bps)` to set the current interest rate (this is a **Minter** permission, not Admin)
 2. Yield accrues continuously on `total_principal` using the exponential index
-3. Yield Recipient (MoneyGram) calls `claim_yield()` to mint accrued yield as new SAC tokens
+3. Yield Recipient Manager calls `claim_yield()` to mint accrued yield as new SAC tokens to the Yield Recipient
 4. Claimed yield increases `total_supply` but **not** `total_principal` — it does not compound
 
 ### 5. Forced Transfer (Compliance Action)
 
-1. Forced Transfer Manager (Crossmint) or Admin identifies a need to move tokens between accounts
+1. Forced Transfer Manager (Crossmint) identifies a need to move tokens between accounts
 2. Caller invokes `force_transfer(from, to, amount)` — no authorization from the source account is needed
 3. Contract clawbacks tokens from the source and mints them to the destination at the SAC layer
 4. Accumulators are unchanged — this is a balance redistribution, not a supply change
@@ -54,10 +54,10 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 | Role | Permissions | Intended Actor |
 |------|------------|----------------|
-| **Admin** | All contract functions (super-role) | M0 |
+| **Admin** | role administration only — see breakdown below | M0 |
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
-| **Yield Recipient Manager** | `set_yield_recipient` | M0 |
-| **Yield Recipient** | `claim_yield` | MoneyGram |
+| **Yield Recipient Manager** | `set_yield_recipient`, `claim_yield` | M0 |
+| **Yield Recipient** | passive — receives SAC tokens minted by `claim_yield` (does **not** call it) | MoneyGram |
 | **Forced Transfer Manager** | `force_transfer` | Crossmint |
 | **Block operator** (membership) | `block_user`, `batch_block_users` | Crossmint (typical) |
 | **Unblock operator** (membership) | `unblock_user`, `batch_unblock_users` | Crossmint (typical) |
@@ -65,17 +65,18 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`)
-- All roles are **single-address** except **Block operator** and **Unblock operator**, each a membership set (granted and revoked by Admin per set)
-- Only Admin can reassign roles (except Yield Recipient, which can be set by the Yield Recipient Manager or Admin)
-- Every role-gated function calls `require_auth()` on the `caller` argument, then verifies the caller is either Admin or the designated role holder — no implicit trust
-- Roles are stored in **Instance** storage
+- **Admin is *not* a super-role.** Admin's powers are limited to: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** call `mint`, `burn`, `set_rate`, `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`, `claim_yield`, `set_yield_recipient`, `pause`, or `unpause` without first granting itself the relevant role.
+- **No implicit emergency fallback.** A cold admin signer cannot freeze a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role — e.g. `add_block_operator(admin)` / `add_unblock_operator(admin)` to gain block / unblock, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Runbooks should plan for the dedicated role signers being reachable.
+- All roles are **single-address** except **Block operator** and **Unblock operator**, each a membership set (any number of addresses can hold each role, granted / revoked by Admin via `add_block_operator` / `remove_block_operator` and `add_unblock_operator` / `remove_unblock_operator`).
+- Only Admin can reassign roles (except Yield Recipient, which is set by the Yield Recipient Manager).
+- Every role-gated function calls `require_auth()` on the `caller` argument and verifies the caller equals the designated role holder — no implicit trust, no admin override.
+- Roles are stored in **Instance** storage.
 
 ---
 
 ## Contract Interface
 
-> **Note:** Admin can call any function below, not just the admin-exclusive ones. Each non-admin role can only call its own functions.
+> **Note:** Each role can only call its own functions. Admin is **not** a super-role and cannot call non-admin functions without first granting itself the relevant role (see [Roles](#roles)).
 
 ### Admin-Exclusive Functions (12)
 
@@ -108,11 +109,12 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 |----------|-----------|-------------|
 | `force_transfer` | `(caller: Address, from: Address, to: Address, amount: i128)` | Force-move SAC tokens between accounts (clawback + mint) |
 
-### Yield Recipient Manager Functions (1)
+### Yield Recipient Manager Functions (2)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `set_yield_recipient` | `(caller: Address, new_yr: Address)` | Set the address that can claim yield |
+| `set_yield_recipient` | `(caller: Address, new_yr: Address)` | Set the address that receives claimed yield |
+| `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to the yield recipient |
 
 ### Block / Unblock (allowlist) Functions (4)
 
@@ -124,12 +126,6 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `unblock_user` | `(user: Address, operator: Address)` | Unblock a user on the SAC (`set_authorized(true)`) |
 | `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 40 users in a single transaction |
 | `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 40 users in a single transaction |
-
-### Yield Recipient Functions (1)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to yield recipient |
 
 ### Pauser Functions (2)
 
@@ -332,7 +328,7 @@ On classic Stellar, sending tokens to the **issuer address** burns them automati
 
 The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by default.
 
-1. Accounts can only transact after Admin or an **unblock operator** calls `unblock_user()`
+1. Accounts can only transact after an **unblock operator** calls `unblock_user()`
 2. The issuer account has no trustline for its own asset and cannot be blocked or unblocked
 3. Blocked accounts hold tokens but cannot move them (including to the issuer)
 
@@ -347,8 +343,8 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 - SAC operates in `AUTH_REQUIRED` mode — accounts are unauthorized (blocked) by default
 - `unblock_user(user, operator)` → SAC `set_authorized(true)` → user can send/receive
 - `block_user(user, operator)` → SAC `set_authorized(false)` → user is blocked
-- A **block operator** (or Admin) can block; an **unblock operator** (or Admin) can unblock, including individual users
-- **Batch operations:** `batch_block_users` and `batch_unblock_users` accept up to 40 users per call (same role rules as the single-user calls)
+- Only a **block operator** can call `block_user`; only an **unblock operator** can call `unblock_user` — Admin must first call `add_block_operator(admin)` or `add_unblock_operator(admin)` if it needs the power directly
+- **Batch operations:** `batch_block_users` requires a block operator and `batch_unblock_users` requires an unblock operator; each accepts up to 40 users per call
 - The 40-user cap is derived from Soroban's per-transaction resource limits; each user consumes write entries for the SAC authorization state
 - Batch operations are atomic — if any user fails, the entire transaction reverts
 - Each user in a batch emits its own `UserBlocked` / `UserUnblocked` event (OZ `stellar_tokens::fungible::blocklist` shape) for indexer compatibility
@@ -357,7 +353,7 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 
 - Transfers use the SAC's standard SEP-41 `transfer()` — the wrapper contract has no transfer function
 - Both sender and receiver must be whitelisted (unfrozen) for a transfer to succeed
-- An **unblock operator** (or Admin) whitelists accounts via `unblock_user()`; a **block operator** (or Admin) can revoke via `block_user()`
+- An **unblock operator** whitelists accounts via `unblock_user()`; a **block operator** can revoke via `block_user()`
 - Transfers do **not** update accumulators — they are balance redistributions, not mints/burns
 - The issuer is exempt from `AUTH_REQUIRED` — authorized users can send tokens to the issuer, which destroys them without updating accumulators (see [Issuer Burn Problem](#the-issuer-burn-problem))
 
