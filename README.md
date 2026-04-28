@@ -1,88 +1,52 @@
 # Stellar Minter Gateway
 
-A Soroban smart contract system for issuing yield-bearing tokens on the Stellar network. The contract acts as a SAC (Stellar Asset Contract) admin, enabling controlled minting, burning, yield accrual via continuous compounding, and compliance enforcement through an on-chain allowlist. It is paired with a TypeScript SDK that handles transaction signing through Fireblocks MPC infrastructure.
-
-Monorepo for the **SAC Admin Yield Token** contract and the **Fireblocks signing SDK** that invokes it.
-
-| Directory | Description |
-|-----------|-------------|
-| `contracts/mintergateway/` | Soroban yield contract — SAC admin that mints, burns, tracks yield, and enforces an allowlist |
-| `soroban-fireblocks-sdk/` | TypeScript SDK for invoking the contract via Fireblocks raw signing (Ed25519) |
+A Soroban smart contract that acts as a SAC (Stellar Asset Contract) admin, enabling controlled minting, burning, yield accrual via continuous compounding, and compliance enforcement through an on-chain allowlist.
 
 ## Prerequisites
 
 - [Rust](https://rustup.rs/) (stable toolchain)
-- [Soroban CLI / Stellar CLI](https://soroban.stellar.org/docs/getting-started/setup) — includes the `stellar` command and the `wasm32` target
-- [Node.js](https://nodejs.org/) >= 20
-- A [Fireblocks](https://www.fireblocks.com/) account (for the SDK — not needed for contract-only development)
+- [Stellar CLI](https://developers.stellar.org/docs/tools/cli/install-cli) — pinned to **v25.2.0** (the soroban-sdk's minimum-CLI requirement; see `.tool-versions`)
 
-### Install Rust + Soroban target
+### Install Rust + Stellar CLI
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup target add wasm32v1-none
-cargo install stellar-cli --locked
+cargo install --locked stellar-cli@25.2.0
 ```
 
-### Install SDK dependencies
+If you use [mise](https://mise.jdx.dev/) or [asdf](https://asdf-vm.com/), `mise install` (or `asdf install`) will pick up the pin from `.tool-versions` automatically.
 
-```bash
-cd soroban-fireblocks-sdk
-npm install
-```
-
-### Configure environment
-
-```bash
-cd soroban-fireblocks-sdk
-cp .env.example .env
-# Edit .env with your Fireblocks credentials, vault IDs, and public keys
-```
-
-Key variables in `.env`:
-
-| Variable | Description |
-|----------|-------------|
-| `FIREBLOCKS_API_KEY` | Your Fireblocks API key |
-| `FIREBLOCKS_SECRET_PATH` | Path to your Fireblocks private key file |
-| `FIREBLOCKS_ASSET_ID` | `XLM_TEST` (testnet) or `XLM` (mainnet) |
-| `ISSUER_PUBLIC_KEY` | Stellar public key of the issuer account |
-| `MINTER_PUBLIC_KEY` | Stellar public key of the minter account |
-| `CONTRACT_ID` | Deployed contract ID (after deployment) |
+CI installs the same pinned version via the official [`stellar/stellar-cli@v25.2.0`](https://github.com/stellar/stellar-cli) GitHub Action. **Do not bump to `@latest` in CI** — bump in lockstep with the soroban-sdk's minimum-CLI requirement. This matches how [Blend](https://github.com/blend-capital/blend-contracts-v2) and Soroswap operate.
 
 ---
 
 ## Building
 
-### Contract
-
 ```bash
 stellar contract build
 ```
 
-### SDK
-
-```bash
-cd soroban-fireblocks-sdk
-npm install
-npm run build
-```
-
 ## Testing
-
-### Contract
 
 ```bash
 cargo test
 ```
 
-### SDK
+## Deploying
+
+Testnet / dev deploys are driven by `scripts/deploy-testnet.sh`, a thin bash wrapper around the `stellar` CLI that mirrors the 5-step pipeline (configure issuer flags → deploy SAC → upload WASM → deploy wrapper → transfer SAC admin). The script uses two `stellar keys` identities — an ISSUER (signs steps 1, 5) and a DEPLOYER (signs steps 2-4) — which can resolve to the same identity for testnet/dev or to distinct cold/warm signers for production.
 
 ```bash
-cd soroban-fireblocks-sdk
-npm test                # unit tests
-npm run test:integration # integration tests (requires Fireblocks credentials + testnet)
+cp scripts/deploy.env.example .env
+$EDITOR .env                          # fill in role pubkeys + key names
+make build
+./scripts/deploy-testnet.sh
 ```
+
+The script auto-loads `.env` from the repo root if present (gitignored). Per-role env vars are required (STEL1-5: no role-collapsing default).
+
+**Production deploys** that require Fireblocks-custodied signing live on the [`sdk-integration`](https://github.com/m0-foundation/stellar-minter-gateway/tree/sdk-integration) branch. That branch retains the TypeScript SDK and its Fireblocks deploy pipeline; check it out when you need to deploy with MPC-signed issuer keys.
 
 ---
 
@@ -225,26 +189,6 @@ Forced Transfer Manager
 Pauser
 └── pause / unpause
 ```
-
----
-
-## SDK — Fireblocks Signing Client
-
-The `soroban-fireblocks-sdk/` directory contains a TypeScript SDK that wraps the yield contract with Fireblocks MPC signing. See [`soroban-fireblocks-sdk/README.md`](soroban-fireblocks-sdk/README.md) for full setup, environment variables, and usage details.
-
-### SDK Methods
-
-| Method | Contract function | Description |
-|--------|-------------------|-------------|
-| `mint(caller, to, amount)` | `mint` | Mint SAC tokens to a recipient |
-| `burn(caller, from, amount)` | `burn` | Burn SAC tokens from an account |
-| `setRate(caller, rateBps)` | `set_rate` | Set interest rate in basis points |
-| `setMinter(newMinter)` | `set_minter` | Change the minter address (admin only) |
-| `queryAdmin()` | `admin` | Query the admin address |
-| `querySacToken()` | `sac_token` | Query the SAC token address |
-| `deployFull(...)` | — | Full deploy pipeline (configure issuer, deploy SAC, upload WASM, deploy wrapper, transfer admin) |
-
----
 
 ## Notes
 
