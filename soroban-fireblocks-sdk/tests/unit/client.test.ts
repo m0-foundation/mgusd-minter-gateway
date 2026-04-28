@@ -1,5 +1,7 @@
+import { createHash } from "crypto";
 import { Address, Keypair, Networks, rpc, xdr } from "@stellar/stellar-sdk";
 import { SorobanFireblocksClient } from "../../src/client";
+import { WasmHashMismatchError } from "../../src/errors";
 import { SorobanFireblocksConfig } from "../../src/types";
 
 // Mock all dependencies
@@ -15,6 +17,7 @@ const mockedFbSigner = fbSigner as jest.Mocked<typeof fbSigner>;
 function makeConfig(): SorobanFireblocksConfig {
   return {
     sorobanRpcUrl: "https://soroban-testnet.stellar.org",
+    horizonUrl: "https://horizon-testnet.stellar.org",
     networkPassphrase: Networks.TESTNET,
     fireblocksApiKey: "key",
     fireblocksSecretKey: "secret",
@@ -331,7 +334,7 @@ describe("SorobanFireblocksClient", () => {
   });
 
   describe("uploadWasm", () => {
-    it("orchestrates Soroban upload WASM pipeline and extracts wasm hash", async () => {
+    it("orchestrates Soroban upload WASM pipeline and returns the locally-derived sha256 hash", async () => {
       const fakeHash = Buffer.from("a".repeat(64), "hex");
       const mockTx = {
         hash: jest.fn().mockReturnValue(fakeHash),
@@ -341,8 +344,9 @@ describe("SorobanFireblocksClient", () => {
         addSignature: jest.fn(),
       };
 
-      const wasmHashBytes = Buffer.alloc(32, 0xab);
-      const returnValue = xdr.ScVal.scvBytes(wasmHashBytes);
+      const wasm = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
+      const localHashHex = createHash("sha256").update(wasm).digest("hex");
+      const returnValue = xdr.ScVal.scvBytes(Buffer.from(localHashHex, "hex"));
 
       mockedTxBuilder.buildUploadWasmTransaction.mockResolvedValue(mockTx as never);
       mockedTxBuilder.simulateAndPrepare.mockResolvedValue(mockTx as never);
@@ -361,14 +365,89 @@ describe("SorobanFireblocksClient", () => {
       const config = makeConfig();
       const client = new SorobanFireblocksClient(config);
 
-      const result = await client.uploadWasm({
-        wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
-      });
+      const result = await client.uploadWasm({ wasm });
 
       expect(result.status).toBe("SUCCESS");
-      expect(result.wasmHash).toBe(wasmHashBytes.toString("hex"));
+      expect(result.wasmHash).toBe(localHashHex);
       expect(result.ledger).toBe(70);
       expect(mockedTxBuilder.simulateAndPrepare).toHaveBeenCalledTimes(1);
+    });
+
+    it("throws WasmHashMismatchError when RPC returns a hash that differs from sha256(params.wasm)", async () => {
+      const fakeHash = Buffer.from("a".repeat(64), "hex");
+      const mockTx = {
+        hash: jest.fn().mockReturnValue(fakeHash),
+        source: "GABC",
+        operations: [],
+        signatures: [],
+        addSignature: jest.fn(),
+      };
+
+      const wasm = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
+      const expectedHashHex = createHash("sha256").update(wasm).digest("hex");
+      const attackerHashBytes = Buffer.alloc(32, 0xab);
+      const spoofedReturnValue = xdr.ScVal.scvBytes(attackerHashBytes);
+
+      mockedTxBuilder.buildUploadWasmTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.simulateAndPrepare.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+      mockedTxBuilder.submitAndPoll.mockResolvedValue({
+        status: rpc.Api.GetTransactionStatus.SUCCESS,
+        ledger: 70,
+        returnValue: spoofedReturnValue,
+      } as unknown as rpc.Api.GetSuccessfulTransactionResponse);
+
+      mockedFbSigner.signHash.mockResolvedValue({
+        signatureHex: "b".repeat(128),
+        fireblocksTransactionId: "fb-tx-030",
+      });
+
+      const config = makeConfig();
+      const client = new SorobanFireblocksClient(config);
+
+      await expect(client.uploadWasm({ wasm })).rejects.toMatchObject({
+        name: "WasmHashMismatchError",
+        expectedHash: expectedHashHex,
+        actualHash: attackerHashBytes.toString("hex"),
+      });
+      await expect(client.uploadWasm({ wasm })).rejects.toBeInstanceOf(WasmHashMismatchError);
+    });
+
+    it("throws WasmHashMismatchError when SUCCESS response is missing returnValue", async () => {
+      const fakeHash = Buffer.from("a".repeat(64), "hex");
+      const mockTx = {
+        hash: jest.fn().mockReturnValue(fakeHash),
+        source: "GABC",
+        operations: [],
+        signatures: [],
+        addSignature: jest.fn(),
+      };
+
+      const wasm = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
+      const expectedHashHex = createHash("sha256").update(wasm).digest("hex");
+
+      mockedTxBuilder.buildUploadWasmTransaction.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.simulateAndPrepare.mockResolvedValue(mockTx as never);
+      mockedTxBuilder.addSignatureToTransaction.mockReturnValue(mockTx as never);
+      mockedTxBuilder.submitAndPoll.mockResolvedValue({
+        status: rpc.Api.GetTransactionStatus.SUCCESS,
+        ledger: 70,
+        returnValue: undefined,
+      } as unknown as rpc.Api.GetSuccessfulTransactionResponse);
+
+      mockedFbSigner.signHash.mockResolvedValue({
+        signatureHex: "b".repeat(128),
+        fireblocksTransactionId: "fb-tx-030",
+      });
+
+      const config = makeConfig();
+      const client = new SorobanFireblocksClient(config);
+
+      await expect(client.uploadWasm({ wasm })).rejects.toMatchObject({
+        name: "WasmHashMismatchError",
+        expectedHash: expectedHashHex,
+        actualHash: undefined,
+      });
     });
   });
 

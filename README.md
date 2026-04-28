@@ -147,7 +147,9 @@ The issuer account has no trustline for its own asset and cannot be frozen or un
 
 ## Compliance Controls
 
-The admin has compliance functions for managing the allowlist and enforcing regulatory requirements.
+Block / unblock and forced-transfer flows are gated by their **own** roles —
+the admin role does *not* implicitly carry these powers. See
+[Roles](#roles) for the full authorization graph.
 
 | Function | Role | Description |
 |----------|------|-------------|
@@ -165,30 +167,34 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 
 | Role | Permissions | Intended Actor |
 |------|------------|----------------|
-| **Admin** | Role rotation + contract-level operations (`set_admin`, `set_minter`, `set_pauser`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_blocker`, `remove_blocker`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`) | M0 |
+| **Admin** | role administration only — see breakdown below | M0 |
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient`, `claim_yield` | M0 |
-| **Yield Recipient** | Receives minted yield tokens (payout destination; does not call `claim_yield`) | MoneyGram |
+| **Yield Recipient** | passive — receives the SAC tokens minted by `claim_yield` (does **not** call it) | MoneyGram |
 | **Blocker** | `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users` | Crossmint |
 | **Forced Transfer Manager** | `force_transfer` | *(configurable)* |
-| **Pauser** | `pause`, `unpause` | *(configurable)* |
+| **Pauser** | `pause`, `unpause` | M0 |
 
 **Design properties:**
 
-- **Admin is not a super-role.** Admin can only call the functions listed above. Every operational function is gated by its specific role holder via `require_role_holder`, with no admin fallback.
-- All roles are **single-address** except **Blocker**, which is a membership set (any number of addresses can hold the role)
-- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager). Admin grants / revokes the blocker role via `add_blocker` / `remove_blocker`.
-- Every role-gated function calls `require_auth()` on the role holder — no implicit trust
-- Roles are stored in **Instance** storage
+- **Admin is *not* a super-role.** Admin can only call admin-exclusive functions: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_blocker`, `remove_blocker`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** block users, force-transfer, claim yield, mint, burn, set rate, or pause without first granting itself the relevant role.
+- **Operational consequence (no implicit emergency fallback).** A cold admin signer cannot freeze a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role: `add_blocker(admin)` to gain block/unblock, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Plan response runbooks accordingly — keep the dedicated role signers reachable.
+- All roles are **single-address** except **Blocker**, which is a membership set (any number of addresses can hold the role; granted/revoked by Admin via `add_blocker` / `remove_blocker`).
+- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager).
+- Every role-gated function calls `require_auth()` on the `caller` argument and verifies it equals the role holder — no implicit trust.
+- Roles are stored in **Instance** storage.
 
 ## Role Hierarchy
 
 ```
-Admin
-├── Role rotation: set_admin, set_minter, set_pauser, set_yield_recipient_manager,
-│                   set_forced_transfer_manager, add_blocker, remove_blocker
-└── Contract operations: reconcile_burn, transfer_sac_admin, upgrade
-    (no operational privileges — cannot mint, burn, block, force-transfer, pause, or claim)
+Admin (role administrator only — NOT a super-role)
+├── Sets/rotates: Minter, Yield Recipient Manager, Forced Transfer Manager, Pauser
+├── Grants/revokes: Blocker membership (add_blocker / remove_blocker)
+├── reconcile_burn — accumulator reconciliation for tokens destroyed off-contract
+├── transfer_sac_admin — emergency / migration handoff of SAC admin
+└── upgrade — contract upgrade
+   (Cannot block, force-transfer, mint, burn, claim, or pause without
+    first granting itself the relevant role.)
 
 Minter (Bridge / Issuer)
 ├── Mints SAC tokens directly via mint()
@@ -196,14 +202,13 @@ Minter (Bridge / Issuer)
 └── Sets interest rate for yield accrual via set_rate()
 
 Yield Recipient Manager
-├── Sets / changes the Yield Recipient address via set_yield_recipient()
-└── Claims accrued yield to the current Yield Recipient via claim_yield()
+├── Sets/changes Yield Recipient address (set_yield_recipient)
+└── Calls claim_yield — the resulting SAC tokens are minted to the Yield Recipient
 
 Yield Recipient
-└── Receives yield tokens minted by claim_yield (payout destination only;
-    does not call claim_yield itself)
+└── Passive — holds the SAC tokens minted by claim_yield (does not call it)
 
-Blocker (membership set — multiple holders)
+Blocker (membership set; Admin grants / revokes)
 ├── Blocks/unblocks individual users (`block_user` / `unblock_user`)
 └── Batch block/unblock users (max 40 per call) — matches the `stellar_tokens::fungible::blocklist` function shape
 
@@ -211,11 +216,8 @@ Forced Transfer Manager
 └── force_transfer — clawback + mint (bypasses block on source)
 
 Pauser
-└── pause / unpause — halts mint, burn, reconcile_burn, force_transfer, claim_yield
-    (block/unblock and views remain callable while paused)
+└── pause / unpause
 ```
-
-**Incident-response note:** because admin is not in the blocker set by default, admin cannot call `block_user`/`unblock_user` directly during an incident. To give the admin compliance authority, admin must first call `add_blocker(admin_address)` to join the blocker set.
 
 ---
 

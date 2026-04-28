@@ -15,6 +15,7 @@ import { SorobanFireblocksConfig } from "../../src/types";
 function makeConfig(overrides?: Partial<SorobanFireblocksConfig>): SorobanFireblocksConfig {
   return {
     sorobanRpcUrl: "https://soroban-testnet.stellar.org",
+    horizonUrl: "https://horizon-testnet.stellar.org",
     networkPassphrase: Networks.TESTNET,
     fireblocksApiKey: "key",
     fireblocksSecretKey: "secret",
