@@ -120,7 +120,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### Block / Unblock (allowlist) Functions (4)
 
-`block_user` and `batch_block_users` require the caller to be Admin or a **block operator**. `unblock_user` and `batch_unblock_users` require the caller to be Admin or an **unblock operator**. Matches the `stellar_tokens::fungible::blocklist` function shape; backed by the SAC allowlist.
+`block_user` and `batch_block_users` require the caller to be a **block operator**. `unblock_user` and `batch_unblock_users` require the caller to be an **unblock operator**. Admin is not an implicit bypass for these functions; if an admin-driven fallback is desired, the admin can grant itself membership in the relevant operator set (`add_block_operator(admin)` / `add_unblock_operator(admin)`). Matches the `stellar_tokens::fungible::blocklist` function shape; backed by the SAC allowlist.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|

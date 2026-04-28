@@ -63,16 +63,16 @@
 # PREREQUISITES (out-of-band, NOT done by this script)
 # =============================================================================
 #
-#   - ISSUER account must exist on the network and be funded with XLM.
+#   - ISSUER account must exist on the testnet/dev network and be funded with XLM.
 #       Testnet: curl "https://friendbot.stellar.org?addr=$ISSUER_PUBLIC_KEY"
-#       Mainnet: one-time treasury transfer (handled by ops, not this script)
+#       Other dev networks: fund the account out-of-band before running.
 #   - DEPLOYER account must exist on the network and be funded.
 #   - Wrapper WASM must be built (`make build` from repo root).
 #   - The asset (CODE, ISSUER) must NOT already have any holders, pre-set
 #     issuer flags, or trustlines. This is an audit safety property
 #     (STEL1-6: deploying onto a "dirty" issuer can bypass AUTH_REQUIRED).
 #     This script does NOT verify the issuer is clean — verify manually
-#     before mainnet deploy.
+#     before running.
 #
 # =============================================================================
 # REQUIRED ENV VARS
@@ -168,6 +168,24 @@ PAUSER=$(require_pubkey PAUSER_PUBLIC_KEY)
 
 if [[ ! -f "$WASM_PATH" ]]; then
   echo "ERROR: WASM not found at $WASM_PATH — run 'make build' first" >&2
+  exit 1
+fi
+
+# Consistency check: the pubkey behind ISSUER_KEY_NAME must match
+# ISSUER_PUBLIC_KEY. A mismatch would deploy the SAC for one issuer
+# while signing set_options/set_admin with a different key — silently
+# misconfigured asset. Hard-fail before any tx fires.
+ISSUER_KEY_PUBKEY=$(stellar keys public-key "$ISSUER_KEY" 2>/dev/null | tr -d '\r\n' || true)
+if [[ -z "$ISSUER_KEY_PUBKEY" ]]; then
+  echo "ERROR: \`stellar keys public-key $ISSUER_KEY\` returned no pubkey." >&2
+  echo "       Verify the identity exists: \`stellar keys ls\`" >&2
+  exit 1
+fi
+if [[ "$ISSUER_KEY_PUBKEY" != "$ISSUER" ]]; then
+  echo "ERROR: ISSUER_PUBLIC_KEY does not match the pubkey behind ISSUER_KEY_NAME." >&2
+  echo "       ISSUER_PUBLIC_KEY=$ISSUER" >&2
+  echo "       \`stellar keys public-key $ISSUER_KEY\`=$ISSUER_KEY_PUBKEY" >&2
+  echo "       Fix .env so the two match before re-running." >&2
   exit 1
 fi
 

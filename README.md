@@ -85,7 +85,7 @@ The contract never holds user funds. Users hold tokens directly in their account
 
 ### Token Distribution
 
-The unblock operator (or Admin) whitelists recipient accounts via `unblock_user()`. Once whitelisted, tokens can be transferred to the recipient using the SAC's standard SEP-41 `transfer()`. Whitelisted accounts can freely transfer among themselves. Accumulators are not affected by transfers — they are balance redistributions, not mints/burns.
+The unblock operator whitelists recipient accounts via `unblock_user()`. Once whitelisted, tokens can be transferred to the recipient using the SAC's standard SEP-41 `transfer()`. Whitelisted accounts can freely transfer among themselves. Accumulators are not affected by transfers — they are balance redistributions, not mints/burns. (Admin can grant itself unblock-operator membership via `add_unblock_operator(admin)` if a fallback is needed; admin is not an implicit bypass for this function.)
 
 ## Authorization & Allowlist
 
@@ -95,13 +95,13 @@ The SAC issuer is configured with **AUTH_REQUIRED**, **REVOCABLE**, and **CLAWBA
 
 1. Issuer flags are set on the SAC issuer account via classic Stellar (not from within Soroban)
 2. New accounts are **unauthorized by default** — they cannot hold, send, or receive the token
-3. An **unblock operator** (or Admin) calls `unblock_user(addr, operator)` to authorize approved accounts
+3. An **unblock operator** calls `unblock_user(addr, operator)` to authorize approved accounts (admin can grant itself membership via `add_unblock_operator(admin)` for an emergency fallback)
 4. Both **sender and receiver** must be authorized for any SAC transfer to succeed
 
 | State | Can Send | Can Receive | How to enter |
 |-------|:--------:|:-----------:|--------------|
-| **Authorized** | ✓ | ✓ | Unblock operator (or Admin) calls `unblock_user` |
-| **Unauthorized** (default) | ✗ | ✗ | Default state, or block operator (or Admin) calls `block_user` |
+| **Authorized** | ✓ | ✓ | Unblock operator calls `unblock_user` |
+| **Unauthorized** (default) | ✗ | ✗ | Default state, or block operator calls `block_user` |
 
 The contract exposes the `stellar_tokens::fungible::blocklist` function shape (`block_user`, `unblock_user`, `blocked`, `balance`) directly against the SAC's `set_authorized`. Because the SAC issuer runs with AUTH_REQUIRED, `blocked(account)` returns `true` for any account that has never been unblocked.
 
