@@ -120,7 +120,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### Block / Unblock (allowlist) Functions (4)
 
-`block_user` and `batch_block_users` require the caller to be Admin or a **block operator**. `unblock_user` and `batch_unblock_users` require the caller to be Admin or an **unblock operator**. Matches the `stellar_tokens::fungible::blocklist` function shape; backed by the SAC allowlist.
+`block_user` and `batch_block_users` require the caller to be a **block operator**. `unblock_user` and `batch_unblock_users` require the caller to be an **unblock operator**. Matches the `stellar_tokens::fungible::blocklist` function shape; backed by the SAC allowlist.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -181,7 +181,7 @@ The Minter acts as the **bridge gateway** — the sole entry point for supply ch
 mint(to: Address, amount: i128)
 ```
 
-0. Validates positive amount and caller authorization (Minter or Admin)
+0. Validates positive amount and caller authorization (Minter only)
 1. Finalizes pending yield via `update_index()`
 2. Increases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
 3. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
@@ -195,7 +195,7 @@ Recipient must already be authorized (unfrozen) on the SAC.
 burn(from: Address, amount: i128)
 ```
 
-0. Validates positive amount and caller authorization (Minter or Admin)
+0. Validates positive amount and caller authorization (Minter only)
 1. Finalizes pending yield via `update_index()`
 2. Decreases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
 3. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
@@ -243,7 +243,7 @@ Does **not** interact with the SAC — no clawback or burn at the token layer. T
 force_transfer(caller: Address, from: Address, to: Address, amount: i128)
 ```
 
-Administrative token movement that does not require the source account's authorization. Forced Transfer Manager or Admin only.
+Administrative token movement that does not require the source account's authorization. Forced Transfer Manager only.
 
 1. Validates positive amount and caller role
 2. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
@@ -253,7 +253,7 @@ Administrative token movement that does not require the source account's authori
 ### Key Properties
 
 - **No accumulator changes** — supply is unchanged (tokens are moved, not created or destroyed), so `total_principal` and `total_supply` are not touched
-- **No source authorization** — only the caller (Forced Transfer Manager or Admin) must authenticate; the `from` account does not need to sign
+- **No source authorization** — only the caller (Forced Transfer Manager) must authenticate; the `from` account does not need to sign
 - **Works on frozen accounts** — clawback bypasses the SAC's `AUTH_REQUIRED` freeze on the source
 - **Destination must be authorized** — the `to` account must be unfrozen to receive the minted tokens
 - **Dedicated event** — emits `force_tx`, not `sup_chg`, since supply doesn't change
