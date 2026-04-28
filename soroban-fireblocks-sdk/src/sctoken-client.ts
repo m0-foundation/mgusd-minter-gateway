@@ -1,5 +1,6 @@
-import { Address, scValToNative } from "@stellar/stellar-sdk";
+import { Address, Horizon, scValToNative } from "@stellar/stellar-sdk";
 import { SorobanFireblocksClient } from "./client";
+import { assertIssuerNotContaminated } from "./deploy-checks";
 import { addressToScVal, addressVecToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
 import {
   MAX_BATCH_SIZE,
@@ -245,6 +246,20 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
   }
 
   async deployFull(params: DeployFullParams): Promise<DeployFullResult> {
+    // Step 0: Refuse to deploy if the issuer has any prior on-chain
+    // footprint for this asset (trustlines, claimable balances, pools,
+    // contract holders). Stellar binds clawback eligibility at trustline-
+    // creation time, so anything that exists right now — before step 1
+    // sets AUTH_CLAWBACK_ENABLED — is pre-flag and permanently
+    // unclawbackable. The wrapper's burn / force_transfer / freeze paths
+    // all delegate to SAC clawback, so a single pre-flag holder that ever
+    // gets minted to is an irreversible compliance hole. See audit
+    // STEL1-6 and the long-form rationale in `assertIssuerNotContaminated`.
+    console.log("Step 0/5: Checking issuer for pre-flag trustline contamination...");
+    const horizon = new Horizon.Server(this.config.horizonUrl);
+    await assertIssuerNotContaminated(horizon, params.assetCode, params.assetIssuer);
+    console.log("  Issuer is clean — no pre-existing trustlines or claimable balances");
+
     // Step 1: Configure issuer flags (AUTH_REQUIRED + AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED — clawback enabled is required for burn)
     console.log("Step 1/5: Configuring issuer flags...");
     const issuerResult = await this.configureIssuer();

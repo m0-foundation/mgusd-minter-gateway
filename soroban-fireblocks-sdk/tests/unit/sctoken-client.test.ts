@@ -5,18 +5,23 @@ import { SorobanFireblocksConfig } from "../../src/types";
 // Mock all dependencies
 jest.mock("../../src/soroban-tx-builder");
 jest.mock("../../src/fireblocks-signer");
+jest.mock("../../src/deploy-checks");
 
 import * as txBuilder from "../../src/soroban-tx-builder";
 import * as fbSigner from "../../src/fireblocks-signer";
+import * as deployChecks from "../../src/deploy-checks";
+import { IssuerContaminatedError } from "../../src/errors";
 
 const mockedTxBuilder = txBuilder as jest.Mocked<typeof txBuilder>;
 const mockedFbSigner = fbSigner as jest.Mocked<typeof fbSigner>;
+const mockedDeployChecks = deployChecks as jest.Mocked<typeof deployChecks>;
 
 const CONTRACT_ID = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
 
 function makeConfig(): SorobanFireblocksConfig {
   return {
     sorobanRpcUrl: "https://soroban-testnet.stellar.org",
+    horizonUrl: "https://horizon-testnet.stellar.org",
     networkPassphrase: Networks.TESTNET,
     fireblocksApiKey: "key",
     fireblocksSecretKey: "secret",
@@ -68,6 +73,9 @@ function setupMocks(returnValue?: xdr.ScVal): void {
 describe("SctokenFireblocksClient", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Default: deployFull's step-0 contamination check passes. Individual
+    // tests can override (see "deployFull aborts when issuer is contaminated").
+    mockedDeployChecks.assertIssuerNotContaminated.mockResolvedValue(undefined);
   });
 
   describe("mint", () => {
@@ -389,6 +397,53 @@ describe("SctokenFireblocksClient", () => {
       // 5 total sign + submit calls
       expect(mockedFbSigner.signHash).toHaveBeenCalledTimes(5);
       expect(mockedTxBuilder.submitAndPoll).toHaveBeenCalledTimes(5);
+
+      consoleSpy.mockRestore();
+    });
+
+    it("aborts at step 0 when issuer is contaminated, never touching tx-builder helpers", async () => {
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      mockedDeployChecks.assertIssuerNotContaminated.mockRejectedValue(
+        new IssuerContaminatedError(
+          "Issuer GISSUER... has prior on-chain footprint for asset TMGUSD",
+          "TMGUSD",
+          "GISSUER...",
+          { trustlines: 1, claimableBalances: 0, liquidityPools: 0, contracts: 0 },
+        ),
+      );
+
+      await expect(
+        client.deployFull({
+          assetCode: "TMGUSD",
+          assetIssuer: "GISSUER...",
+          wasm: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+          admin: config.sourcePublicKey,
+          minter: config.sourcePublicKey,
+          yieldRecipientManager: config.sourcePublicKey,
+          yieldRecipient: config.sourcePublicKey,
+          forcedTransferManager: config.sourcePublicKey,
+          blocker: config.sourcePublicKey,
+          pauser: config.sourcePublicKey,
+        }),
+      ).rejects.toBeInstanceOf(IssuerContaminatedError);
+
+      // Critical: STEL1-6 mitigation must abort *before* any state-mutating
+      // step runs. configureIssuer / deploySac / uploadWasm / deployContract /
+      // set_admin must all be untouched.
+      expect(mockedDeployChecks.assertIssuerNotContaminated).toHaveBeenCalledWith(
+        expect.anything(),
+        "TMGUSD",
+        "GISSUER...",
+      );
+      expect(mockedTxBuilder.buildConfigureIssuerTransaction).not.toHaveBeenCalled();
+      expect(mockedTxBuilder.buildDeploySacTransaction).not.toHaveBeenCalled();
+      expect(mockedTxBuilder.buildUploadWasmTransaction).not.toHaveBeenCalled();
+      expect(mockedTxBuilder.buildDeployContractTransaction).not.toHaveBeenCalled();
+      expect(mockedTxBuilder.buildInvokeTransaction).not.toHaveBeenCalled();
+      expect(mockedFbSigner.signHash).not.toHaveBeenCalled();
 
       consoleSpy.mockRestore();
     });

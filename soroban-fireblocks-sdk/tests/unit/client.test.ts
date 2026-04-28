@@ -15,6 +15,7 @@ const mockedFbSigner = fbSigner as jest.Mocked<typeof fbSigner>;
 function makeConfig(): SorobanFireblocksConfig {
   return {
     sorobanRpcUrl: "https://soroban-testnet.stellar.org",
+    horizonUrl: "https://horizon-testnet.stellar.org",
     networkPassphrase: Networks.TESTNET,
     fireblocksApiKey: "key",
     fireblocksSecretKey: "secret",
