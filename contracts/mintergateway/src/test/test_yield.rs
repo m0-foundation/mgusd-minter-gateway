@@ -199,9 +199,8 @@ fn test_yield_compounds_after_claim() {
     let expected_compound = (principal + first_claim)
         * (index_after_second_claim - index_after_first_claim)
         / INDEX_SCALE;
-    let simple_interest_baseline = principal
-        * (index_after_second_claim - index_after_first_claim)
-        / INDEX_SCALE;
+    let simple_interest_baseline =
+        principal * (index_after_second_claim - index_after_first_claim) / INDEX_SCALE;
 
     assert_eq!(
         second_claim, expected_compound,
@@ -489,9 +488,8 @@ fn test_burn_before_claim_leaves_no_phantom_yield() {
          residue from the original burn",
     );
     let index_after_year2 = s.contract.current_index();
-    let expected_compound = ONE_YEAR_YIELD_ON_1K
-        * (index_after_year2 - index_after_claim)
-        / INDEX_SCALE;
+    let expected_compound =
+        ONE_YEAR_YIELD_ON_1K * (index_after_year2 - index_after_claim) / INDEX_SCALE;
     assert_eq!(
         s.contract.accrued_yield(),
         expected_compound,
@@ -560,9 +558,8 @@ fn test_reconcile_burn_before_claim_leaves_no_phantom_yield() {
          residue from reconcile_burn",
     );
     let index_after_year2 = s.contract.current_index();
-    let expected_compound = ONE_YEAR_YIELD_ON_1K
-        * (index_after_year2 - index_after_claim)
-        / INDEX_SCALE;
+    let expected_compound =
+        ONE_YEAR_YIELD_ON_1K * (index_after_year2 - index_after_claim) / INDEX_SCALE;
     assert_eq!(
         s.contract.accrued_yield(),
         expected_compound,

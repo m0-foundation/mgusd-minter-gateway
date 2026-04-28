@@ -188,9 +188,8 @@ fn test_year_two_yield_compounds_on_prior_claim() {
     // now includes the year-1 claim. The simple-interest baseline (yield
     // only on the original `principal`) is strictly smaller.
     let index_after_yr2 = s.contract.latest_index();
-    let expected_yr2 = (principal + claimed_yr1)
-        * (index_after_yr2 - index_after_yr1)
-        / INDEX_SCALE;
+    let expected_yr2 =
+        (principal + claimed_yr1) * (index_after_yr2 - index_after_yr1) / INDEX_SCALE;
     let simple_interest_yr2 = principal * (index_after_yr2 - index_after_yr1) / INDEX_SCALE;
 
     assert_eq!(
