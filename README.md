@@ -44,15 +44,11 @@ make build
 ./scripts/deploy-testnet.sh
 ```
 
-The script auto-loads `.env` from the repo root if present (gitignored). Per-role env vars are required (STEL1-5: no role-collapsing default).
+The script auto-loads `.env` from the repo root if present (gitignored). All required env vars and per-role conventions are documented in [`scripts/deploy.env.example`](scripts/deploy.env.example) (STEL1-5: no role-collapsing default).
 
 **Production deploys** that require Fireblocks-custodied signing live on the [`sdk-integration`](https://github.com/m0-foundation/stellar-minter-gateway/tree/sdk-integration) branch. That branch retains the TypeScript SDK and its Fireblocks deploy pipeline; check it out when you need to deploy with MPC-signed issuer keys.
 
 ---
-
-## Contract — SAC Admin Yield Token
-
-A Soroban contract that acts as the **SAC admin** for a Stellar asset. It directly mints and burns tokens via the SAC interface, tracks yield accrual on total principal, and enforces an allowlist via AUTH_REQUIRED.
 
 ## Overview
 
@@ -63,7 +59,7 @@ This contract is set as the **SAC admin**, giving it the ability to:
 - **Mint** new SAC tokens to authorized recipients (`mint`)
 - **Burn** SAC tokens from accounts (`burn`)
 - **Claim yield** by minting new tokens to the yield recipient (`claim_yield`)
-- **Control authorization** — freeze and unfreeze accounts via the SAC allowlist
+- **Control authorization** — block and unblock accounts via the SAC allowlist
 
 The contract never holds user funds. Users hold tokens directly in their accounts.
 
@@ -107,7 +103,7 @@ The contract exposes the `stellar_tokens::fungible::blocklist` function shape (`
 
 ### Issuer Burn Prevention
 
-The issuer account has no trustline for its own asset and cannot be frozen or unfrozen. However, the issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level — authorized (unfrozen) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. Tokens sent to the issuer are destroyed (un-issued) without updating the contract's yield accumulators. See [Note 2](#note-2--send-to-issuer-bypasses-yield-accrual) for operational implications.
+The issuer account has no trustline for its own asset and cannot be blocked or unblocked. However, the issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level — authorized (unblocked) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. Tokens sent to the issuer are destroyed (un-issued) without updating the contract's yield accumulators. See [Note 2](#note-2--send-to-issuer-bypasses-yield-accrual) for operational implications.
 
 ## Compliance Controls
 
@@ -125,7 +121,7 @@ the admin role does *not* implicitly carry these powers. See
 | `balance(id)` | (view) | Returns the SAC-reported balance for an address |
 
 - `block_user` and `unblock_user` call the SAC's `set_authorized` under the hood
-- Events match the OZ standard (`UserBlocked` / `UserUnblocked` with topics `["block", user]` / `["unblock", user]`)
+- Emits the upstream `stellar_tokens::fungible::blocklist` events: `UserBlocked` / `UserUnblocked` (snake_case topic names `user_blocked` / `user_unblocked`, with the user `Address` as a topic)
 
 ## Roles
 
@@ -143,7 +139,7 @@ the admin role does *not* implicitly carry these powers. See
 **Design properties:**
 
 - **Admin is *not* a super-role.** Admin can only call admin-exclusive functions: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** block users, unblock users, force-transfer, claim yield, mint, burn, set rate, or pause without first granting itself the relevant role.
-- **Operational consequence (no implicit emergency fallback).** A cold admin signer cannot freeze a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role: `add_block_operator(admin)` to gain block, `add_unblock_operator(admin)` to gain unblock, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Plan response runbooks accordingly — keep the dedicated role signers reachable.
+- **Operational consequence (no implicit emergency fallback).** A cold admin signer cannot block a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role: `add_block_operator(admin)` to gain block, `add_unblock_operator(admin)` to gain unblock, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Plan response runbooks accordingly — keep the dedicated role signers reachable.
 - All roles are **single-address** except **Block operator** and **Unblock operator**, each a membership set (any number of addresses can hold each role; granted/revoked by Admin via `add_block_operator` / `remove_block_operator` and `add_unblock_operator` / `remove_unblock_operator`).
 - Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager).
 - Every role-gated function calls `require_auth()` on the `caller` argument and verifies it equals the role holder — no implicit trust.
@@ -200,12 +196,7 @@ Pauser
 
 ### Note 2 — Send-to-Issuer Bypasses Yield Accrual
 
-- Because MGUSD is a Stellar-native asset (SAC-wrapped), authorized users can send tokens directly to the issuer address using standard Stellar operations (SAC `transfer()`, classic `PaymentOp`) — the issuer is exempt from `AUTH_REQUIRED` and cannot be frozen
+- Because MGUSD is a Stellar-native asset (SAC-wrapped), authorized users can send tokens directly to the issuer address using standard Stellar operations (SAC `transfer()`, classic `PaymentOp`) — the issuer is exempt from `AUTH_REQUIRED` and cannot be blocked
 - Tokens sent to the issuer are destroyed at the protocol level (un-issued), but the contract's accumulators (`total_principal`, `total_supply`) are **not updated** — the contract has no visibility into these direct transfers
 - M0 must account for this in its off-chain yield calculations by reconciling actual circulating supply against the contract's reported `total_supply`
 
----
-
-## TODO
-
-- [ ] Double check rounding math (verify rounding directions are consistent and protocol-favorable across all operations)
