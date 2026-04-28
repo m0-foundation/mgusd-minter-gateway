@@ -316,9 +316,9 @@ fn test_block_user_does_not_revoke_existing_allowances() {
     let principal = 1_000 * DECIMALS;
     let allowance = 500 * DECIMALS;
 
-    s.contract.unblock_user(&owner, &s.blocker);
-    s.contract.unblock_user(&spender, &s.blocker);
-    s.contract.unblock_user(&recipient, &s.blocker);
+    s.contract.unblock_user(&owner, &s.unblock_operator);
+    s.contract.unblock_user(&spender, &s.unblock_operator);
+    s.contract.unblock_user(&recipient, &s.unblock_operator);
     s.contract.mint(&s.minter, &owner, &principal);
 
     let expiration_ledger = s.env.ledger().sequence() + 1_000_000;
@@ -326,7 +326,7 @@ fn test_block_user_does_not_revoke_existing_allowances() {
         .approve(&owner, &spender, &allowance, &expiration_ledger);
     assert_eq!(s.sac_token.allowance(&owner, &spender), allowance);
 
-    s.contract.block_user(&spender, &s.blocker);
+    s.contract.block_user(&spender, &s.block_operator);
     assert!(s.contract.blocked(&spender));
     assert_eq!(s.sac_token.balance(&spender), 0);
 
@@ -354,9 +354,9 @@ fn test_block_owner_prevents_spender_transfer_from() {
     let principal = 1_000 * DECIMALS;
     let allowance = 500 * DECIMALS;
 
-    s.contract.unblock_user(&owner, &s.blocker);
-    s.contract.unblock_user(&spender, &s.blocker);
-    s.contract.unblock_user(&recipient, &s.blocker);
+    s.contract.unblock_user(&owner, &s.unblock_operator);
+    s.contract.unblock_user(&spender, &s.unblock_operator);
+    s.contract.unblock_user(&recipient, &s.unblock_operator);
     s.contract.mint(&s.minter, &owner, &principal);
 
     let expiration_ledger = s.env.ledger().sequence() + 1_000_000;
@@ -364,7 +364,7 @@ fn test_block_owner_prevents_spender_transfer_from() {
         .approve(&owner, &spender, &allowance, &expiration_ledger);
     assert_eq!(s.sac_token.allowance(&owner, &spender), allowance);
 
-    s.contract.block_user(&owner, &s.blocker);
+    s.contract.block_user(&owner, &s.block_operator);
     assert!(s.contract.blocked(&owner));
 
     // The spender (still authorized) cannot move the blocked owner's balance.
