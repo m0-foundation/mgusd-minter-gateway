@@ -42,7 +42,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 2. Caller invokes `force_transfer(from, to, amount)` — no authorization from the source account is needed
 3. Contract clawbacks tokens from the source and mints them to the destination at the SAC layer
 4. Accumulators are unchanged — this is a balance redistribution, not a supply change
-5. Works even if the source account is frozen
+5. Works even if the source account is blocked
 
 ---
 
@@ -68,7 +68,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 **Design properties:**
 
 - **Admin is *not* a super-role.** Admin's powers are limited to: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** call `mint`, `burn`, `set_rate`, `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`, `claim_yield`, `set_yield_recipient`, `pause`, or `unpause` without first granting itself the relevant role.
-- **No implicit emergency fallback.** A cold admin signer cannot freeze a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role — e.g. `add_block_operator(admin)` / `add_unblock_operator(admin)` to gain block / unblock, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Runbooks should plan for the dedicated role signers being reachable.
+- **No implicit emergency fallback.** A cold admin signer cannot block a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role — e.g. `add_block_operator(admin)` / `add_unblock_operator(admin)` to gain block / unblock, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Runbooks should plan for the dedicated role signers being reachable.
 - All roles are **single-address** except **Block operator** and **Unblock operator**, each a membership set (any number of addresses can hold each role, granted / revoked by Admin via `add_block_operator` / `remove_block_operator` and `add_unblock_operator` / `remove_unblock_operator`).
 - Only Admin can reassign roles (except Yield Recipient, which is set by the Yield Recipient Manager).
 - Every role-gated function calls `require_auth()` on the `caller` argument and verifies the caller equals the designated role holder — no implicit trust, no admin override.
@@ -178,28 +178,28 @@ The Minter acts as the **bridge gateway** — the sole entry point for supply ch
 ### Mint
 
 ```
-mint(to: Address, amount: i128)
+mint(caller: Address, to: Address, amount: i128)
 ```
 
 0. Validates positive amount and caller authorization (Minter only)
 1. Finalizes pending yield via `update_index()`
 2. Increases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
 3. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
-4. Emits `sup_chg` event with delta and new accumulator values
+4. Emits `mint` event with `(to, amount, new_total_principal, new_total_supply)`
 
-Recipient must already be authorized (unfrozen) on the SAC.
+Recipient must already be authorized (unblocked) on the SAC.
 
 ### Burn
 
 ```
-burn(from: Address, amount: i128)
+burn(caller: Address, from: Address, amount: i128)
 ```
 
 0. Validates positive amount and caller authorization (Minter only)
 1. Finalizes pending yield via `update_index()`
 2. Decreases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
 3. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
-4. Emits `sup_chg` event with negative delta
+4. Emits `burn` event with `(from, amount, new_total_principal, new_total_supply)`
 
 Returns `Err(BurnExceedsPrincipal)` if the present-value amount exceeds `total_principal` — you cannot burn more than was minted (prevents burning claimed yield). Does **not** require the target account's authorization.
 
@@ -211,7 +211,7 @@ set_rate(rate_bps: u32)
 
 1. No-op if rate is unchanged
 2. Calls `set_interest_rate()` which first updates the index at the old rate, then applies the new rate
-3. Emits `int_rate` event
+3. Emits `interest_rate_set` event with `(rate_bps)`
 
 Rate is in basis points: 100 = 1%, max 10,000 = 100%. Returns `Err(RateExceedsMax)` if rate exceeds 10,000.
 
@@ -231,7 +231,7 @@ Admin-only reconciliation for tokens destroyed outside the contract (e.g., sent 
 0. Validates positive amount and admin authorization
 1. Finalizes pending yield via `update_index()`
 2. Decreases `total_principal` by the present value of `amount` (`amount × INDEX_SCALE / latest_index`) and `total_supply` by the nominal `amount`
-3. Emits `sup_chg` event with negative delta
+3. Emits `reconcile` event with `(amount, new_total_principal, new_total_supply)`
 
 Does **not** interact with the SAC — no clawback or burn at the token layer. This is purely an accumulator correction to bring the contract's bookkeeping back in line with the actual circulating supply. See the [Issuer Burn Problem](#the-issuer-burn-problem) section for context.
 
@@ -248,15 +248,15 @@ Administrative token movement that does not require the source account's authori
 1. Validates positive amount and caller role
 2. Cross-contract call: `StellarAssetClient::clawback(from, amount)` on the SAC
 3. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
-4. Emits `force_tx` event with `(from, to, amount)`
+4. Emits `force_transfer` event with `(from, to, amount)`
 
 ### Key Properties
 
 - **No accumulator changes** — supply is unchanged (tokens are moved, not created or destroyed), so `total_principal` and `total_supply` are not touched
 - **No source authorization** — only the caller (Forced Transfer Manager) must authenticate; the `from` account does not need to sign
-- **Works on frozen accounts** — clawback bypasses the SAC's `AUTH_REQUIRED` freeze on the source
-- **Destination must be authorized** — the `to` account must be unfrozen to receive the minted tokens
-- **Dedicated event** — emits `force_tx`, not `sup_chg`, since supply doesn't change
+- **Works on blocked accounts** — clawback bypasses the SAC's `AUTH_REQUIRED` authorization check on the source
+- **Destination must be authorized** — the `to` account must be unblocked to receive the minted tokens
+- **Dedicated event** — emits `force_transfer` rather than the `mint`/`burn` supply-change events, since supply doesn't change
 
 ---
 
@@ -314,7 +314,7 @@ The index is updated **before** every state-changing operation (`mint`, `burn`, 
 
 ### SAC Transfer Mechanics
 
-- Both sender **and** receiver must be authorized (unfrozen) for a SAC transfer to succeed
+- Both sender **and** receiver must be authorized (unblocked) for a SAC transfer to succeed
 - Transfers happen at the SAC layer — the wrapper contract has no `transfer()` function
 - Users call the SAC's standard SEP-41 `transfer()` directly
 
@@ -328,13 +328,13 @@ On classic Stellar, sending tokens to the **issuer address** burns them automati
 
 ### Mitigation: AUTH_REQUIRED + Whitelist Model
 
-The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by default.
+The SAC is configured with `AUTH_REQUIRED` — all accounts start unauthorized (blocked) by default.
 
 1. Accounts can only transact after an **unblock operator** calls `unblock_user()`
 2. The issuer account has no trustline for its own asset and cannot be blocked or unblocked
 3. Blocked accounts hold tokens but cannot move them (including to the issuer)
 
-**Important caveat:** The issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level. This means authorized (unfrozen) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. The whitelist model reduces accidental issuer burns by limiting who can transact, but does not eliminate the possibility entirely. If tokens are sent to the issuer, Admin can call `reconcile_burn(amount)` to decrease both accumulators and bring the contract's bookkeeping back in line with actual circulating supply. See the [Issuer Burn Prevention section in the README](../README.md#issuer-burn-prevention) and Note 2 for details.
+**Important caveat:** The issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level. This means authorized (unblocked) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. The whitelist model reduces accidental issuer burns by limiting who can transact, but does not eliminate the possibility entirely. If tokens are sent to the issuer, Admin can call `reconcile_burn(amount)` to decrease both accumulators and bring the contract's bookkeeping back in line with actual circulating supply. See the [Issuer Burn Prevention section in the README](../README.md#issuer-burn-prevention) and Note 2 for details.
 
 ---
 
@@ -354,7 +354,7 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start frozen by defa
 ### Token Transfers
 
 - Transfers use the SAC's standard SEP-41 `transfer()` — the wrapper contract has no transfer function
-- Both sender and receiver must be whitelisted (unfrozen) for a transfer to succeed
+- Both sender and receiver must be whitelisted (unblocked) for a transfer to succeed
 - An **unblock operator** whitelists accounts via `unblock_user()`; a **block operator** can revoke via `block_user()`
 - Transfers do **not** update accumulators — they are balance redistributions, not mints/burns
 - The issuer is exempt from `AUTH_REQUIRED` — authorized users can send tokens to the issuer, which destroys them without updating accumulators (see [Issuer Burn Problem](#the-issuer-burn-problem))
@@ -392,30 +392,40 @@ Compliance operations (`block_user`, `unblock_user`, `batch_block_users`, `batch
 
 ## Event Reference
 
-All events emitted by the contract:
+All events emitted by the contract. Event names are the snake_case form of the underlying `#[contractevent]` struct (`AdminSet` → `admin_set`, etc.). Topic fields are marked **(topic)**; remaining fields are payload data.
 
-| Event | Emitted By | Payload |
-|-------|-----------|---------|
-| `set_admin` | `set_admin` | `(old, new)` |
-| `set_mntr` | `set_minter` | `(old, new)` |
-| `set_yrmr` | `set_yield_recipient_manager` | `(old, new)` |
-| `set_yrcp` | `set_yield_recipient` | `(old, new)` |
-| `set_ftmr` | `set_forced_transfer_manager` | `(old, new)` |
-| `BlockOperatorAdded` | `add_block_operator` | `(addr)` |
-| `BlockOperatorRemoved` | `remove_block_operator` | `(addr)` |
-| `UnblockOperatorAdded` | `add_unblock_operator` | `(addr)` |
-| `UnblockOperatorRemoved` | `remove_unblock_operator` | `(addr)` |
-| `int_rate` | `set_rate` | `(rate_bps)` |
-| `sup_chg` | `mint`, `burn`, `reconcile_burn` | `(delta, total_principal, total_supply)` |
-| `yld_clm` | `claim_yield` | `(recipient, amount)` |
-| `UserBlocked` | `block_user`, `batch_block_users` | `(user)` — topics `["block", user]` |
-| `UserUnblocked` | `unblock_user`, `batch_unblock_users` | `(user)` — topics `["unblock", user]` |
-| `force_tx` | `force_transfer` | `(from, to, amount)` |
-| `upgraded` | `upgrade` | `(by, new_wasm_hash)` |
-| `sac_admin_transferred` | `transfer_sac_admin` | `(new_sac_admin)` |
-| `set_pauser` | `set_pauser` | `(old, new)` |
-| `paused` | `pause` | *(no payload)* |
-| `unpaused` | `unpause` | *(no payload)* |
+**Defined in `events.rs`:**
+
+| Event | Emitted By | Fields |
+|-------|-----------|--------|
+| `admin_set` | `set_admin` | `old` **(topic)**, `new` |
+| `minter_set` | `set_minter` | `old` **(topic)**, `new` |
+| `yield_recipient_manager_set` | `set_yield_recipient_manager` | `old` **(topic)**, `new` |
+| `yield_recipient_set` | `set_yield_recipient` | `old` **(topic)**, `new` |
+| `forced_transfer_manager_set` | `set_forced_transfer_manager` | `old` **(topic)**, `new` |
+| `pauser_set` | `set_pauser` | `old` **(topic)**, `new` |
+| `block_operator_added` | `add_block_operator` | `addr` **(topic)** |
+| `block_operator_removed` | `remove_block_operator` | `addr` **(topic)** |
+| `unblock_operator_added` | `add_unblock_operator` | `addr` **(topic)** |
+| `unblock_operator_removed` | `remove_unblock_operator` | `addr` **(topic)** |
+| `interest_rate_set` | `set_rate` | `rate_bps` |
+| `mint` | `mint` | `to` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
+| `burn` | `burn` | `from` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
+| `reconcile` | `reconcile_burn` | `amount`, `new_total_principal`, `new_total_supply` |
+| `yield_claimed` | `claim_yield` | `recipient` **(topic)**, `amount` |
+| `update_index` | `update_index` (called from every supply/rate mutation) | `latest_index` |
+| `force_transfer` | `force_transfer` | `from` **(topic)**, `to` **(topic)**, `amount` |
+| `upgraded` | `upgrade` | `by` **(topic)**, `new_wasm_hash` |
+| `sac_admin_transferred` | `transfer_sac_admin` | `new_sac_admin` **(topic)** |
+
+**From upstream extensions:**
+
+| Event | Emitted By | Fields | Source |
+|-------|-----------|--------|--------|
+| `user_blocked` | `block_user`, `batch_block_users` | `user` **(topic)** | `stellar_tokens::fungible::blocklist` |
+| `user_unblocked` | `unblock_user`, `batch_unblock_users` | `user` **(topic)** | `stellar_tokens::fungible::blocklist` |
+| `paused` | `pause` | *(no fields)* | `stellar_contract_utils::pausable` |
+| `unpaused` | `unpause` | *(no fields)* | `stellar_contract_utils::pausable` |
 
 ---
 
