@@ -53,7 +53,7 @@ fn test_mint_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.blocker);
+    s.contract.unblock_user(&user, &s.unblock_operator);
     s.contract.pause(&s.pauser);
 
     assert!(s
@@ -71,7 +71,7 @@ fn test_burn_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.blocker);
+    s.contract.unblock_user(&user, &s.unblock_operator);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
@@ -90,7 +90,7 @@ fn test_reconcile_burn_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.blocker);
+    s.contract.unblock_user(&user, &s.unblock_operator);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
@@ -107,8 +107,8 @@ fn test_force_transfer_blocked_when_paused_resumes_after_unpause() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
 
-    s.contract.unblock_user(&alice, &s.blocker);
-    s.contract.unblock_user(&bob, &s.blocker);
+    s.contract.unblock_user(&alice, &s.unblock_operator);
+    s.contract.unblock_user(&bob, &s.unblock_operator);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
@@ -152,13 +152,13 @@ fn test_block_unblock_work_when_paused() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.blocker);
+    s.contract.unblock_user(&user, &s.unblock_operator);
     s.contract.pause(&s.pauser);
 
-    s.contract.block_user(&user, &s.blocker);
+    s.contract.block_user(&user, &s.block_operator);
     assert!(s.contract.blocked(&user));
 
-    s.contract.unblock_user(&user, &s.blocker);
+    s.contract.unblock_user(&user, &s.unblock_operator);
     assert!(!s.contract.blocked(&user));
 }
 

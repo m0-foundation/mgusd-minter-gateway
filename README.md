@@ -1,88 +1,52 @@
 # Stellar Minter Gateway
 
-A Soroban smart contract system for issuing yield-bearing tokens on the Stellar network. The contract acts as a SAC (Stellar Asset Contract) admin, enabling controlled minting, burning, yield accrual via continuous compounding, and compliance enforcement through an on-chain allowlist. It is paired with a TypeScript SDK that handles transaction signing through Fireblocks MPC infrastructure.
-
-Monorepo for the **SAC Admin Yield Token** contract and the **Fireblocks signing SDK** that invokes it.
-
-| Directory | Description |
-|-----------|-------------|
-| `contracts/mintergateway/` | Soroban yield contract — SAC admin that mints, burns, tracks yield, and enforces an allowlist |
-| `soroban-fireblocks-sdk/` | TypeScript SDK for invoking the contract via Fireblocks raw signing (Ed25519) |
+A Soroban smart contract that acts as a SAC (Stellar Asset Contract) admin, enabling controlled minting, burning, yield accrual via continuous compounding, and compliance enforcement through an on-chain allowlist.
 
 ## Prerequisites
 
 - [Rust](https://rustup.rs/) (stable toolchain)
-- [Soroban CLI / Stellar CLI](https://soroban.stellar.org/docs/getting-started/setup) — includes the `stellar` command and the `wasm32` target
-- [Node.js](https://nodejs.org/) >= 20
-- A [Fireblocks](https://www.fireblocks.com/) account (for the SDK — not needed for contract-only development)
+- [Stellar CLI](https://developers.stellar.org/docs/tools/cli/install-cli) — pinned to **v25.2.0** (the soroban-sdk's minimum-CLI requirement; see `.tool-versions`)
 
-### Install Rust + Soroban target
+### Install Rust + Stellar CLI
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup target add wasm32v1-none
-cargo install stellar-cli --locked
+cargo install --locked stellar-cli@25.2.0
 ```
 
-### Install SDK dependencies
+If you use [mise](https://mise.jdx.dev/) or [asdf](https://asdf-vm.com/), `mise install` (or `asdf install`) will pick up the pin from `.tool-versions` automatically.
 
-```bash
-cd soroban-fireblocks-sdk
-npm install
-```
-
-### Configure environment
-
-```bash
-cd soroban-fireblocks-sdk
-cp .env.example .env
-# Edit .env with your Fireblocks credentials, vault IDs, and public keys
-```
-
-Key variables in `.env`:
-
-| Variable | Description |
-|----------|-------------|
-| `FIREBLOCKS_API_KEY` | Your Fireblocks API key |
-| `FIREBLOCKS_SECRET_PATH` | Path to your Fireblocks private key file |
-| `FIREBLOCKS_ASSET_ID` | `XLM_TEST` (testnet) or `XLM` (mainnet) |
-| `ISSUER_PUBLIC_KEY` | Stellar public key of the issuer account |
-| `MINTER_PUBLIC_KEY` | Stellar public key of the minter account |
-| `CONTRACT_ID` | Deployed contract ID (after deployment) |
+CI installs the same pinned version via the official [`stellar/stellar-cli@v25.2.0`](https://github.com/stellar/stellar-cli) GitHub Action. **Do not bump to `@latest` in CI** — bump in lockstep with the soroban-sdk's minimum-CLI requirement. This matches how [Blend](https://github.com/blend-capital/blend-contracts-v2) and Soroswap operate.
 
 ---
 
 ## Building
 
-### Contract
-
 ```bash
 stellar contract build
 ```
 
-### SDK
-
-```bash
-cd soroban-fireblocks-sdk
-npm install
-npm run build
-```
-
 ## Testing
-
-### Contract
 
 ```bash
 cargo test
 ```
 
-### SDK
+## Deploying
+
+Testnet / dev deploys are driven by `scripts/deploy-testnet.sh`, a thin bash wrapper around the `stellar` CLI that mirrors the 5-step pipeline (configure issuer flags → deploy SAC → upload WASM → deploy wrapper → transfer SAC admin). The script uses two `stellar keys` identities — an ISSUER (signs steps 1, 5) and a DEPLOYER (signs steps 2-4) — which can resolve to the same identity for testnet/dev or to distinct cold/warm signers for production.
 
 ```bash
-cd soroban-fireblocks-sdk
-npm test                # unit tests
-npm run test:integration # integration tests (requires Fireblocks credentials + testnet)
+cp scripts/deploy.env.example .env
+$EDITOR .env                          # fill in role pubkeys + key names
+make build
+./scripts/deploy-testnet.sh
 ```
+
+The script auto-loads `.env` from the repo root if present (gitignored). Per-role env vars are required (STEL1-5: no role-collapsing default).
+
+**Production deploys** that require Fireblocks-custodied signing live on the [`sdk-integration`](https://github.com/m0-foundation/stellar-minter-gateway/tree/sdk-integration) branch. That branch retains the TypeScript SDK and its Fireblocks deploy pipeline; check it out when you need to deploy with MPC-signed issuer keys.
 
 ---
 
@@ -121,7 +85,7 @@ The contract never holds user funds. Users hold tokens directly in their account
 
 ### Token Distribution
 
-The Blocker whitelists (unblocks) recipient accounts via `unblock_user()`. Once whitelisted, tokens can be transferred to the recipient using the SAC's standard SEP-41 `transfer()`. Whitelisted accounts can freely transfer among themselves. Accumulators are not affected by transfers — they are balance redistributions, not mints/burns.
+The unblock operator whitelists recipient accounts via `unblock_user()`. Once whitelisted, tokens can be transferred to the recipient using the SAC's standard SEP-41 `transfer()`. Whitelisted accounts can freely transfer among themselves. Accumulators are not affected by transfers — they are balance redistributions, not mints/burns.
 
 ## Authorization & Allowlist
 
@@ -131,13 +95,13 @@ The SAC issuer is configured with **AUTH_REQUIRED**, **REVOCABLE**, and **CLAWBA
 
 1. Issuer flags are set on the SAC issuer account via classic Stellar (not from within Soroban)
 2. New accounts are **unauthorized by default** — they cannot hold, send, or receive the token
-3. The Blocker calls `unblock_user(addr, operator)` to authorize approved accounts
+3. An **unblock operator** calls `unblock_user(addr, operator)` to authorize approved accounts
 4. Both **sender and receiver** must be authorized for any SAC transfer to succeed
 
 | State | Can Send | Can Receive | How to enter |
 |-------|:--------:|:-----------:|--------------|
-| **Authorized** | ✓ | ✓ | Blocker calls `unblock_user` |
-| **Unauthorized** (default) | ✗ | ✗ | Default state, or Blocker calls `block_user` |
+| **Authorized** | ✓ | ✓ | Unblock operator calls `unblock_user` |
+| **Unauthorized** (default) | ✗ | ✗ | Default state, or block operator calls `block_user` |
 
 The contract exposes the `stellar_tokens::fungible::blocklist` function shape (`block_user`, `unblock_user`, `blocked`, `balance`) directly against the SAC's `set_authorized`. Because the SAC issuer runs with AUTH_REQUIRED, `blocked(account)` returns `true` for any account that has never been unblocked.
 
@@ -147,14 +111,16 @@ The issuer account has no trustline for its own asset and cannot be frozen or un
 
 ## Compliance Controls
 
-The admin has compliance functions for managing the allowlist and enforcing regulatory requirements.
+Block / unblock and forced-transfer flows are gated by their **own** roles —
+the admin role does *not* implicitly carry these powers. See
+[Roles](#roles) for the full authorization graph.
 
 | Function | Role | Description |
 |----------|------|-------------|
-| `block_user(user, operator)` | Admin or Blocker | Blocks a user — removes from allowlist, preventing sending and receiving |
-| `unblock_user(user, operator)` | Admin or Blocker | Unblocks a user — adds to allowlist, permitting sending and receiving |
-| `batch_block_users(users, operator)` | Admin or Blocker | Block up to 40 users per call |
-| `batch_unblock_users(users, operator)` | Admin or Blocker | Unblock up to 40 users per call |
+| `block_user(user, operator)` | Block operator | Blocks a user — removes from allowlist, preventing sending and receiving |
+| `unblock_user(user, operator)` | Unblock operator | Unblocks a user — adds to allowlist, permitting sending and receiving |
+| `batch_block_users(users, operator)` | Block operator | Block up to 40 users per call |
+| `batch_unblock_users(users, operator)` | Unblock operator | Unblock up to 40 users per call |
 | `blocked(account)` | (view) | Returns whether a user is blocked (inverse of SAC authorization) |
 | `balance(id)` | (view) | Returns the SAC-reported balance for an address |
 
@@ -165,28 +131,36 @@ The admin has compliance functions for managing the allowlist and enforcing regu
 
 | Role | Permissions | Intended Actor |
 |------|------------|----------------|
-| **Admin** | All contract functions (super-role) | M0 |
+| **Admin** | role administration only — see breakdown below | M0 |
 | **Minter** | `mint`, `burn`, `set_rate` | Bridge |
-| **Yield Recipient Manager** | `set_yield_recipient` | M0 |
-| **Yield Recipient** | `claim_yield` | MoneyGram |
-| **Blocker** | `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users` | Crossmint |
+| **Yield Recipient Manager** | `set_yield_recipient`, `claim_yield` | M0 |
+| **Yield Recipient** | passive — receives the SAC tokens minted by `claim_yield` (does **not** call it) | MoneyGram |
+| **Block operator** (membership) | `block_user`, `batch_block_users` | Crossmint (typical) |
+| **Unblock operator** (membership) | `unblock_user`, `batch_unblock_users` | Crossmint (typical) |
 | **Forced Transfer Manager** | `force_transfer` | *(configurable)* |
+| **Pauser** | `pause`, `unpause` | M0 |
 
 **Design properties:**
 
-- **Admin is a super-role** — can call any function in the contract, in addition to admin-exclusive functions (`set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_blocker`, `remove_blocker`, `block_user`, `unblock_user`, `upgrade`)
-- All roles are **single-address** except **Blocker**, which is a membership set (any number of addresses can hold the role)
-- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager). Admin grants / revokes the blocker role via `add_blocker` / `remove_blocker`
-- Every role-gated function calls `require_auth()` on the role holder — no implicit trust
-- Roles are stored in **Instance** storage
+- **Admin is *not* a super-role.** Admin can only call admin-exclusive functions: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** block users, unblock users, force-transfer, claim yield, mint, burn, set rate, or pause without first granting itself the relevant role.
+- **Operational consequence (no implicit emergency fallback).** A cold admin signer cannot freeze a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role: `add_block_operator(admin)` to gain block, `add_unblock_operator(admin)` to gain unblock, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Plan response runbooks accordingly — keep the dedicated role signers reachable.
+- All roles are **single-address** except **Block operator** and **Unblock operator**, each a membership set (any number of addresses can hold each role; granted/revoked by Admin via `add_block_operator` / `remove_block_operator` and `add_unblock_operator` / `remove_unblock_operator`).
+- Only Admin can reassign roles (except Yield Recipient, which is managed by the Yield Recipient Manager).
+- Every role-gated function calls `require_auth()` on the `caller` argument and verifies it equals the role holder — no implicit trust.
+- Roles are stored in **Instance** storage.
 
 ## Role Hierarchy
 
 ```
-Admin
-├── Top-level authority
-├── Can set/change Minter, Yield Recipient Manager, Forced Transfer Manager, Blocker
-└── Compliance: block, unblock users
+Admin (role administrator only — NOT a super-role)
+├── Sets/rotates: Minter, Yield Recipient Manager, Forced Transfer Manager, Pauser
+├── Grants/revokes: Block operator membership (add_block_operator / remove_block_operator)
+├── Grants/revokes: Unblock operator membership (add_unblock_operator / remove_unblock_operator)
+├── reconcile_burn — accumulator reconciliation for tokens destroyed off-contract
+├── transfer_sac_admin — emergency / migration handoff of SAC admin
+└── upgrade — contract upgrade
+   (Cannot block, unblock, force-transfer, mint, burn, claim, or pause without
+    first granting itself the relevant role.)
 
 Minter (Bridge / Issuer)
 ├── Mints SAC tokens directly via mint()
@@ -194,46 +168,35 @@ Minter (Bridge / Issuer)
 └── Sets interest rate for yield accrual via set_rate()
 
 Yield Recipient Manager
-└── Can set/change Yield Recipient address
+├── Sets/changes Yield Recipient address (set_yield_recipient)
+└── Calls claim_yield — the resulting SAC tokens are minted to the Yield Recipient
 
 Yield Recipient
-└── Can claim accrued yield
+└── Passive — holds the SAC tokens minted by claim_yield (does not call it)
 
-Blocker
-├── Blocks/unblocks individual users (`block_user` / `unblock_user`)
-└── Batch block/unblock users (max 40 per call) — matches the `stellar_tokens::fungible::blocklist` function shape
+Block operator (membership set; Admin grants / revokes)
+├── `block_user` — block an individual user
+└── `batch_block_users` — block up to 40 users per call
+
+Unblock operator (membership set; Admin grants / revokes)
+├── `unblock_user` — unblock an individual user
+└── `batch_unblock_users` — unblock up to 40 users per call
+   (Matches the `stellar_tokens::fungible::blocklist` function shape.)
 
 Forced Transfer Manager
 └── force_transfer — clawback + mint (bypasses block on source)
+
+Pauser
+└── pause / unpause
 ```
-
----
-
-## SDK — Fireblocks Signing Client
-
-The `soroban-fireblocks-sdk/` directory contains a TypeScript SDK that wraps the yield contract with Fireblocks MPC signing. See [`soroban-fireblocks-sdk/README.md`](soroban-fireblocks-sdk/README.md) for full setup, environment variables, and usage details.
-
-### SDK Methods
-
-| Method | Contract function | Description |
-|--------|-------------------|-------------|
-| `mint(caller, to, amount)` | `mint` | Mint SAC tokens to a recipient |
-| `burn(caller, from, amount)` | `burn` | Burn SAC tokens from an account |
-| `setRate(caller, rateBps)` | `set_rate` | Set interest rate in basis points |
-| `setMinter(newMinter)` | `set_minter` | Change the minter address (admin only) |
-| `queryAdmin()` | `admin` | Query the admin address |
-| `querySacToken()` | `sac_token` | Query the SAC token address |
-| `deployFull(...)` | — | Full deploy pipeline (configure issuer, deploy SAC, upload WASM, deploy wrapper, transfer admin) |
-
----
 
 ## Notes
 
 ### Note 1 — Trustline + Authorization Required for Token Distribution
 
 - Recipient accounts must establish a classic Stellar **trustline** (`ChangeTrust` operation) for the MGUSD asset before they can hold tokens — the contract and SAC do not create trustlines on behalf of recipients
-- All accounts start **unauthorized** due to `AUTH_REQUIRED` on the issuer — the Blocker (Crossmint) must call `batch_unblock_users` to authorize recipients before they can receive tokens
-- Distribution flow: recipient creates trustline → Blocker batch-unblocks recipients → tokens can be transferred via SAC `transfer()`
+- All accounts start **unauthorized** due to `AUTH_REQUIRED` on the issuer — an **unblock operator** (e.g. Crossmint) must call `batch_unblock_users` to authorize recipients before they can receive tokens
+- Distribution flow: recipient creates trustline → batch-unblock recipients → tokens can be transferred via SAC `transfer()`
 
 ### Note 2 — Send-to-Issuer Bypasses Yield Accrual
 

@@ -152,23 +152,43 @@ pub fn emit_forced_transfer_manager_set(env: &Env, old: Address, new: Address) {
 }
 
 #[contractevent]
-pub struct BlockerAdded {
+pub struct BlockOperatorAdded {
     #[topic]
     pub addr: Address,
 }
 
-pub fn emit_blocker_added(env: &Env, addr: Address) {
-    BlockerAdded { addr }.publish(env);
+pub fn emit_block_operator_added(env: &Env, addr: Address) {
+    BlockOperatorAdded { addr }.publish(env);
 }
 
 #[contractevent]
-pub struct BlockerRemoved {
+pub struct BlockOperatorRemoved {
     #[topic]
     pub addr: Address,
 }
 
-pub fn emit_blocker_removed(env: &Env, addr: Address) {
-    BlockerRemoved { addr }.publish(env);
+pub fn emit_block_operator_removed(env: &Env, addr: Address) {
+    BlockOperatorRemoved { addr }.publish(env);
+}
+
+#[contractevent]
+pub struct UnblockOperatorAdded {
+    #[topic]
+    pub addr: Address,
+}
+
+pub fn emit_unblock_operator_added(env: &Env, addr: Address) {
+    UnblockOperatorAdded { addr }.publish(env);
+}
+
+#[contractevent]
+pub struct UnblockOperatorRemoved {
+    #[topic]
+    pub addr: Address,
+}
+
+pub fn emit_unblock_operator_removed(env: &Env, addr: Address) {
+    UnblockOperatorRemoved { addr }.publish(env);
 }
 
 #[contractevent]
