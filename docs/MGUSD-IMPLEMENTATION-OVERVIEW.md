@@ -1,6 +1,8 @@
 # MGUSD Implementation Overview
 
-M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin built as a Soroban smart contract that administers a Stellar Asset Contract (SAC). This document covers the full implementation: flows, roles, contract interface, yield mechanics, compliance controls, and the Fireblocks SDK used by the Bridge operator.
+M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin built as a Soroban smart contract that administers a Stellar Asset Contract (SAC). This document covers the full implementation: flows, roles, contract interface, yield mechanics, and compliance controls.
+
+> The TypeScript Fireblocks SDK that the Bridge operator uses to invoke this contract lives on the [`sdk-integration`](https://github.com/m0-foundation/stellar-minter-gateway/tree/sdk-integration) branch. This document focuses on the contract itself.
 
 ---
 
@@ -417,53 +419,13 @@ All events emitted by the contract:
 
 ---
 
-## Minter Gateway SDK (Fireblocks)
+## Deployment & Off-Chain Tooling
 
-The `soroban-fireblocks-sdk` provides a TypeScript client for the Bridge to interact with the wrapper contract via Fireblocks' institutional custody infrastructure.
+Two deploy paths are supported:
 
-### SDK Methods
+- **Testnet / dev:** `scripts/deploy-testnet.sh` — bash + `stellar` CLI, signing via local `stellar keys` identities. Mirrors the 5-step pipeline (configure issuer flags → deploy SAC → upload WASM → deploy wrapper → transfer SAC admin) and ends with a smoke-test of `wrapper.admin()`. Suitable for testnet and local stack work, NOT for production.
 
-The SDK exposes dedicated methods for Minter actions and queries:
+- **Production:** the [`sdk-integration`](https://github.com/m0-foundation/stellar-minter-gateway/tree/sdk-integration) branch retains a TypeScript SDK that drives the same 5-step pipeline through Fireblocks MPC custody (`MPC_EDDSA_ED25519` raw signing). Production deploys check out that branch and run its `npm run deploy` pipeline; the contract source-of-truth on `main` stays Fireblocks-free.
 
-| SDK Method | Contract Function | Parameters                                                                                                                                    |
-|------------|-------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| `mint()` | `mint(caller, to, amount)` | `contractId`, `caller: string`, `to: string`, `amount: bigint`                                                                                |
-| `burn()` | `burn(caller, from, amount)` | `contractId`, `caller: string`, `from: string`, `amount: bigint`                                                                              |
-| `setRate()` | `set_rate(caller, rate_bps)` | `contractId`, `caller: string`, `rateBps: number`                                                                                             |
-| `setMinter()` | `set_minter(new_minter)` | `contractId`, `newMinter: string`                                                                                                             |
-| `queryAdmin()` | `admin()` | `contractId`                                                                                                                                  |
-| `querySacToken()` | `sac_token()` | `contractId`                                                                                                                                  |
-| `deployFull()` | *(orchestrates 5-step deploy)* | `assetCode`, `assetIssuer`, `admin`, `minter`, `yieldRecipientManager`, `yieldRecipient`, `forcedTransferManager`, `blockOperator`, `unblockOperator`, `pauser`, `wasm` |
-| `setupTrustline()` | *(classic changeTrust op)* | `assetCode`, `assetIssuer`                                                                                                                    |
-
-Other functions are available through the generic `invokeContract({ contractId, method: "..." })` interface.
-
-### Scripts
-
-Runnable scripts are provided in `scripts/`:
-
-| Script | Description |
-|--------|-------------|
-| `deploy-full.ts` | Full 5-step deploy pipeline (configure issuer → deploy SAC → upload WASM → deploy contract → transfer SAC admin) |
-| `invoke-mint.ts` | Mint tokens to a destination address |
-| `invoke-burn.ts` | Burn tokens from an address |
-| `query-admin.ts` | Query the current admin address |
-| `setup-trustline.ts` | Set up a trustline for the token |
-
-### Fireblocks RAW Signing Pipeline
-
-Every transaction follows this flow:
-
-```
-Build Tx → Simulate & Prepare → SHA-256 Hash → Fireblocks RAW Sign → Attach Signature → Submit & Poll
-```
-
-1. **Build** — Construct the Soroban invoke transaction with the source account's sequence number
-2. **Simulate** — Soroban RPC simulates the transaction, returning resource fees and auth entries
-3. **Prepare** — Assemble the simulation result into the transaction envelope
-4. **Hash** — Compute the 32-byte SHA-256 transaction hash
-5. **Sign** — Send the hash to Fireblocks for MPC-based Ed25519 signing (`MPC_EDDSA_ED25519`)
-6. **Submit** — Attach signature, submit to the Stellar network, and poll until terminal
-
-> Note: RAW signing is a premium Fireblocks feature that requires explicit enablement on your vault.
+Bridge-side runtime invocations (`mint`, `burn`, `set_rate`) are also Bridge-operator concerns and live on the `sdk-integration` branch.
 
