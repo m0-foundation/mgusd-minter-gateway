@@ -129,7 +129,7 @@ fn test_burn_decreases_principal() {
 }
 
 #[test]
-fn test_burn_exactly_principal() {
+fn test_burn_exactly_initial_after_claim() {
     let s = setup();
     let initial = 1_000 * DECIMALS;
 
@@ -140,13 +140,13 @@ fn test_burn_exactly_principal() {
 
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
-    // Under canonical nominal-form principal, burning the full nominal
-    // `initial` after a year of growth drives `total_principal` to exactly 0.
-    // No PV-residue remains.
+    // After the claim, total_principal = initial + claimed (compounding).
+    // Burning the original `initial` nominal removes it cleanly from both
+    // accumulators; the recipient's claimed portion remains, still earning
+    // yield against `total_principal == claimed`.
     s.contract.burn(&s.minter, &s.yield_recipient, &initial);
 
-    assert_eq!(s.contract.total_principal(), 0);
-    // total_supply = claimed yield portion (initial was subtracted from total_supply)
+    assert_eq!(s.contract.total_principal(), claimed);
     assert_eq!(s.contract.total_supply(), claimed);
 }
 

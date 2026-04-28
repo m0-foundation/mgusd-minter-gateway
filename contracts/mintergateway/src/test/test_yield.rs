@@ -116,7 +116,7 @@ fn test_claim_yield_mints_tokens_to_yield_recipient() {
 }
 
 #[test]
-fn test_claim_yield_principal_unchanged() {
+fn test_claim_yield_grows_principal_by_claimed_amount() {
     let s = setup();
     let principal = 1_000_000 * DECIMALS;
 
@@ -125,10 +125,11 @@ fn test_claim_yield_principal_unchanged() {
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    s.contract.claim_yield(&s.yield_recipient_manager);
+    let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
-    // Principal unchanged — claimed yield does not earn more yield
-    assert_eq!(s.contract.total_principal(), principal);
+    // Under compounding, claimed yield is rolled into total_principal so
+    // the recipient's tokens earn yield from the next index update.
+    assert_eq!(s.contract.total_principal(), principal + claimed);
 }
 
 #[test]
@@ -163,11 +164,11 @@ fn test_claim_yield_with_zero_accrued() {
 }
 
 // =============================================================================
-// YIELD NO-COMPOUNDING TEST
+// YIELD COMPOUNDING TEST
 // =============================================================================
 
 #[test]
-fn test_yield_no_compounding() {
+fn test_yield_compounds_after_claim() {
     let s = setup();
     let principal = 1_000_000 * DECIMALS;
     let half_year = (SECONDS_PER_YEAR / 2) as u64;
@@ -181,23 +182,35 @@ fn test_yield_no_compounding() {
     let first_claim = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(first_claim, 253_151_204_420);
 
-    // Principal is still 1M
-    assert_eq!(s.contract.total_principal(), principal);
+    // Claim folds into principal: total_principal = original + first_claim.
+    assert_eq!(s.contract.total_principal(), principal + first_claim);
+
+    let index_after_first_claim = s.contract.latest_index();
 
     // --- Second half-year ---
     advance_time(&s.env, half_year);
 
     let second_claim = s.contract.claim_yield(&s.yield_recipient_manager);
-    assert_eq!(second_claim, 259_559_757_640);
 
-    // Second claim is slightly larger than first because the index grew on a
-    // higher base (index compounds), but it's only computed on the ORIGINAL
-    // principal (1M), NOT on principal + first_claim.
-    let if_compounded = (principal + first_claim)
-        * (s.contract.latest_index() - current_index(INDEX_SCALE, 500, half_year))
+    // Year-2 yield is computed on `principal + first_claim`, not on the
+    // original principal. The compound result equals
+    //   (principal + first_claim) × (idx_after_yr2 - idx_after_yr1) / SCALE.
+    let index_after_second_claim = s.contract.latest_index();
+    let expected_compound = (principal + first_claim)
+        * (index_after_second_claim - index_after_first_claim)
         / INDEX_SCALE;
-    assert!(second_claim < if_compounded + 1);
-    assert!(second_claim < first_claim + 10_000 * DECIMALS);
+    let simple_interest_baseline = principal
+        * (index_after_second_claim - index_after_first_claim)
+        / INDEX_SCALE;
+
+    assert_eq!(
+        second_claim, expected_compound,
+        "year-2 claim must compound on the year-1 claim",
+    );
+    assert!(
+        second_claim > simple_interest_baseline,
+        "compound year-2 must strictly exceed simple-interest baseline",
+    );
 }
 
 // =============================================================================
@@ -214,31 +227,43 @@ fn test_multiple_claims_accumulate_correctly() {
 
     let quarter_year = (SECONDS_PER_YEAR / 4) as u64;
     let mut total_claimed = 0i128;
+    let mut prior_principal = principal;
 
     for _ in 0..4 {
         advance_time(&s.env, quarter_year);
         let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
         assert!(claimed > 0);
+
+        // Each claim is folded back into total_principal so subsequent
+        // quarters compound.
+        assert_eq!(s.contract.total_principal(), prior_principal + claimed);
+        prior_principal += claimed;
+
         total_claimed += claimed;
     }
 
-    let expected_one_shot_yield = principal
+    // Under compounding the four-quarter total exceeds the simple-interest
+    // baseline (single annual claim against the original principal).
+    let simple_interest_baseline = principal
         * (current_index(INDEX_SCALE, 1000, SECONDS_PER_YEAR as u64) - INDEX_SCALE)
         / INDEX_SCALE;
-
-    let diff = if total_claimed > expected_one_shot_yield {
-        total_claimed - expected_one_shot_yield
-    } else {
-        expected_one_shot_yield - total_claimed
-    };
-    let tolerance = expected_one_shot_yield / 10_000;
     assert!(
-        diff < tolerance,
-        "Multi-claim total {} vs one-shot {} diff {} exceeds tolerance {}",
+        total_claimed > simple_interest_baseline,
+        "compound multi-claim total {} must exceed simple-interest baseline {}",
         total_claimed,
-        expected_one_shot_yield,
-        diff,
-        tolerance
+        simple_interest_baseline,
+    );
+
+    // And the compounding pickup is bounded — at 10%/yr over 1 year the
+    // gap between continuous and quarterly compounding is well under 5%.
+    let upper_bound = simple_interest_baseline + simple_interest_baseline / 20; // +5%
+    assert!(
+        total_claimed < upper_bound,
+        "compound multi-claim total {} should not exceed simple baseline {} \
+         by more than 5% (got upper bound {})",
+        total_claimed,
+        simple_interest_baseline,
+        upper_bound,
     );
 }
 
@@ -320,8 +345,8 @@ fn test_full_flow_mint_rate_claim() {
         one_million + claimed
     );
 
-    // Step 5: total_principal unchanged, total_supply includes claimed
-    assert_eq!(s.contract.total_principal(), one_million);
+    // Step 5: claim folds into principal — both accumulators include claimed
+    assert_eq!(s.contract.total_principal(), one_million + claimed);
     assert_eq!(s.contract.total_supply(), one_million + claimed);
 }
 
@@ -430,41 +455,48 @@ fn test_burn_before_claim_leaves_no_phantom_yield() {
     );
 
     // -----------------------------------------------------------------------
-    // Step 4: claim_yield mints the year-1 yield to the recipient.
+    // Step 4: claim_yield mints the year-1 yield to the recipient. Under
+    // compounding, the claimed amount folds into total_principal so the
+    // recipient's tokens earn yield from the next index update.
     //
     // Expected post-claim:
-    //   total_supply    == ONE_YEAR_YIELD_ON_1K    (recipient was paid)
-    //   total_principal == 0                       (untouched by claim)
-    //   accrued_yield   == 0                       (bucket drained)
+    //   total_supply    == ONE_YEAR_YIELD_ON_1K
+    //   total_principal == ONE_YEAR_YIELD_ON_1K   (claim folded in)
+    //   accrued_yield   == 0                      (bucket drained)
     // -----------------------------------------------------------------------
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(claimed, ONE_YEAR_YIELD_ON_1K);
 
-    assert_eq!(
-        s.contract.total_supply(),
-        ONE_YEAR_YIELD_ON_1K,
-        "post-claim, total_supply equals exactly the yield minted to recipient",
-    );
-    assert_eq!(s.contract.total_principal(), 0);
+    assert_eq!(s.contract.total_supply(), ONE_YEAR_YIELD_ON_1K);
+    assert_eq!(s.contract.total_principal(), ONE_YEAR_YIELD_ON_1K);
     assert_eq!(s.contract.accrued_yield(), 0);
 
+    let index_after_claim = s.contract.latest_index();
+
     // -----------------------------------------------------------------------
-    // Step 5: time advances another year. With no live principal, no new
-    // yield should accrue. Under the bug this used to compound ~26.3M wei of
-    // phantom yield against the stranded 487_705_732 of PV residue.
+    // Step 5: time advances another year. The original user is fully exited,
+    // but the recipient's claimed tokens (now in total_principal) legitimately
+    // compound. STEL1-2 is fixed structurally — no PV residue from the burn
+    // re-enters the picture; the only yield-earning base is the recipient's
+    // own balance.
     // -----------------------------------------------------------------------
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     assert_eq!(
         s.contract.total_principal(),
-        0,
-        "phantom principal must not compound through subsequent index updates",
+        ONE_YEAR_YIELD_ON_1K,
+        "principal stays at the recipient's claimed balance — no phantom \
+         residue from the original burn",
     );
+    let index_after_year2 = s.contract.current_index();
+    let expected_compound = ONE_YEAR_YIELD_ON_1K
+        * (index_after_year2 - index_after_claim)
+        / INDEX_SCALE;
     assert_eq!(
         s.contract.accrued_yield(),
-        0,
-        "STEL1-2: no live principal must mean no further yield; positive \
-         accrual here is unbacked over-mint to the recipient",
+        expected_compound,
+        "year-2 yield is legitimate compound interest on the recipient's \
+         claimed balance — not the STEL1-2 phantom",
     );
 }
 
@@ -506,27 +538,36 @@ fn test_reconcile_burn_before_claim_leaves_no_phantom_yield() {
     );
     assert_eq!(s.contract.accrued_yield(), ONE_YEAR_YIELD_ON_1K);
 
-    // Step 4: claim_yield pays out the year-1 yield.
+    // Step 4: claim_yield pays out the year-1 yield. Under compounding,
+    // the claimed amount folds into total_principal.
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert_eq!(claimed, ONE_YEAR_YIELD_ON_1K);
 
     assert_eq!(s.contract.total_supply(), ONE_YEAR_YIELD_ON_1K);
-    assert_eq!(s.contract.total_principal(), 0);
+    assert_eq!(s.contract.total_principal(), ONE_YEAR_YIELD_ON_1K);
     assert_eq!(s.contract.accrued_yield(), 0);
 
-    // Step 5: time advances. With no live principal, no new yield.
+    let index_after_claim = s.contract.latest_index();
+
+    // Step 5: time advances. The user is fully exited; the recipient's
+    // claimed tokens compound legitimately. No PV phantom from reconcile.
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     assert_eq!(
         s.contract.total_principal(),
-        0,
-        "phantom principal must not compound through reconcile_burn either",
+        ONE_YEAR_YIELD_ON_1K,
+        "principal stays at the recipient's claimed balance — no phantom \
+         residue from reconcile_burn",
     );
+    let index_after_year2 = s.contract.current_index();
+    let expected_compound = ONE_YEAR_YIELD_ON_1K
+        * (index_after_year2 - index_after_claim)
+        / INDEX_SCALE;
     assert_eq!(
         s.contract.accrued_yield(),
-        0,
-        "STEL1-2: no live principal must mean no further yield; positive \
-         accrual after reconcile_burn is unbacked over-mint to the recipient",
+        expected_compound,
+        "year-2 yield is legitimate compound interest on the recipient's \
+         claimed balance — not the STEL1-2 phantom",
     );
 }
 

@@ -16,7 +16,7 @@ fn test_total_supply_increases_on_mint() {
 }
 
 #[test]
-fn test_total_supply_increases_on_claim_yield() {
+fn test_claim_yield_grows_both_accumulators() {
     let s = setup();
     let principal = 1_000_000 * DECIMALS;
 
@@ -28,8 +28,9 @@ fn test_total_supply_increases_on_claim_yield() {
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
 
-    // total_supply = principal + claimed, total_principal unchanged
-    assert_eq!(s.contract.total_principal(), principal);
+    // Under compounding, claimed yield joins principal, so both accumulators
+    // grow by the same nominal amount and stay in lockstep.
+    assert_eq!(s.contract.total_principal(), principal + claimed);
     assert_eq!(s.contract.total_supply(), principal + claimed);
 }
 
@@ -51,7 +52,7 @@ fn test_burn_decreases_both_accumulators() {
 }
 
 #[test]
-fn test_total_supply_invariant() {
+fn test_total_supply_equals_total_principal_invariant() {
     let s = setup();
     let principal = 1_000_000 * DECIMALS;
 
@@ -63,11 +64,10 @@ fn test_total_supply_invariant() {
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
 
-    // Invariant: total_supply == total_principal + cumulative_claimed
-    assert_eq!(
-        s.contract.total_supply(),
-        s.contract.total_principal() + claimed
-    );
+    // Invariant under compounding: total_supply == total_principal at every
+    // observable state. Mint, burn, reconcile, and claim all move the two
+    // accumulators by the same nominal amount.
+    assert_eq!(s.contract.total_supply(), s.contract.total_principal());
 }
 
 // =============================================================================
@@ -159,12 +159,12 @@ fn test_sequential_mints_at_different_indices_accumulate_nominally() {
     );
 }
 
-// Year-2 yield is computed against the (constant) nominal principal, not
-// against principal-grown-by-prior-yield. This locks the canonical
-// "no yield-on-yield compounding" property: claimed yield doesn't generate
-// further yield.
+// Year-2 yield is computed against (principal + year-1 claim), because
+// claim_yield rolls the claimed amount into total_principal so it earns
+// further yield. This locks the compounding semantics: claimed yield
+// itself accrues from the next index update.
 #[test]
-fn test_year_two_yield_uses_constant_nominal_principal() {
+fn test_year_two_yield_compounds_on_prior_claim() {
     let s = setup();
     let principal = 1_000_000 * DECIMALS;
 
@@ -175,7 +175,8 @@ fn test_year_two_yield_uses_constant_nominal_principal() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     let claimed_yr1 = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed_yr1 > 0);
-    assert_eq!(s.contract.total_principal(), principal); // unchanged by claim
+    // Claim folded into principal — the recipient's tokens now earn yield.
+    assert_eq!(s.contract.total_principal(), principal + claimed_yr1);
 
     let index_after_yr1 = s.contract.latest_index();
 
@@ -183,15 +184,22 @@ fn test_year_two_yield_uses_constant_nominal_principal() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     let claimed_yr2 = s.contract.claim_yield(&s.yield_recipient_manager);
 
-    // The protocol-promised year-2 yield is principal × (index_yr2 - index_yr1).
-    // If yield-on-yield compounding leaked in, the multiplicand would be
-    // (principal + claimed_yr1) instead — a strictly larger number.
+    // Year-2 yield is computed on the post-year-1 principal base, which
+    // now includes the year-1 claim. The simple-interest baseline (yield
+    // only on the original `principal`) is strictly smaller.
     let index_after_yr2 = s.contract.latest_index();
-    let expected_yr2 = principal * (index_after_yr2 - index_after_yr1) / INDEX_SCALE;
+    let expected_yr2 = (principal + claimed_yr1)
+        * (index_after_yr2 - index_after_yr1)
+        / INDEX_SCALE;
+    let simple_interest_yr2 = principal * (index_after_yr2 - index_after_yr1) / INDEX_SCALE;
 
     assert_eq!(
         claimed_yr2, expected_yr2,
-        "year-2 yield must equal principal × index_delta — no compounding \
-         from year-1's claim",
+        "year-2 yield must equal (principal + claimed_yr1) × index_delta — \
+         compounding on the prior claim",
+    );
+    assert!(
+        claimed_yr2 > simple_interest_yr2,
+        "compound year-2 must strictly exceed simple-interest baseline",
     );
 }

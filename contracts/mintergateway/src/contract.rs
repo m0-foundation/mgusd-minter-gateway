@@ -486,8 +486,10 @@ impl YieldToken {
     /// Claims accrued yield by minting new SAC tokens to the yield recipient.
     /// Yield recipient manager only. Returns the amount of yield claimed.
     ///
-    /// Note: Claimed yield is NOT added to principal — it does not earn more yield.
-    /// Tokens are always minted to the yield recipient, regardless of who calls.
+    /// Claimed yield is added to `total_principal` so the recipient's
+    /// minted tokens themselves earn yield from the next `update_index`
+    /// onward (compound interest). Tokens are always minted to the yield
+    /// recipient, regardless of who calls.
     pub fn claim_yield(e: Env, caller: Address) -> Result<i128, MinterGatewayError> {
         pausable::when_not_paused(&e);
         let recipient = read_yield_recipient(&e);
@@ -498,9 +500,9 @@ impl YieldToken {
 
         update_index(&e);
 
-        // Atomically drains the accrued bucket into total_supply (claimed
-        // yield becomes circulating supply but does not earn further yield,
-        // so principal is untouched).
+        // Drains the accrued bucket and bumps both total_principal and
+        // total_supply by the claimed amount. The principal bump is what
+        // makes claimed yield compound from the next index update.
         let unclaimed_yield = claim_accrued_yield(&e);
 
         if unclaimed_yield > 0 {

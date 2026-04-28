@@ -1,13 +1,17 @@
 //! Yield state — continuous compounding via `Index(t) = Index(t₀) × e^(r·Δt)`.
 //!
 //! Three nominal accumulators:
-//! - `total_principal`: yield-earning base. Only `mint` / `burn` /
-//!   `reconcile_burn` mutate it. Never touched by `update_index` or `claim_yield`.
+//! - `total_principal`: yield-earning base. Mutated by `mint` / `burn` /
+//!   `reconcile_burn` (nominal +/-) and by `claim_yield` (claimed amount
+//!   joins principal so it compounds from the next index update).
+//!   Never touched by `update_index` itself.
 //! - `accrued_yield`: stored bucket. `update_index` adds
 //!   `principal × index_delta / INDEX_SCALE` (floored, protocol-favorable).
 //!   `claim_yield` drains it.
 //! - `total_supply`: circulating-supply counter for events and the
-//!   `BurnExceedsSupply` guard. Not part of yield math.
+//!   `BurnExceedsSupply` guard. Held in lockstep with `total_principal`
+//!   under the compounding model — kept as a separate field for now to
+//!   preserve event payload schema.
 //!
 //! Storing principal nominally (rather than as `amount × INDEX_SCALE / index`)
 //! is what fixes audit finding STEL1-2: under the PV form, burning after
@@ -196,10 +200,13 @@ pub fn get_accrued_yield(env: &Env) -> i128 {
     total
 }
 
-/// Atomic claim path: drains the stored `accrued_yield` bucket into
-/// `total_supply` (claimed yield becomes circulating supply but does not
-/// earn further yield, so principal is untouched). Returns the amount
-/// claimed. Caller must call `update_index` first to flush any pending
+/// Atomic claim path: drains the stored `accrued_yield` bucket and bumps
+/// both `total_principal` and `total_supply` by the claimed amount.
+/// Returns the amount claimed.
+///
+/// Adding the claimed amount to `total_principal` is what makes claimed
+/// yield itself earn yield from the next `update_index` onward (compound
+/// interest). Caller must call `update_index` first to flush any pending
 /// slice into the bucket before draining.
 ///
 /// Skips the storage write entirely when the bucket is empty.
@@ -210,6 +217,7 @@ pub fn claim_accrued_yield(env: &Env) -> i128 {
         return 0;
     }
     state.accrued_yield = 0;
+    state.total_principal = state.total_principal.checked_add(claimed).unwrap();
     state.total_supply = state.total_supply.checked_add(claimed).unwrap();
     write_yield_state(env, &state);
     claimed
