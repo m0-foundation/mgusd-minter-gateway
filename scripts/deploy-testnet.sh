@@ -100,6 +100,19 @@
 
 set -euo pipefail
 
+# Auto-load .env from the repo root if present. Robust to PWD — found
+# relative to the script's own location. Template lives at
+# scripts/deploy.env.example.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  echo "Loading $REPO_ROOT/.env"
+  set -a
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/.env"
+  set +a
+fi
+
 ASSET_CODE="${ASSET_CODE:-TMGUSD}"
 STELLAR_NETWORK="${STELLAR_NETWORK:-testnet}"
 WASM_PATH="${WASM_PATH:-./target/wasm32v1-none/release/mintergateway.wasm}"

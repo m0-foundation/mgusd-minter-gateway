@@ -31,12 +31,16 @@ cargo test
 
 ## Deploying
 
-Testnet / dev deploys are driven by `scripts/deploy-testnet.sh`, a thin bash wrapper around the `stellar` CLI that mirrors the 5-step pipeline (configure issuer flags → deploy SAC → upload WASM → deploy wrapper → transfer SAC admin). Required env vars are documented at the top of the script. Signing uses local `stellar keys` identities.
+Testnet / dev deploys are driven by `scripts/deploy-testnet.sh`, a thin bash wrapper around the `stellar` CLI that mirrors the 5-step pipeline (configure issuer flags → deploy SAC → upload WASM → deploy wrapper → transfer SAC admin). The script uses two `stellar keys` identities — an ISSUER (signs steps 1, 5) and a DEPLOYER (signs steps 2-4) — which can resolve to the same identity for testnet/dev or to distinct cold/warm signers for production.
 
 ```bash
+cp scripts/deploy.env.example .env
+$EDITOR .env                          # fill in role pubkeys + key names
 make build
 ./scripts/deploy-testnet.sh
 ```
+
+The script auto-loads `.env` from the repo root if present (gitignored). Per-role env vars are required (STEL1-5: no role-collapsing default).
 
 **Production deploys** that require Fireblocks-custodied signing live on the [`sdk-integration`](https://github.com/m0-foundation/stellar-minter-gateway/tree/sdk-integration) branch. That branch retains the TypeScript SDK and its Fireblocks deploy pipeline; check it out when you need to deploy with MPC-signed issuer keys.
 
