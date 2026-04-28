@@ -241,3 +241,50 @@ fn test_balance_matches_sac_balance() {
     assert_eq!(s.contract.balance(&user), amount);
     assert_eq!(s.contract.balance(&user), s.sac_token.balance(&user));
 }
+
+// =============================================================================
+// COMPLIANCE LIMITATIONS — pinned known gaps from audit findings
+// =============================================================================
+
+#[test]
+fn test_block_user_does_not_revoke_existing_allowances() {
+    // STEL1-3 (Info): block_user flips SAC authorization on the blocked
+    // address only. It does NOT revoke allowances the blocked address
+    // already holds as a spender. A spender approved pre-block keeps the
+    // ability to call SAC transfer_from on the owner's balance — the SAC
+    // checks authorization on the balance owner and recipient, not on the
+    // spender's own trustline status.
+    //
+    // This test pins the documented limitation as a regression guard. If M0
+    // later folds allowance-revocation into the compliance flow, invert the
+    // assertion to require transfer_from to revert.
+    let s = setup();
+    let owner = Address::generate(&s.env);
+    let spender = Address::generate(&s.env);
+    let recipient = Address::generate(&s.env);
+    let principal = 1_000 * DECIMALS;
+    let allowance = 500 * DECIMALS;
+
+    s.contract.unblock_user(&owner, &s.blocker);
+    s.contract.unblock_user(&spender, &s.blocker);
+    s.contract.unblock_user(&recipient, &s.blocker);
+    s.contract.mint(&s.minter, &owner, &principal);
+
+    let expiration_ledger = s.env.ledger().sequence() + 1_000_000;
+    s.sac_token
+        .approve(&owner, &spender, &allowance, &expiration_ledger);
+    assert_eq!(s.sac_token.allowance(&owner, &spender), allowance);
+
+    s.contract.block_user(&spender, &s.blocker);
+    assert!(s.contract.blocked(&spender));
+    assert_eq!(s.sac_token.balance(&spender), 0);
+
+    // The blocked spender can still move the owner's balance.
+    s.sac_token
+        .transfer_from(&spender, &owner, &recipient, &allowance);
+
+    assert_eq!(s.sac_token.balance(&owner), principal - allowance);
+    assert_eq!(s.sac_token.balance(&recipient), allowance);
+    assert_eq!(s.sac_token.balance(&spender), 0);
+    assert!(s.contract.blocked(&spender));
+}
