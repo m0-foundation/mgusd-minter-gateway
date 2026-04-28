@@ -5,15 +5,19 @@ A Soroban smart contract that acts as a SAC (Stellar Asset Contract) admin, enab
 ## Prerequisites
 
 - [Rust](https://rustup.rs/) (stable toolchain)
-- [Soroban CLI / Stellar CLI](https://soroban.stellar.org/docs/getting-started/setup) — includes the `stellar` command and the `wasm32v1-none` target
+- [Stellar CLI](https://developers.stellar.org/docs/tools/cli/install-cli) — pinned to **v26.0.0** (see `.tool-versions`)
 
-### Install Rust + Soroban target
+### Install Rust + Stellar CLI
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup target add wasm32v1-none
-cargo install stellar-cli --locked
+cargo install --locked stellar-cli@26.0.0
 ```
+
+If you use [mise](https://mise.jdx.dev/) or [asdf](https://asdf-vm.com/), `mise install` (or `asdf install`) will pick up the pin from `.tool-versions` automatically.
+
+CI installs the same pinned version via the official [`stellar/stellar-cli@v26.0.0`](https://github.com/stellar/stellar-cli) GitHub Action. **Do not bump to `@latest` in CI** — pin in lockstep with the soroban-sdk's minimum-CLI requirement. This matches how [Blend](https://github.com/blend-capital/blend-contracts-v2) and Soroswap operate.
 
 ---
 

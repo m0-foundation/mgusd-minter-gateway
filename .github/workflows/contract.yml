@@ -51,7 +51,10 @@ jobs:
           target: wasm32v1-none
 
       - name: Install stellar CLI
-        run: curl -fsSL https://github.com/stellar/stellar-cli/raw/main/install.sh | sh
+        # Pinned — bump in lockstep with .tool-versions and the soroban-sdk
+        # version's minimum-CLI requirement. Do not switch to @latest; the
+        # CI must be reproducible against a known CLI build.
+        uses: stellar/stellar-cli@v26.0.0
 
       - name: Build contract
         run: stellar contract build
