@@ -3,7 +3,7 @@ use soroban_sdk::testutils::Address as _;
 use super::setup::*;
 
 // =============================================================================
-// FREEZE / UNFREEZE TESTS
+// BLOCK / UNBLOCK TESTS
 // =============================================================================
 
 #[test]
@@ -18,7 +18,7 @@ fn test_block_user_prevents_transfer() {
     s.contract.block_user(&user, &s.block_operator);
     assert!(s.contract.blocked(&user));
 
-    // Frozen user cannot transfer
+    // Blocked user cannot transfer
     let result = s
         .sac_token
         .try_transfer(&user, &recipient, &(100 * DECIMALS));
@@ -43,7 +43,7 @@ fn test_unblock_user_restores_transfer() {
     // Authorize recipient so they can receive (AUTH_REQUIRED mode)
     s.contract.unblock_user(&recipient, &s.unblock_operator);
 
-    // Unfrozen user can transfer again
+    // Unblocked user can transfer again
     s.sac_token.transfer(&user, &recipient, &(100 * DECIMALS));
     assert_eq!(s.sac_token.balance(&recipient), 100 * DECIMALS);
 }
@@ -223,7 +223,7 @@ fn test_compliance_flow_block_burn_unblock() {
     assert_eq!(s.sac_token.balance(&user), principal);
     assert!(!s.contract.blocked(&user));
 
-    // Step 2: Freeze the account
+    // Step 2: Block the account
     s.contract.block_user(&user, &s.block_operator);
     assert!(s.contract.blocked(&user));
 
@@ -233,7 +233,7 @@ fn test_compliance_flow_block_burn_unblock() {
     assert_eq!(s.contract.total_principal(), principal / 2);
     assert_eq!(s.contract.total_supply(), principal / 2);
 
-    // Step 4: Unfreeze the account
+    // Step 4: Unblock the account
     s.contract.unblock_user(&user, &s.unblock_operator);
     assert!(!s.contract.blocked(&user));
 
@@ -260,7 +260,7 @@ fn test_block_user_blocks_subsequent_direct_sac_transfer() {
     s.sac_token.transfer(&alice, &bob, &(100 * DECIMALS));
     assert_eq!(s.sac_token.balance(&bob), 100 * DECIMALS);
 
-    // Admin freezes alice via our contract
+    // Admin blocks alice via our contract
     s.contract.block_user(&alice, &s.block_operator);
 
     // Alice tries another direct SAC transfer — BLOCKED

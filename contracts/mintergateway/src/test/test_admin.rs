@@ -1,6 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::events::{BlockOperatorAdded, UnblockOperatorAdded};
 
 // =============================================================================
 // ROLE GETTERS — verify initial state
@@ -163,6 +164,54 @@ fn test_added_operators_can_block_and_unblock() {
 
     s.contract.block_user(&user, &new_block);
     assert!(s.contract.blocked(&user));
+}
+
+// Repeated `add_unblock_operator` calls for the same address must not
+// accumulate duplicate entries: the storage layer is keyed-per-address, so
+// re-adds are silent no-ops. This test pins that property by (1) asserting
+// no event fires on the duplicate add and (2) verifying a single remove
+// clears membership — which would fail if the address had been stored more
+// than once.
+#[test]
+fn test_add_unblock_operator_does_not_accumulate_duplicates() {
+    let s = setup();
+    let extra = Address::generate(&s.env);
+
+    s.contract.add_unblock_operator(&extra);
+    s.assert_event(UnblockOperatorAdded {
+        addr: extra.clone(),
+    });
+    assert!(s.contract.is_unblock_operator(&extra));
+
+    s.contract.add_unblock_operator(&extra);
+    s.assert_no_events();
+
+    s.contract.add_unblock_operator(&extra);
+    s.assert_no_events();
+
+    s.contract.remove_unblock_operator(&extra);
+    assert!(!s.contract.is_unblock_operator(&extra));
+}
+
+#[test]
+fn test_add_block_operator_does_not_accumulate_duplicates() {
+    let s = setup();
+    let extra = Address::generate(&s.env);
+
+    s.contract.add_block_operator(&extra);
+    s.assert_event(BlockOperatorAdded {
+        addr: extra.clone(),
+    });
+    assert!(s.contract.is_block_operator(&extra));
+
+    s.contract.add_block_operator(&extra);
+    s.assert_no_events();
+
+    s.contract.add_block_operator(&extra);
+    s.assert_no_events();
+
+    s.contract.remove_block_operator(&extra);
+    assert!(!s.contract.is_block_operator(&extra));
 }
 
 // =============================================================================

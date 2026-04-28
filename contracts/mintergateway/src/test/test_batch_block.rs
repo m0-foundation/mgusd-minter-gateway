@@ -4,7 +4,7 @@ use soroban_sdk::{Address, Vec};
 use super::setup::*;
 
 // =============================================================================
-// BATCH UNFREEZE / FREEZE — happy path
+// BATCH UNBLOCK / BLOCK — happy path
 // =============================================================================
 
 #[test]
@@ -43,7 +43,7 @@ fn test_batch_block_by_block_operator() {
     s.contract
         .batch_unblock_users(&accounts, &s.unblock_operator);
 
-    // Then freeze them
+    // Then block them
     s.contract.batch_block_users(&accounts, &s.block_operator);
 
     for account in accounts.iter() {
@@ -233,7 +233,7 @@ fn test_batch_block_at_max_size() {
 }
 
 // =============================================================================
-// TRANSFER INTEGRATION — verify freeze/unfreeze affects transfers
+// TRANSFER INTEGRATION — verify block/unblock affects transfers
 // =============================================================================
 
 #[test]
@@ -250,9 +250,9 @@ fn test_batch_block_blocks_transfers() {
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 
-    // Batch freeze alice and bob
-    let to_freeze: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
-    s.contract.batch_block_users(&to_freeze, &s.block_operator);
+    // Batch block alice and bob
+    let to_block: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
+    s.contract.batch_block_users(&to_block, &s.block_operator);
 
     // Neither can transfer
     let result_alice = s
@@ -273,7 +273,7 @@ fn test_batch_unblock_restores_transfers() {
     let bob = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    // Authorize, mint, then freeze
+    // Authorize, mint, then block
     let all: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
     s.contract.batch_unblock_users(&all, &s.unblock_operator);
@@ -283,7 +283,7 @@ fn test_batch_unblock_restores_transfers() {
     let users: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
     s.contract.batch_block_users(&users, &s.block_operator);
 
-    // Batch unfreeze
+    // Batch unblock
     s.contract.batch_unblock_users(&users, &s.unblock_operator);
 
     // Both can now transfer

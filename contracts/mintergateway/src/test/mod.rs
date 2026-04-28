@@ -1,12 +1,12 @@
 mod setup;
 mod test_accumulators;
 mod test_admin;
+mod test_batch_block;
 mod test_batch_budget;
-mod test_batch_freeze;
+mod test_block;
 mod test_continuous_index;
 mod test_deployment;
 mod test_force_transfer;
-mod test_freeze;
 mod test_issuer;
 mod test_mint_burn;
 mod test_pausable;
