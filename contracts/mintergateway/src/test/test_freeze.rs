@@ -192,6 +192,21 @@ fn test_unblock_operator_can_unblock_user() {
     assert!(!s.contract.blocked(&user));
 }
 
+#[test]
+fn test_single_address_can_hold_both_block_and_unblock_roles() {
+    let s = setup();
+    let dual = Address::generate(&s.env);
+    s.contract.add_block_operator(&dual);
+    s.contract.add_unblock_operator(&dual);
+
+    let user = Address::generate(&s.env);
+    s.contract.unblock_user(&user, &dual);
+    assert!(!s.contract.blocked(&user));
+
+    s.contract.block_user(&user, &dual);
+    assert!(s.contract.blocked(&user));
+}
+
 // =============================================================================
 // COMPLIANCE INTEGRATION TEST
 // =============================================================================

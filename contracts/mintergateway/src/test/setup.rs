@@ -41,9 +41,11 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
+    // Default to separate block and unblock operators so the role split is
+    // exercised across the suite. Tests that need a single address holding
+    // both roles construct that case explicitly.
     let block_operator = Address::generate(&env);
-    // Default tests use one address for both block and unblock permissions.
-    let unblock_operator = block_operator.clone();
+    let unblock_operator = Address::generate(&env);
     let pauser = Address::generate(&env);
 
     // Register SAC token with admin as initial issuer
