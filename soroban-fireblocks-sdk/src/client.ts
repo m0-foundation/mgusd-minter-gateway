@@ -1,7 +1,8 @@
+import { createHash } from "crypto";
 import { Fireblocks } from "@fireblocks/ts-sdk";
 import { Address, rpc, xdr } from "@stellar/stellar-sdk";
 import { createFireblocksClient, signHash } from "./fireblocks-signer";
-import { SimulationError } from "./errors";
+import { SimulationError, WasmHashMismatchError } from "./errors";
 import {
   addSignatureToTransaction,
   buildChangeTrustTransaction,
@@ -198,6 +199,12 @@ export class SorobanFireblocksClient {
   }
 
   async uploadWasm(params: UploadWasmParams): Promise<UploadWasmResult> {
+    // Compute the expected WASM hash locally — never trust the RPC's returnValue
+    // for this. A compromised or spoofed RPC can otherwise return the hash of
+    // attacker-controlled bytecode already on-chain, which downstream
+    // deployContract / set_admin would then deploy and grant SAC admin to.
+    const expectedWasmHash = createHash("sha256").update(params.wasm).digest("hex");
+
     // Soroban op — needs simulation
     const rawTx = await buildUploadWasmTransaction(this.server, this.config, params);
     const preparedTx = await simulateAndPrepare(this.server, rawTx, this.config.networkPassphrase);
@@ -217,12 +224,20 @@ export class SorobanFireblocksClient {
 
     if (result.status === rpc.Api.GetTransactionStatus.SUCCESS) {
       const successResult = result as rpc.Api.GetSuccessfulTransactionResponse;
-      let wasmHash: string | undefined;
-      if (successResult.returnValue) {
-        // returnValue is ScVal bytes — extract the raw 32-byte hash
-        wasmHash = successResult.returnValue.bytes().toString("hex");
+      const actualWasmHash = successResult.returnValue
+        ? successResult.returnValue.bytes().toString("hex")
+        : undefined;
+
+      if (actualWasmHash !== expectedWasmHash) {
+        throw new WasmHashMismatchError(
+          `uploadWasm hash mismatch: expected sha256(params.wasm)=${expectedWasmHash}, RPC returned ${actualWasmHash ?? "no returnValue"}`,
+          expectedWasmHash,
+          actualWasmHash,
+          txHash,
+        );
       }
-      return { txHash, status: "SUCCESS", wasmHash, ledger: successResult.ledger };
+
+      return { txHash, status: "SUCCESS", wasmHash: expectedWasmHash, ledger: successResult.ledger };
     }
 
     return { txHash, status: "FAILED", ledger: result.ledger };

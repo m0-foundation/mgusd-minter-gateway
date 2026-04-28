@@ -1,5 +1,7 @@
+import { createHash } from "crypto";
 import { Address, Horizon, scValToNative } from "@stellar/stellar-sdk";
 import { SorobanFireblocksClient } from "./client";
+import { WasmHashMismatchError } from "./errors";
 import { assertIssuerNotContaminated } from "./deploy-checks";
 import { addressToScVal, addressVecToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
 import {
@@ -287,10 +289,24 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     }
     console.log(`  WASM uploaded: ${wasmResult.wasmHash}`);
 
+    // Defense-in-depth: re-derive the expected hash from local bytes and refuse
+    // to feed anything else into step 4. uploadWasm already enforces this, but
+    // pinning it again here keeps the data flow into createCustomContract
+    // self-evident on inspection.
+    const localWasmHash = createHash("sha256").update(params.wasm).digest();
+    if (wasmResult.wasmHash !== localWasmHash.toString("hex")) {
+      throw new WasmHashMismatchError(
+        `deployFull refusing to deploy: uploadWasm returned hash ${wasmResult.wasmHash} but sha256(params.wasm)=${localWasmHash.toString("hex")}`,
+        localWasmHash.toString("hex"),
+        wasmResult.wasmHash,
+        wasmResult.txHash,
+      );
+    }
+
     // Step 4: Deploy wrapper contract with all 7 constructor args
     console.log("Step 4/5: Deploying wrapper contract...");
     const deployResult = await this.deployContract({
-      wasmHash: Buffer.from(wasmResult.wasmHash, "hex"),
+      wasmHash: localWasmHash,
       constructorArgs: [
         addressToScVal(sacResult.sacContractId),
         addressToScVal(params.admin),
