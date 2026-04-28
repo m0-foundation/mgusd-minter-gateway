@@ -2,10 +2,18 @@
 #
 # deploy-testnet.sh
 #
-# 5-step deploy pipeline for the Stellar Minter Gateway contract. Targets
-# testnet/dev by default but the structure (two distinct signing identities)
-# matches what a Fireblocks / hardware-wallet production ceremony would look
-# like — point ISSUER_KEY_NAME at a cold-key identity for prod.
+# 5-step deploy pipeline for the Stellar Minter Gateway contract.
+# TESTNET / DEV ONLY. Both signing identities (ISSUER and DEPLOYER) are
+# resolved through `stellar keys`, which means the keys must be locally
+# accessible (encrypted-on-disk or Ledger-backed). Fireblocks-custodied
+# issuer keys cannot sign through this script — there is no `stellar keys`
+# backend for Fireblocks. Production deploys (Fireblocks-custodied issuer)
+# are handled by a separate script with an XDR-handoff signing flow.
+#
+# The two-identity structure here (issuer signs steps 1+5, deployer signs
+# steps 2-4) mirrors the conceptual signing model of the production flow,
+# making it easier to reason about which step needs which key in either
+# environment.
 #
 # =============================================================================
 # SIGNING MODEL — two identities
