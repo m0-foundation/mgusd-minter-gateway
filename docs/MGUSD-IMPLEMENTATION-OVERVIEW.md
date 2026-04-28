@@ -31,12 +31,12 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 1. Bridge calls `set_rate(rate_bps)` to set the current interest rate (this is a **Minter** permission, not Admin)
 2. Yield accrues continuously on `total_principal` using the exponential index
-3. Yield Recipient (MoneyGram) calls `claim_yield()` to mint accrued yield as new SAC tokens
+3. Yield Recipient Manager calls `claim_yield()` to mint accrued yield as new SAC tokens to the Yield Recipient
 4. Claimed yield increases `total_supply` but **not** `total_principal` — it does not compound
 
 ### 5. Forced Transfer (Compliance Action)
 
-1. Forced Transfer Manager (Crossmint) or Admin identifies a need to move tokens between accounts
+1. Forced Transfer Manager (Crossmint) identifies a need to move tokens between accounts
 2. Caller invokes `force_transfer(from, to, amount)` — no authorization from the source account is needed
 3. Contract clawbacks tokens from the source and mints them to the destination at the SAC layer
 4. Accumulators are unchanged — this is a balance redistribution, not a supply change
@@ -106,11 +106,12 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 |----------|-----------|-------------|
 | `force_transfer` | `(caller: Address, from: Address, to: Address, amount: i128)` | Force-move SAC tokens between accounts (clawback + mint) |
 
-### Yield Recipient Manager Functions (1)
+### Yield Recipient Manager Functions (2)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `set_yield_recipient` | `(caller: Address, new_yr: Address)` | Set the address that can claim yield |
+| `set_yield_recipient` | `(caller: Address, new_yr: Address)` | Set the address that receives claimed yield |
+| `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to the yield recipient |
 
 ### Blocker Functions (4)
 
@@ -122,12 +123,6 @@ Matches the `stellar_tokens::fungible::blocklist` function shape; backed by the 
 | `unblock_user` | `(user: Address, operator: Address)` | Unblock a user on the SAC (`set_authorized(true)`) |
 | `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 40 users in a single transaction |
 | `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 40 users in a single transaction |
-
-### Yield Recipient Functions (1)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to yield recipient |
 
 ### Pauser Functions (2)
 
