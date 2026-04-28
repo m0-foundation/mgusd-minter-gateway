@@ -3,6 +3,9 @@ import { xdr } from "@stellar/stellar-sdk";
 export interface SorobanFireblocksConfig {
   /** Soroban RPC endpoint URL */
   sorobanRpcUrl: string;
+  /** Horizon endpoint URL (used by `deployFull` for the pre-deploy
+   *  trustline-contamination check — see audit STEL1-6) */
+  horizonUrl: string;
   /** Stellar network passphrase */
   networkPassphrase: string;
   /** Fireblocks API key */

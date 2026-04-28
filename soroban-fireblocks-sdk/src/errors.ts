@@ -30,13 +30,32 @@ export class SubmissionError extends Error {
 }
 
 export class WasmHashMismatchError extends Error {
+    constructor(
+        message: string,
+        public readonly expectedHash: string,
+        public readonly actualHash: string | undefined,
+        public readonly txHash?: string,
+    ) {
+        super(message);
+        this.name = "WasmHashMismatchError";
+    }
+}
+
+export interface IssuerContaminationCounts {
+  trustlines: number;
+  claimableBalances: number;
+  liquidityPools: number;
+  contracts: number;
+}
+
+export class IssuerContaminatedError extends Error {
   constructor(
     message: string,
-    public readonly expectedHash: string,
-    public readonly actualHash: string | undefined,
-    public readonly txHash?: string,
+    public readonly assetCode: string,
+    public readonly assetIssuer: string,
+    public readonly counts: IssuerContaminationCounts,
   ) {
     super(message);
-    this.name = "WasmHashMismatchError";
+    this.name = "IssuerContaminatedError";
   }
 }
