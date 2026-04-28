@@ -1,4 +1,8 @@
-# Stellar Minter Gateway
+# Stellar Minter Gateway — `sdk-integration` branch
+
+> **This branch retains the TypeScript SDK and the Fireblocks-signed deploy pipeline.** The contract source-of-truth lives on [`main`](https://github.com/m0-foundation/stellar-minter-gateway/tree/main); this branch is manually synced from `main` after each release by merging `main` into `sdk-integration`. Production deploys that require Fireblocks-custodied issuer keys run from this branch via `npm run deploy`. Day-to-day contract development happens on `main`/`develop` — do not commit contract changes here directly.
+
+---
 
 A Soroban smart contract system for issuing yield-bearing tokens on the Stellar network. The contract acts as a SAC (Stellar Asset Contract) admin, enabling controlled minting, burning, yield accrual via continuous compounding, and compliance enforcement through an on-chain allowlist. It is paired with a TypeScript SDK that handles transaction signing through Fireblocks MPC infrastructure.
 
