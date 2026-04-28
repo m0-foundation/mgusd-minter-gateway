@@ -377,7 +377,8 @@ describe("SctokenFireblocksClient", () => {
         yieldRecipientManager: config.sourcePublicKey,
         yieldRecipient: config.sourcePublicKey,
         forcedTransferManager: config.sourcePublicKey,
-        blocker: config.sourcePublicKey,
+        blockOperator: config.sourcePublicKey,
+        unblockOperator: config.sourcePublicKey,
         pauser: config.sourcePublicKey,
       });
 
@@ -430,7 +431,8 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
-          blocker: config.sourcePublicKey,
+          blockOperator: config.sourcePublicKey,
+          unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
         }),
       ).rejects.toBeInstanceOf(IssuerContaminatedError);
@@ -492,7 +494,8 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
-          blocker: config.sourcePublicKey,
+          blockOperator: config.sourcePublicKey,
+          unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
         }),
       ).rejects.toThrow("configureIssuer failed");
@@ -546,7 +549,8 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
-          blocker: config.sourcePublicKey,
+          blockOperator: config.sourcePublicKey,
+          unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
         }),
       ).rejects.toThrow("deploySac failed");
@@ -615,7 +619,8 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
-          blocker: config.sourcePublicKey,
+          blockOperator: config.sourcePublicKey,
+          unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
         }),
       ).rejects.toBeInstanceOf(WasmHashMismatchError);
@@ -685,7 +690,8 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
-          blocker: config.sourcePublicKey,
+          blockOperator: config.sourcePublicKey,
+          unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
         }),
       ).rejects.toThrow("uploadWasm failed");
@@ -756,7 +762,8 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
-          blocker: config.sourcePublicKey,
+          blockOperator: config.sourcePublicKey,
+          unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
         }),
       ).rejects.toThrow("deployContract failed");
@@ -835,7 +842,8 @@ describe("SctokenFireblocksClient", () => {
           yieldRecipientManager: config.sourcePublicKey,
           yieldRecipient: config.sourcePublicKey,
           forcedTransferManager: config.sourcePublicKey,
-          blocker: config.sourcePublicKey,
+          blockOperator: config.sourcePublicKey,
+          unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
         }),
       ).rejects.toThrow("set_admin failed");

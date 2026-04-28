@@ -4,16 +4,18 @@ use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::constants::MAX_BATCH_SIZE;
 use crate::errors::MinterGatewayError;
 use crate::events::{
-    emit_admin_set, emit_blocker_added, emit_blocker_removed, emit_burn, emit_force_transfer,
-    emit_forced_transfer_manager_set, emit_interest_rate_set, emit_mint, emit_minter_set,
-    emit_pauser_set, emit_reconcile, emit_sac_admin_transferred, emit_upgraded, emit_yield_claimed,
+    emit_admin_set, emit_block_operator_added, emit_block_operator_removed, emit_burn,
+    emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set, emit_mint,
+    emit_minter_set, emit_pauser_set, emit_reconcile, emit_sac_admin_transferred,
+    emit_unblock_operator_added, emit_unblock_operator_removed, emit_upgraded, emit_yield_claimed,
     emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    delete_blocker, insert_blocker, is_blocker, read_forced_transfer_manager, read_minter,
-    read_pauser, read_yield_recipient, read_yield_recipient_manager, require_blocker,
-    require_role_holder, write_forced_transfer_manager, write_minter, write_pauser,
-    write_yield_recipient, write_yield_recipient_manager,
+    delete_block_operator, delete_unblock_operator, insert_block_operator, insert_unblock_operator,
+    is_block_operator, is_unblock_operator, read_forced_transfer_manager, read_minter, read_pauser,
+    read_yield_recipient, read_yield_recipient_manager, require_block_operator,
+    require_role_holder, require_unblock_operator, write_forced_transfer_manager, write_minter,
+    write_pauser, write_yield_recipient, write_yield_recipient_manager,
 };
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
@@ -52,8 +54,10 @@ impl YieldToken {
     /// * `yield_recipient_manager` - Address that can set the yield recipient
     /// * `yield_recipient` - Address that can claim yield
     /// * `forced_transfer_manager` - Address that can authorize accounts and transfer tokens
-    /// * `blocker` - Initial blocker address; added to the blocker membership set.
-    ///   Additional blockers can later be granted via `add_blocker`.
+    /// * `block_operator` - Initial address with block permission; added to the block-operator set.
+    ///   More addresses can be granted via `add_block_operator`.
+    /// * `unblock_operator` - Initial address with unblock permission; added to the unblock-operator set.
+    ///   More addresses can be granted via `add_unblock_operator`. May equal `block_operator`.
     /// * `pauser` - Address that can pause/unpause the contract
     pub fn __constructor(
         e: Env,
@@ -63,7 +67,8 @@ impl YieldToken {
         yield_recipient_manager: Address,
         yield_recipient: Address,
         forced_transfer_manager: Address,
-        blocker: Address,
+        block_operator: Address,
+        unblock_operator: Address,
         pauser: Address,
     ) -> Result<(), MinterGatewayError> {
         if has_admin(&e) {
@@ -79,7 +84,8 @@ impl YieldToken {
         write_yield_recipient_manager(&e, &yield_recipient_manager);
         write_yield_recipient(&e, &yield_recipient);
         write_forced_transfer_manager(&e, &forced_transfer_manager);
-        insert_blocker(&e, &blocker);
+        insert_block_operator(&e, &block_operator);
+        insert_unblock_operator(&e, &unblock_operator);
         write_pauser(&e, &pauser);
 
         Ok(())
@@ -140,29 +146,49 @@ impl YieldToken {
         emit_forced_transfer_manager_set(&e, old, new_forced_transfer_manager);
     }
 
-    /// Grants the blocker role to `new_blocker`. Admin only.
-    /// Idempotent: silent no-op (no event) if the address is already a blocker.
-    pub fn add_blocker(e: Env, new_blocker: Address) {
+    /// Grants block permission to `addr`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address is already a block operator.
+    pub fn add_block_operator(e: Env, addr: Address) {
         require_admin(&e);
 
         // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
-        if insert_blocker(&e, &new_blocker) {
-            emit_blocker_added(&e, new_blocker);
+        if insert_block_operator(&e, &addr) {
+            emit_block_operator_added(&e, addr);
         }
     }
 
-    /// Revokes the blocker role from `blocker`. Admin only.
-    /// Idempotent: silent no-op (no event) if the address is not a blocker.
-    /// Note: removing the last blocker leaves no one able to block/unblock
-    /// until the admin grants the role again via `add_blocker`.
-    pub fn remove_blocker(e: Env, blocker: Address) {
+    /// Revokes block permission from `addr`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address does not have block permission.
+    pub fn remove_block_operator(e: Env, addr: Address) {
         require_admin(&e);
         extend_instance_ttl(&e);
 
-        if delete_blocker(&e, &blocker) {
-            emit_blocker_removed(&e, blocker);
+        if delete_block_operator(&e, &addr) {
+            emit_block_operator_removed(&e, addr);
+        }
+    }
+
+    /// Grants unblock permission to `addr`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address is already an unblock operator.
+    pub fn add_unblock_operator(e: Env, addr: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        if insert_unblock_operator(&e, &addr) {
+            emit_unblock_operator_added(&e, addr);
+        }
+    }
+
+    /// Revokes unblock permission from `addr`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address does not have unblock permission.
+    pub fn remove_unblock_operator(e: Env, addr: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        if delete_unblock_operator(&e, &addr) {
+            emit_unblock_operator_removed(&e, addr);
         }
     }
 
@@ -180,7 +206,7 @@ impl YieldToken {
     }
 
     // =========================================================================
-    // BlockList Functions (Blocker)
+    // BlockList Functions (Block / Unblock operators)
     //
     // Mirrors the `stellar_tokens::fungible::blocklist::FungibleBlockList`
     // interface: `block_user` / `unblock_user` / `blocked`. Backed by the SAC
@@ -195,9 +221,9 @@ impl YieldToken {
     // =========================================================================
 
     /// Blocks a user, preventing them from sending or receiving SAC tokens.
-    /// Blocker only.
+    /// Block operator only.
     pub fn block_user(e: Env, user: Address, operator: Address) -> Result<(), MinterGatewayError> {
-        require_blocker(&e, &operator)?;
+        require_block_operator(&e, &operator)?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -208,13 +234,13 @@ impl YieldToken {
     }
 
     /// Unblocks a user, restoring their ability to send and receive SAC tokens.
-    /// Blocker only.
+    /// Unblock operator only.
     pub fn unblock_user(
         e: Env,
         user: Address,
         operator: Address,
     ) -> Result<(), MinterGatewayError> {
-        require_blocker(&e, &operator)?;
+        require_unblock_operator(&e, &operator)?;
         extend_instance_ttl(&e);
 
         let sac_addr = read_sac_token(&e);
@@ -225,13 +251,13 @@ impl YieldToken {
     }
 
     /// Blocks multiple users in a single transaction.
-    /// Blocker only. Max 40 users per call.
+    /// Block operator only. Max 40 users per call.
     pub fn batch_block_users(
         e: Env,
         users: Vec<Address>,
         operator: Address,
     ) -> Result<(), MinterGatewayError> {
-        require_blocker(&e, &operator)?;
+        require_block_operator(&e, &operator)?;
         extend_instance_ttl(&e);
 
         if users.len() > MAX_BATCH_SIZE {
@@ -250,13 +276,13 @@ impl YieldToken {
     }
 
     /// Unblocks multiple users in a single transaction.
-    /// Blocker only. Max 40 users per call.
+    /// Unblock operator only. Max 40 users per call.
     pub fn batch_unblock_users(
         e: Env,
         users: Vec<Address>,
         operator: Address,
     ) -> Result<(), MinterGatewayError> {
-        require_blocker(&e, &operator)?;
+        require_unblock_operator(&e, &operator)?;
         extend_instance_ttl(&e);
 
         if users.len() > MAX_BATCH_SIZE {
@@ -618,10 +644,16 @@ impl YieldToken {
         read_forced_transfer_manager(&e)
     }
 
-    /// Returns whether `addr` currently holds the blocker role.
-    pub fn is_blocker(e: Env, addr: Address) -> bool {
+    /// Returns whether `addr` has block permission.
+    pub fn is_block_operator(e: Env, addr: Address) -> bool {
         extend_instance_ttl(&e);
-        is_blocker(&e, &addr)
+        is_block_operator(&e, &addr)
+    }
+
+    /// Returns whether `addr` has unblock permission.
+    pub fn is_unblock_operator(e: Env, addr: Address) -> bool {
+        extend_instance_ttl(&e);
+        is_unblock_operator(&e, &addr)
     }
 
     /// Returns the pauser address.

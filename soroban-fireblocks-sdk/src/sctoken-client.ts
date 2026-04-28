@@ -165,29 +165,55 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     return Address.fromScVal(retval).toString();
   }
 
-  async queryIsBlocker(params: QueryParams & { account: string }): Promise<boolean> {
+  async queryIsBlockOperator(params: QueryParams & { account: string }): Promise<boolean> {
     const retval = await this.simulateView({
       contractId: params.contractId,
-      method: "is_blocker",
+      method: "is_block_operator",
       args: [addressToScVal(params.account)],
     });
-    if (!retval) throw new Error("is_blocker returned no value");
+    if (!retval) throw new Error("is_block_operator returned no value");
     return scValToNative(retval) as boolean;
   }
 
-  async addBlocker(params: QueryParams & { newBlocker: string }): Promise<InvokeContractResult> {
+  async queryIsUnblockOperator(params: QueryParams & { account: string }): Promise<boolean> {
+    const retval = await this.simulateView({
+      contractId: params.contractId,
+      method: "is_unblock_operator",
+      args: [addressToScVal(params.account)],
+    });
+    if (!retval) throw new Error("is_unblock_operator returned no value");
+    return scValToNative(retval) as boolean;
+  }
+
+  async addBlockOperator(params: QueryParams & { addr: string }): Promise<InvokeContractResult> {
     return this.invokeContract({
       contractId: params.contractId,
-      method: "add_blocker",
-      args: [addressToScVal(params.newBlocker)],
+      method: "add_block_operator",
+      args: [addressToScVal(params.addr)],
     });
   }
 
-  async removeBlocker(params: QueryParams & { blocker: string }): Promise<InvokeContractResult> {
+  async removeBlockOperator(params: QueryParams & { addr: string }): Promise<InvokeContractResult> {
     return this.invokeContract({
       contractId: params.contractId,
-      method: "remove_blocker",
-      args: [addressToScVal(params.blocker)],
+      method: "remove_block_operator",
+      args: [addressToScVal(params.addr)],
+    });
+  }
+
+  async addUnblockOperator(params: QueryParams & { addr: string }): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "add_unblock_operator",
+      args: [addressToScVal(params.addr)],
+    });
+  }
+
+  async removeUnblockOperator(params: QueryParams & { addr: string }): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "remove_unblock_operator",
+      args: [addressToScVal(params.addr)],
     });
   }
 
@@ -303,7 +329,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       );
     }
 
-    // Step 4: Deploy wrapper contract with all 7 constructor args
+    // Step 4: Deploy wrapper — SAC + eight role addresses (constructor)
     console.log("Step 4/5: Deploying wrapper contract...");
     const deployResult = await this.deployContract({
       wasmHash: localWasmHash,
@@ -314,7 +340,8 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
         addressToScVal(params.yieldRecipientManager),
         addressToScVal(params.yieldRecipient),
         addressToScVal(params.forcedTransferManager),
-        addressToScVal(params.blocker),
+        addressToScVal(params.blockOperator),
+        addressToScVal(params.unblockOperator),
         addressToScVal(params.pauser),
       ],
     });

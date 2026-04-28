@@ -71,6 +71,21 @@ All parameters live in `.env` so they can be reviewed before each run. The SDK u
 | `MINTER_FIREBLOCKS_VAULT_ACCOUNT_ID` | Fireblocks vault account ID for the minter |
 | `MINTER_PUBLIC_KEY` | Stellar public key for the minter (G...) |
 
+#### Contract roles (`npm run deploy`)
+
+Each role is read from its own env var (see audit STEL1-5). For local testing you may set several to the same key on purpose; production should use distinct vaults where possible.
+
+| Variable | Description |
+|----------|-------------|
+| `ADMIN_PUBLIC_KEY` | Top-level admin |
+| `MINTER_PUBLIC_KEY` | Minter (also listed under minter account above) |
+| `YIELD_RECIPIENT_MANAGER_PUBLIC_KEY` | Rotates yield recipient |
+| `YIELD_RECIPIENT_PUBLIC_KEY` | Receives claimed yield |
+| `FORCED_TRANSFER_MANAGER_PUBLIC_KEY` | Forced transfers |
+| `BLOCK_OPERATOR_PUBLIC_KEY` | Block / batch block on the allowlist |
+| `UNBLOCK_OPERATOR_PUBLIC_KEY` | Unblock / batch unblock on the allowlist |
+| `PAUSER_PUBLIC_KEY` | Pause / unpause |
+
 #### Per-script
 
 | Variable | Used by | Description |
@@ -98,7 +113,7 @@ Runs the full 5-step Fireblocks-signed deployment pipeline. The **issuer** Fireb
 | 1 | **Configure issuer** — sets `AUTH_REVOCABLE` + `AUTH_CLAWBACK_ENABLED` flags on the issuer account | Classic `setOptions` |
 | 2 | **Deploy SAC** — creates the Stellar Asset Contract for the asset | Soroban `createStellarAssetContract` |
 | 3 | **Upload WASM** — uploads the compiled contract bytecode to the ledger | Soroban `uploadContractWasm` |
-| 4 | **Deploy wrapper** — instantiates the wrapper contract with 6 constructor args: `(sac_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager)` | Soroban `createCustomContract` |
+| 4 | **Deploy wrapper** — instantiates the wrapper with constructor args: `sac_token`, admin, minter, yield recipient manager, yield recipient, forced transfer manager, block operator, unblock operator, pauser | Soroban `createCustomContract` |
 | 5 | **Transfer SAC admin** — calls `set_admin` on the SAC to hand control to the wrapper | Soroban `invokeContract` |
 
 Build the contract WASM first (requires Rust + Soroban CLI):
@@ -151,7 +166,7 @@ Runs both unit and integration tests.
 # 1. Build the contract WASM (from repo root)
 stellar contract build
 
-# 2. Deploy (signed by issuer, sets all 6 roles)
+# 2. Deploy (signed by issuer; configure all role env vars, including block/unblock operators)
 npm run deploy
 
 # 3. Set up trustline on the minter's account
@@ -176,10 +191,13 @@ import {
   loadMinterConfigFromEnv,
 } from "soroban-fireblocks-sdk";
 
-// Deploy pipeline (issuer signs, sets all 6 roles)
+// Deploy pipeline (issuer signs; pass every role address — block/unblock may be the same pubkey)
 const issuerConfig = loadIssuerConfigFromEnv();
 const issuerClient = new SctokenFireblocksClient(issuerConfig);
 const minterPublicKey = process.env.MINTER_PUBLIC_KEY!;
+const blockOp = process.env.BLOCK_OPERATOR_PUBLIC_KEY!;
+const unblockOp = process.env.UNBLOCK_OPERATOR_PUBLIC_KEY!;
+const pauser = process.env.PAUSER_PUBLIC_KEY!;
 
 const deploy = await issuerClient.deployFull({
   assetCode: "TMGUSD",
@@ -190,6 +208,9 @@ const deploy = await issuerClient.deployFull({
   yieldRecipientManager: minterPublicKey,
   yieldRecipient: minterPublicKey,
   forcedTransferManager: minterPublicKey,
+  blockOperator: blockOp,
+  unblockOperator: unblockOp,
+  pauser: pauser,
 });
 console.log(deploy.sacContractId);      // C...
 console.log(deploy.wasmHash);           // hex

@@ -72,19 +72,20 @@ pub fn write_forced_transfer_manager(env: &Env, addr: &Address) {
 }
 
 // =============================================================================
-// Blocker - Can block/unblock accounts (individually or in batches).
-// Stored as a membership set: one instance-storage entry per blocker address.
+// Block / Unblock operators — separate membership sets. Block operators can
+// block accounts; unblock operators can unblock. Either role may be held alone
+// or both by the same address.
 // =============================================================================
 
-pub fn is_blocker(env: &Env, addr: &Address) -> bool {
+pub fn is_block_operator(env: &Env, addr: &Address) -> bool {
     env.storage()
         .instance()
-        .has(&DataKey::Blocker(addr.clone()))
+        .has(&DataKey::BlockOperator(addr.clone()))
 }
 
-/// Returns true if this call added a new blocker (false if already present).
-pub fn insert_blocker(env: &Env, addr: &Address) -> bool {
-    let key = DataKey::Blocker(addr.clone());
+/// Returns true if this call added a new block operator (false if already present).
+pub fn insert_block_operator(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::BlockOperator(addr.clone());
     if env.storage().instance().has(&key) {
         return false;
     }
@@ -92,9 +93,9 @@ pub fn insert_blocker(env: &Env, addr: &Address) -> bool {
     true
 }
 
-/// Returns true if this call removed an existing blocker (false if not present).
-pub fn delete_blocker(env: &Env, addr: &Address) -> bool {
-    let key = DataKey::Blocker(addr.clone());
+/// Returns true if this call removed an existing block operator (false if not present).
+pub fn delete_block_operator(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::BlockOperator(addr.clone());
     if !env.storage().instance().has(&key) {
         return false;
     }
@@ -102,9 +103,43 @@ pub fn delete_blocker(env: &Env, addr: &Address) -> bool {
     true
 }
 
-pub fn require_blocker(env: &Env, caller: &Address) -> Result<(), MinterGatewayError> {
+pub fn require_block_operator(env: &Env, caller: &Address) -> Result<(), MinterGatewayError> {
     caller.require_auth();
-    if !is_blocker(env, caller) {
+    if !is_block_operator(env, caller) {
+        return Err(MinterGatewayError::UnauthorizedError);
+    }
+    Ok(())
+}
+
+pub fn is_unblock_operator(env: &Env, addr: &Address) -> bool {
+    env.storage()
+        .instance()
+        .has(&DataKey::UnblockOperator(addr.clone()))
+}
+
+/// Returns true if this call added a new unblock operator (false if already present).
+pub fn insert_unblock_operator(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::UnblockOperator(addr.clone());
+    if env.storage().instance().has(&key) {
+        return false;
+    }
+    env.storage().instance().set(&key, &());
+    true
+}
+
+/// Returns true if this call removed an existing unblock operator (false if not present).
+pub fn delete_unblock_operator(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::UnblockOperator(addr.clone());
+    if !env.storage().instance().has(&key) {
+        return false;
+    }
+    env.storage().instance().remove(&key);
+    true
+}
+
+pub fn require_unblock_operator(env: &Env, caller: &Address) -> Result<(), MinterGatewayError> {
+    caller.require_auth();
+    if !is_unblock_operator(env, caller) {
         return Err(MinterGatewayError::UnauthorizedError);
     }
     Ok(())

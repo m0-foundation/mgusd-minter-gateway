@@ -26,7 +26,8 @@ pub struct TestSetup<'a> {
     pub yield_recipient_manager: Address,
     pub yield_recipient: Address,
     pub forced_transfer_manager: Address,
-    pub blocker: Address,
+    pub block_operator: Address,
+    pub unblock_operator: Address,
     pub pauser: Address,
 }
 
@@ -40,7 +41,11 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
-    let blocker = Address::generate(&env);
+    // Default to separate block and unblock operators so the role split is
+    // exercised across the suite. Tests that need a single address holding
+    // both roles construct that case explicitly.
+    let block_operator = Address::generate(&env);
+    let unblock_operator = Address::generate(&env);
     let pauser = Address::generate(&env);
 
     // Register SAC token with admin as initial issuer
@@ -64,7 +69,8 @@ pub fn setup() -> TestSetup<'static> {
             &yield_recipient_manager,
             &yield_recipient,
             &forced_transfer_manager,
-            &blocker,
+            &block_operator,
+            &unblock_operator,
             &pauser,
         ),
     );
@@ -74,7 +80,7 @@ pub fn setup() -> TestSetup<'static> {
     sac_admin_client.set_admin(&contract_addr);
 
     // Authorize yield_recipient so claim_yield can mint to it (AUTH_REQUIRED mode)
-    contract.unblock_user(&yield_recipient, &blocker);
+    contract.unblock_user(&yield_recipient, &unblock_operator);
 
     TestSetup {
         env,
@@ -86,7 +92,8 @@ pub fn setup() -> TestSetup<'static> {
         yield_recipient_manager,
         yield_recipient,
         forced_transfer_manager,
-        blocker,
+        block_operator,
+        unblock_operator,
         pauser,
     }
 }

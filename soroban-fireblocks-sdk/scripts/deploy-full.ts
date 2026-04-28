@@ -4,7 +4,7 @@
  *   1. Configure issuer (AUTH_REQUIRED + AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED)
  *   2. Deploy SAC (Stellar Asset Contract)
  *   3. Upload WASM
- *   4. Deploy wrapper contract with 7 distinct constructor role args
+ *   4. Deploy wrapper contract with eight distinct constructor role addresses (plus SAC)
  *   5. Transfer SAC admin to wrapper
  *
  * Uses the ISSUER Fireblocks account to sign all deploy transactions. Each
@@ -22,7 +22,8 @@
  *   YIELD_RECIPIENT_MANAGER_PUBLIC_KEY     — rotates yield recipient (M0)
  *   YIELD_RECIPIENT_PUBLIC_KEY             — claims yield (e.g. MoneyGram)
  *   FORCED_TRANSFER_MANAGER_PUBLIC_KEY     — compliance forced transfers (Crossmint)
- *   BLOCKER_PUBLIC_KEY                     — compliance blocker
+ *   BLOCK_OPERATOR_PUBLIC_KEY              — may call block / batch block
+ *   UNBLOCK_OPERATOR_PUBLIC_KEY          — may call unblock / batch unblock
  *   PAUSER_PUBLIC_KEY                      — pauser of record
  *
  *   ASSET_CODE                             — defaults to TMGUSD
@@ -81,7 +82,8 @@ async function main(): Promise<void> {
     yieldRecipientManager: requireRolePubkey("YIELD_RECIPIENT_MANAGER_PUBLIC_KEY"),
     yieldRecipient: requireRolePubkey("YIELD_RECIPIENT_PUBLIC_KEY"),
     forcedTransferManager: requireRolePubkey("FORCED_TRANSFER_MANAGER_PUBLIC_KEY"),
-    blocker: requireRolePubkey("BLOCKER_PUBLIC_KEY"),
+    blockOperator: requireRolePubkey("BLOCK_OPERATOR_PUBLIC_KEY"),
+    unblockOperator: requireRolePubkey("UNBLOCK_OPERATOR_PUBLIC_KEY"),
     pauser: requireRolePubkey("PAUSER_PUBLIC_KEY"),
   };
   
@@ -104,7 +106,8 @@ async function main(): Promise<void> {
   console.log(`    yieldRecipientManager: ${roles.yieldRecipientManager}`);
   console.log(`    yieldRecipient:        ${roles.yieldRecipient}`);
   console.log(`    forcedTransferManager: ${roles.forcedTransferManager}`);
-  console.log(`    blocker:               ${roles.blocker}`);
+  console.log(`    blockOperator:         ${roles.blockOperator}`);
+  console.log(`    unblockOperator:       ${roles.unblockOperator}`);
   console.log(`    pauser:                ${roles.pauser}`);
   console.log();
 
