@@ -2,7 +2,7 @@
 
 A focused explainer of how the TS pipeline at [`scripts/deploy/`](.) signs deploys through Fireblocks. Read this before running `deploy:execute` against mainnet.
 
-## The model in 60 seconds
+## Mental model
 
 You never hold the Stellar private key for the issuer account. Fireblocks does, via MPC, and the key never leaves their custody. What you have is a Fireblocks API user (a separate identity, with its own RSA keypair) authorized to *ask* Fireblocks to sign things on behalf of a specific vault. Our deploy script asks Fireblocks to sign 5 transaction hashes; Fireblocks returns 5 Ed25519 signatures; we attach those signatures to the transactions and submit to Stellar.
 
@@ -11,7 +11,7 @@ There are **two distinct keypairs** in play. Don't conflate them.
 | Keypair | Algorithm | Where it lives | What it's for |
 |---|---|---|---|
 | **API auth keypair** | RSA-4096 | Private PEM on your laptop, public PEM uploaded to Fireblocks | Authenticates *you* to the Fireblocks API. Signs JWTs on every request. |
-| **Stellar issuer key** | Ed25519 | Inside Fireblocks MPC vault — fragmented across cosigners, never reconstructed | Signs Stellar transactions. We never touch it directly. |
+| **Stellar issuer key** | Ed25519 | Inside Fireblocks MPC vault — held as MPC shares across cosigners; the whole key never exists | Signs Stellar transactions. We never touch it directly. |
 
 ## What's secret, what isn't
 
@@ -55,42 +55,26 @@ The private `fireblocks-secret.pem` stays on your laptop; `FIREBLOCKS_SECRET_PAT
 **3. The API user exists but the PEM is lost.** You can't recover it — Fireblocks only stored the public half. Path forward is to rotate: workspace admin deletes the API user (or rotates its public key), then proceed as scenario 1 with a fresh keypair. Plan downtime accordingly — any tooling pointing at the old PEM stops working the moment the FB swap happens.
 
 **Storage hygiene.**
-- Always `chmod 600` the private PEM. Some tools refuse to read world-readable keys; OpenSSH definitely does.
+- Always `chmod 600` the private PEM.
 - Don't store under `~/Downloads` long-term; move to a stable location (e.g. `~/secrets/fireblocks-<workspace>.pem`).
 - Production prod-workspace PEMs should live in your team password manager (1Password vault item with attached file), not on individual laptops.
 - Rotation policy: rotate at least when an API user owner leaves the team, or annually as hygiene.
 
-## The 5-step deploy, in detail
+## The 5-step deploy
 
-Each step is built locally → simulated against Soroban RPC (steps 2-5 only) → tx hash sent to Fireblocks for signing → signature attached to envelope → submitted to Stellar. Step 1 skips simulation because it's a classic Stellar op.
+Canonical step list lives in [`scripts/deploy/README.md`](../scripts/deploy/README.md#what-it-does). The trust-relevant invariants:
 
-| Step | Op | Purpose | Who pays fees |
-|---|---|---|---|
-| 0 | (preflight, no tx) | Query Horizon for `(asset_code, issuer)`. Aborts if any pre-existing trustlines / contracts / pools — those would be permanently unclawbackable. | nobody (read-only) |
-| 1 | `set_options` | Set `AUTH_REQUIRED + AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED` on the issuer. Required for compliance enforcement. | issuer vault |
-| 2 | `createStellarAssetContract` | Deploy the SAC for `(asset_code, issuer)`. SAC is the Soroban interface to a classic Stellar asset. | issuer vault |
-| 3 | `uploadContractWasm` | Upload the wrapper bytecode. Script verifies sha256 locally — refuses to proceed if RPC returned a different hash (defense against compromised RPC). | issuer vault |
-| 4 | `createCustomContract` | Instantiate the wrapper with constructor args (SAC contract id + 8 role addresses). Wrapper contract id derives from `(deployer, salt)`. | issuer vault |
-| 5 | `SAC.set_admin(wrapper)` | Hand SAC admin from the issuer to the wrapper. After this, only the wrapper can mint/burn/clawback the SAC. | issuer vault |
-
-All 5 steps are signed by the **same Fireblocks vault** (the issuer). Fireblocks vault policy (e.g., 2-of-3 cosigner approval) gates each signing request — that's where multi-party control lives, not in our script.
-
-**Important:** the deploy is *not* idempotent. If a step fails between submission and confirmation, re-running may collide with already-deployed state. Recovery is to bump `ASSET_CODE` (so the SAC for the new pair doesn't exist) or provision a fresh issuer.
+- Each step is built locally → simulated against Soroban RPC (steps 2-5 only) → tx hash sent to Fireblocks for signing → signature attached to envelope → submitted to Stellar. Step 1 skips simulation because it's a classic Stellar op.
+- All 5 signed steps are signed by the **same Fireblocks vault** (the issuer). Vault policy (e.g., 2-of-3 cosigner approval) gates each signing request — that's where multi-party control lives, not in our script.
+- The deploy is **not idempotent.** If a step fails between submission and confirmation, re-running may collide with already-deployed state. Recovery is to bump `ASSET_CODE` (so the SAC for the new pair doesn't exist) or provision a fresh issuer.
 
 ## Trust boundaries
 
-```
-+------------+    RSA-signed JWT    +-------------+    MPC-Ed25519 sig    +--------+
-| Your code  | -------------------> | Fireblocks  | --------------------> | Stellar|
-| (.env+PEM) |                      | (vault+pol) |                       |  (RPC) |
-+------------+                      +-------------+                       +--------+
-       ^                                    ^                                   ^
-       |                                    |                                   |
-   leaks expose:                       leaks expose:                       all data here
-   API access only;                    nothing — vault keys                is public
-   cannot bypass vault                 are MPC-fragmented
-   approval policy
-```
+| Boundary | How it talks | What a leak exposes |
+|---|---|---|
+| Your laptop → Fireblocks | RSA-signed JWT (PEM auth) | API access only — cannot bypass vault approval policy |
+| Fireblocks → Stellar | MPC-produced Ed25519 signature | Nothing — vault key is held as MPC shares, never exists whole |
+| Stellar (public chain) | n/a | All data here is public anyway |
 
 ## Mainnet vs testnet — the only diffs
 
@@ -111,7 +95,9 @@ All 5 steps are signed by the **same Fireblocks vault** (the issuer). Fireblocks
 
 Plus the 8 role pubkeys point at production addresses (real M0 admin, real bridge minter, real MoneyGram yield recipient, etc.). The contract code path is identical.
 
-## Pre-flight checklist for any execute
+## Pre-flight checklist
+
+**Universal:**
 
 - [ ] `make build` succeeded; WASM at `target/wasm32v1-none/release/mintergateway.wasm`
 - [ ] `npm run deploy:dry-run -- --network=<net>` prints clean XDR for steps 1-3
@@ -119,8 +105,11 @@ Plus the 8 role pubkeys point at production addresses (real M0 admin, real bridg
 - [ ] Vault wallet has enough XLM (≥ 10 XLM testnet, mainnet sized for fees + storage rent)
 - [ ] Vault approval policy mirrors what you intend (sandbox: 1-of-1 fine; mainnet: as configured)
 - [ ] All approvers are reachable and ready to approve
-- [ ] (Mainnet) you've eyeballed the dry-run XDR for the 3 buildable steps and it matches expectations
-- [ ] (Mainnet) issuer pubkey is freshly generated, no prior trustlines (Step 0 will catch this anyway, but verify out-of-band)
+
+**Additional for mainnet:**
+
+- [ ] You've eyeballed the dry-run XDR for the 3 buildable steps and it matches expectations
+- [ ] Issuer pubkey is freshly generated, no prior trustlines (Step 0 will catch this anyway, but verify out-of-band)
 
 ## Common failure modes
 
