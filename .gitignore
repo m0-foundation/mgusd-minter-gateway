@@ -3,7 +3,9 @@ target/
 
 # Secrets
 .env
+.env.*
 *.key
+*.pem
 
 # Compiled contracts
 *.wasm

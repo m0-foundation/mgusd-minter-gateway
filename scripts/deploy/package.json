@@ -1,0 +1,26 @@
+{
+  "name": "stellar-minter-gateway-deploy",
+  "version": "1.0.0",
+  "description": "Fireblocks-signed deploy pipeline for the Stellar Minter Gateway contract (testnet + mainnet)",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "deploy:dry-run": "ts-node src/deploy.ts --dry-run",
+    "deploy:execute": "ts-node src/deploy.ts --execute"
+  },
+  "dependencies": {
+    "@fireblocks/ts-sdk": "^5.0.0",
+    "@stellar/stellar-sdk": "^14.5.0",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.2.1",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

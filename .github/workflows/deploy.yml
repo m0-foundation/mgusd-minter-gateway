@@ -1,0 +1,38 @@
+name: deploy
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "scripts/deploy/**"
+      - ".github/workflows/deploy.yml"
+  pull_request:
+    paths:
+      - "scripts/deploy/**"
+      - ".github/workflows/deploy.yml"
+
+jobs:
+  deploy-pipeline:
+    name: typecheck + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/deploy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: scripts/deploy/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test

@@ -35,18 +35,53 @@ cargo test
 
 ## Deploying
 
-Testnet / dev deploys are driven by `scripts/deploy-testnet.sh`, a thin bash wrapper around the `stellar` CLI that mirrors the 5-step pipeline (configure issuer flags → deploy SAC → upload WASM → deploy wrapper → transfer SAC admin). The script uses two `stellar keys` identities — an ISSUER (signs steps 1, 5) and a DEPLOYER (signs steps 2-4) — which can resolve to the same identity for testnet/dev or to distinct cold/warm signers for production.
+Both deploy paths run the same 5-step pipeline (configure issuer flags → deploy SAC → upload WASM → deploy wrapper → transfer SAC admin) and read the **same `.env` at the repo root** (template: [`scripts/deploy.env.example`](scripts/deploy.env.example)). They differ only in how the issuer signs.
+
+| Path | Signer | When to use |
+|---|---|---|
+| [`scripts/deploy-testnet.sh`](scripts/deploy-testnet.sh) | Local `stellar keys` identity | Local dev iteration, throwaway testnet deploys |
+| [`scripts/deploy/`](scripts/deploy/) (TypeScript) | Fireblocks vault (raw Ed25519) | Production mainnet **and** any rehearsal that needs the real Fireblocks approval flow |
+
+The single template has three sections — Shared, Bash-only, Fireblocks-only — populate only the section(s) for the path you intend to use:
 
 ```bash
 cp scripts/deploy.env.example .env
-$EDITOR .env                          # fill in role pubkeys + key names
+$EDITOR .env
 make build
+```
+
+### Local dev / quick testnet (bash)
+
+Two `stellar keys` identities — an ISSUER (signs steps 1, 5) and a DEPLOYER (signs steps 2-4). They can resolve to the same identity for testnet, or distinct cold/warm signers for environments without Fireblocks.
+
+```bash
 ./scripts/deploy-testnet.sh
 ```
 
-The script auto-loads `.env` from the repo root if present (gitignored). All required env vars and per-role conventions are documented in [`scripts/deploy.env.example`](scripts/deploy.env.example) (STEL1-5: no role-collapsing default).
+The script auto-loads the repo-root `.env` (gitignored). Every privileged role is its own env var; there is no role-collapsing default.
 
-**Production deploys** that require Fireblocks-custodied signing live on the [`sdk-integration`](https://github.com/m0-foundation/stellar-minter-gateway/tree/sdk-integration) branch. That branch retains the TypeScript SDK and its Fireblocks deploy pipeline; check it out when you need to deploy with MPC-signed issuer keys.
+### Fireblocks (testnet + mainnet)
+
+A TypeScript pipeline that signs every step through a Fireblocks vault. **The same code path runs against testnet and mainnet** — change one env var (`STELLAR_NETWORK=testnet|public`) and the corresponding Fireblocks credentials. Multi-approver policy (e.g., 2-of-3) is enforced inside the Fireblocks vault; the script just submits and polls.
+
+```bash
+cd scripts/deploy
+npm install                           # one-time
+
+npm run deploy:dry-run                # builds + simulates + prints XDR for buildable steps (no submission).
+                                      # Does not require FIREBLOCKS_SECRET_PATH to point at a real file.
+
+npm run deploy:execute                # actually submits — reads the Fireblocks secret PEM at this point.
+                                      # Mainnet additionally demands the network passphrase be typed back.
+```
+
+**Safety properties** (covered by `scripts/deploy/tests/`):
+
+- **Role separation** — every privileged role is its own env var; the script aborts before any tx fires if any of the eight wrapper roles is missing or malformed.
+- **Issuer contamination check** — Step 0 queries Horizon for the `(asset_code, issuer)` pair and aborts if any prior trustlines / claimable balances / pools / contract holders exist (pre-flag holders are permanently unclawbackable).
+- **WASM hash verification** — Step 3 re-derives `sha256(WASM)` locally and refuses to proceed if the RPC returns a different hash.
+
+**Mainnet rehearsal recipe.** Use a dedicated testnet Fireblocks vault that mirrors your production approver topology, then run `npm run deploy:execute --network=testnet`. Approvers approve in the Fireblocks UI exactly as they would on mainnet day. Mainnet then becomes the same code path with three env-var diffs (network, API key, asset id). See [`scripts/deploy/README.md`](scripts/deploy/README.md) for full setup, rehearsal recipe, and troubleshooting.
 
 ---
 
