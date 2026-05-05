@@ -1,6 +1,6 @@
 # Fireblocks Deploy — Operator's One-Pager
 
-A focused explainer of how the TS pipeline at [`scripts/deploy/`](.) signs deploys through Fireblocks. Read this before running `deploy:execute` against mainnet.
+A focused explainer of how the TS pipeline at [`scripts/deploy/`](../scripts/deploy/) signs deploys through Fireblocks. Read this before running `deploy:execute` against mainnet.
 
 ## Mental model
 
@@ -46,13 +46,13 @@ chmod 600 fireblocks-secret.pem
 This creates `fireblocks-secret.pem` (private — stays local) and `fireblocks.csr` (carries the public key — uploadable). Then either:
 
 - **UI path:** Fireblocks Console → Developer Center → API users → "Add API user", select role, **upload the `fireblocks.csr` file** (not the private key). Fireblocks issues an API user UUID — that's `FIREBLOCKS_API_KEY` in `.env`.
-- **API path:** workspace admin can call `POST /v1/management/api_users` ([Create API Key](https://developers.fireblocks.com/reference/createapiuser)) with `{ role, csrPem: "<contents of fireblocks.csr>" }`. Returns the new user's UUID. Useful for fully-automated workspace provisioning.
+- **API path:** workspace admin can call `POST /v1/management/api_users` ([Create API Key](https://developers.fireblocks.com/reference/createapiuser)) with `{ role, csrPem: "<contents of fireblocks.csr>" }`. The call creates an *approval request*, not the user itself — the workspace owner approves, and only then is the API user UUID available. Plan for a human-in-the-loop step even on the API path.
 
 The private `fireblocks-secret.pem` stays on your laptop; `FIREBLOCKS_SECRET_PATH` points at it. Never check it in — `scripts/deploy/.gitignore` covers `fireblocks-secret*`, but verify with `git status` before any commit.
 
 **2. The API user already exists and someone on your team has the PEM.** Get the matching private PEM from them through a secure channel (1Password, encrypted handoff). Save it locally and point `FIREBLOCKS_SECRET_PATH` at it. Skip the openssl + upload steps entirely. *This is what we did for this repo's existing sandbox API user.*
 
-**3. The API user exists but the PEM is lost.** You can't recover it — Fireblocks only stored the public half. Path forward is to rotate: workspace admin deletes the API user (or rotates its public key), then proceed as scenario 1 with a fresh keypair. Plan downtime accordingly — any tooling pointing at the old PEM stops working the moment the FB swap happens.
+**3. The API user exists but the PEM is lost.** You can't recover it — Fireblocks only stored the public half. The lighter path is **rotating the public key on the existing API user** via Console (Developer Center → API users → the user → upload new public key). Same UUID, same role, same TAP rules — only the PEM swap. Generate a fresh keypair as in scenario 1 and upload the new public half. Full deletion + re-provisioning is only required if the API user identity itself needs to be retired. Plan brief downtime either way — tooling pointing at the old PEM stops working the moment the FB swap happens.
 
 **Storage hygiene.**
 - Always `chmod 600` the private PEM.
@@ -66,7 +66,7 @@ Canonical step list lives in [`scripts/deploy/README.md`](../scripts/deploy/READ
 
 - Each step is built locally → simulated against Soroban RPC (steps 2-5 only) → tx hash sent to Fireblocks for signing → signature attached to envelope → submitted to Stellar. Step 1 skips simulation because it's a classic Stellar op.
 - All 5 signed steps are signed by the **same Fireblocks vault** (the issuer). Vault policy (e.g., 2-of-3 cosigner approval) gates each signing request — that's where multi-party control lives, not in our script.
-- The deploy is **not idempotent.** If a step fails between submission and confirmation, re-running may collide with already-deployed state. Recovery is to bump `ASSET_CODE` (so the SAC for the new pair doesn't exist) or provision a fresh issuer.
+- The deploy is **not fully idempotent.** If a step fails between submission and confirmation, recovery depends on which step partially landed: Step 1 (`set_options`) re-runs safely; Step 2/3 collisions need a fresh `ASSET_CODE` or fresh issuer; Step 5 (SAC admin handoff) needs a `SAC.admin()` check before re-running, since the role may already be on the wrapper. When in doubt, query on-chain state before retrying.
 
 ## Trust boundaries
 
@@ -101,7 +101,7 @@ Plus the 8 role pubkeys point at production addresses (real M0 admin, real bridg
 
 - [ ] `make build` succeeded; WASM at `target/wasm32v1-none/release/mintergateway.wasm`
 - [ ] `npm run deploy:dry-run -- --network=<net>` prints clean XDR for steps 1-3
-- [ ] Fireblocks API user's public key matches `fireblocks-secret.pem` on disk (test by attempting any signing request — 401 = mismatch)
+- [ ] Fireblocks API user's public key matches `fireblocks-secret.pem` on disk (test with a read-only call — e.g. list vault accounts — instead of a signing request, so you don't burn an approver's attention)
 - [ ] Vault wallet has enough XLM (≥ 10 XLM testnet, mainnet sized for fees + storage rent)
 - [ ] Vault approval policy mirrors what you intend (sandbox: 1-of-1 fine; mainnet: as configured)
 - [ ] All approvers are reachable and ready to approve
@@ -115,8 +115,8 @@ Plus the 8 role pubkeys point at production addresses (real M0 admin, real bridg
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `401 invalid signature` | Public PEM in FB doesn't match local private PEM | Upload current `fireblocks-public.pem` to API user, or switch `FIREBLOCKS_SECRET_PATH` to the matching private PEM |
-| `Fireblocks transaction not completed after N polls` | Approver(s) didn't approve in time | Bump `FIREBLOCKS_POLL_TIMEOUT_SECONDS`; rerun |
+| `401 invalid signature` | One of: (a) public PEM in FB doesn't match local private PEM, (b) laptop clock skewed >30s (Fireblocks JWT expires ~30s after issue), (c) `FIREBLOCKS_BASE_PATH` points at a different region than the API user lives in | (a) upload matching public PEM or fix `FIREBLOCKS_SECRET_PATH`; (b) `sudo sntp -sS time.apple.com` or equivalent; (c) set `FIREBLOCKS_BASE_PATH` to the correct region |
+| `Fireblocks transaction not completed after N polls` | Approver(s) didn't approve in time | Bump `FIREBLOCKS_POLL_TIMEOUT_SECONDS` (default 600s); rerun |
 | `IssuerContaminatedError` at Step 0 | Issuer has prior on-chain footprint | Provision a fresh issuer (new Fireblocks vault wallet) — there is no on-chain mitigation |
 | `SimulationError: Storage, ExistingValue` at Step 2 | SAC for `(ASSET_CODE, ISSUER)` already exists | Bump `ASSET_CODE` (e.g. `TMGUSD2`) or use a fresh issuer |
 | `WasmHashMismatchError` at Step 3 | RPC returned a different hash than local sha256 | Switch RPCs (compromise or wrong endpoint) |
