@@ -88,6 +88,8 @@ impl YieldToken {
         insert_unblock_operator(&e, &unblock_operator);
         write_pauser(&e, &pauser);
 
+        extend_instance_ttl(&e);
+
         Ok(())
     }
 
