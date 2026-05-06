@@ -6,6 +6,7 @@ mod test_batch_budget;
 mod test_block;
 mod test_continuous_index;
 mod test_deployment;
+mod test_find_yield_burn_attribution;
 mod test_force_transfer;
 mod test_issuer;
 mod test_mint_burn;
