@@ -27,6 +27,7 @@
 use soroban_fixed_point_math::FixedPoint;
 use soroban_sdk::Env;
 
+use crate::constants::MAX_RATE_BPS;
 use crate::continuous_index::{self, INDEX_SCALE};
 use crate::errors::MinterGatewayError;
 use crate::events::emit_update_index;
@@ -213,7 +214,7 @@ pub fn get_accrued_yield(env: &Env) -> i128 {
 /// Sets the interest rate. Caller must call `update_index` first to finalize
 /// yield at the old rate before invoking this.
 pub fn set_interest_rate(env: &Env, rate_bps: u32) -> Result<(), MinterGatewayError> {
-    if rate_bps > 10_000 {
+    if rate_bps > MAX_RATE_BPS {
         return Err(MinterGatewayError::RateExceedsMax);
     }
 

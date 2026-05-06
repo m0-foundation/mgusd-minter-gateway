@@ -11,18 +11,18 @@ use super::setup::*;
 fn test_set_rate_at_maximum_boundary() {
     let s = setup();
 
-    // 10_000 bps = 100% — should succeed
-    s.contract.set_rate(&s.minter, &10_000);
+    // 5_000 bps = 50% — should succeed (MAX_RATE_BPS)
+    s.contract.set_rate(&s.minter, &5_000);
 
-    assert_eq!(s.contract.interest_rate(), 10_000);
+    assert_eq!(s.contract.interest_rate(), 5_000);
 }
 
 #[test]
 fn test_set_rate_exceeds_maximum() {
     let s = setup();
 
-    // 10_001 bps > 100% — should return RateExceedsMax
-    let result = s.contract.try_set_rate(&s.minter, &10_001);
+    // 5_001 bps > 50% — should return RateExceedsMax
+    let result = s.contract.try_set_rate(&s.minter, &5_001);
     assert_eq!(result, Err(Ok(crate::MinterGatewayError::RateExceedsMax)));
 
     // Rate unchanged (still default 0)
@@ -147,21 +147,21 @@ fn test_set_rate_to_zero_finalizes_pending() {
 }
 
 // =============================================================================
-// YIELD ACCURACY AT MAX RATE (100%)
+// YIELD ACCURACY AT MAX RATE (50%)
 // =============================================================================
 // Validates the 5-term Taylor series approximation at the upper rate boundary.
-// At 100% rate (x=1.0), the 5-term Taylor gives e^1 ≈ 2.708333..., which
-// underestimates the true e ≈ 2.718281... by ~0.37%. This is expected and
-// protocol-favorable (less yield accrued).
+// At 50% rate (x=0.5), the 5-term Taylor gives e^0.5 ≈ 1.648437..., which
+// underestimates the true e^0.5 ≈ 1.648721... by ~0.017%. This is expected
+// and protocol-favorable (less yield accrued).
 
 #[test]
 fn test_yield_accuracy_at_max_rate() {
     let s = setup();
     let one_million = 1_000_000 * DECIMALS;
 
-    // Mint 1M and set rate to 100% (10000 bps)
+    // Mint 1M and set rate to 50% (MAX_RATE_BPS = 5000 bps)
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
-    s.contract.set_rate(&s.minter, &10_000);
+    s.contract.set_rate(&s.minter, &5_000);
 
     // Advance 1 year
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -169,24 +169,21 @@ fn test_yield_accuracy_at_max_rate() {
     // Claim yield
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
-    // 5-term Taylor: e^1.0 ≈ 1 + 1 + 1/2 + 1/6 + 1/24 = 2.708333...
-    // So yield ≈ 1M × (2.708333... - 1) = 1M × 1.708333...
-    // The exact Taylor value (at INDEX_SCALE precision):
-    // index = exponent(1_000_000_000_000) computed via Taylor
-    let index_1yr = current_index(INDEX_SCALE, 10_000, SECONDS_PER_YEAR as u64);
+    // 5-term Taylor: e^0.5 ≈ 1 + 0.5 + 0.125 + 0.020833 + 0.002604 = 1.648437...
+    // So yield ≈ 1M × (1.648437... - 1) = 1M × 0.648437...
+    let index_1yr = current_index(INDEX_SCALE, 5_000, SECONDS_PER_YEAR as u64);
     let expected_yield = one_million * (index_1yr - INDEX_SCALE) / INDEX_SCALE;
 
     assert_eq!(claimed, expected_yield);
     assert!(claimed > 0);
 
-    // Verify the ~0.37% underestimate vs true e:
-    // True yield = 1M × (e - 1) ≈ 1M × 1.718281828...
-    // Taylor yield ≈ 1M × 1.708333...
-    // The Taylor result should be between 1.70 and 1.72 of principal
+    // Verify the ~0.017% underestimate vs true e^0.5:
+    // True yield = 1M × (e^0.5 - 1) ≈ 1M × 0.648721...
+    // Taylor yield ≈ 1M × 0.648437...
+    // The Taylor result should be between 0.64 and 0.65 of principal
     let ratio_times_100 = (claimed * 100) / one_million;
     assert!(
-        (170..=172).contains(&ratio_times_100),
-        //ratio_times_100 >= 170 && ratio_times_100 <= 172,
+        (64..=65).contains(&ratio_times_100),
         "yield/principal ratio outside expected range: {}",
         ratio_times_100
     );
