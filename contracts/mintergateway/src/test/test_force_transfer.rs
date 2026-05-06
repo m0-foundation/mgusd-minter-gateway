@@ -300,12 +300,15 @@ fn test_force_transfer_to_unauthorized_account_reverts() {
     s.contract.unblock_user(&alice, &s.unblock_operator);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
 
-    // Bob is unauthorized (AUTH_REQUIRED mode) — mint to bob will fail
+    // Bob has no authorized trustline. Preflight should short-circuit with the
+    // typed NoTrustline error before clawback runs (FIND-005), so alice's
+    // balance stays intact.
     assert!(s.contract.blocked(&bob));
     let result =
         s.contract
             .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &(500 * DECIMALS));
-    assert!(result.is_err());
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::NoTrustline)));
+    assert_eq!(s.sac_token.balance(&alice), 1_000 * DECIMALS);
 }
 
 // =============================================================================
