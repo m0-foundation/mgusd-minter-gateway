@@ -6,16 +6,17 @@ use crate::errors::MinterGatewayError;
 use crate::events::{
     emit_admin_set, emit_block_operator_added, emit_block_operator_removed, emit_burn,
     emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set, emit_mint,
-    emit_minter_set, emit_pauser_set, emit_reconcile, emit_sac_admin_transferred,
-    emit_unblock_operator_added, emit_unblock_operator_removed, emit_upgraded, emit_yield_claimed,
-    emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_minter_set, emit_pauser_added, emit_pauser_removed, emit_reconcile,
+    emit_sac_admin_transferred, emit_unblock_operator_added, emit_unblock_operator_removed,
+    emit_upgraded, emit_yield_claimed, emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    delete_block_operator, delete_unblock_operator, insert_block_operator, insert_unblock_operator,
-    is_block_operator, is_unblock_operator, read_forced_transfer_manager, read_minter, read_pauser,
-    read_yield_recipient, read_yield_recipient_manager, require_block_operator,
-    require_role_holder, require_unblock_operator, write_forced_transfer_manager, write_minter,
-    write_pauser, write_yield_recipient, write_yield_recipient_manager,
+    delete_block_operator, delete_pauser, delete_unblock_operator, insert_block_operator,
+    insert_pauser, insert_unblock_operator, is_block_operator, is_pauser, is_unblock_operator,
+    read_forced_transfer_manager, read_minter, read_yield_recipient, read_yield_recipient_manager,
+    require_block_operator, require_pauser, require_role_holder, require_unblock_operator,
+    write_forced_transfer_manager, write_minter, write_yield_recipient,
+    write_yield_recipient_manager,
 };
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
@@ -58,7 +59,8 @@ impl YieldToken {
     ///   More addresses can be granted via `add_block_operator`.
     /// * `unblock_operator` - Initial address with unblock permission; added to the unblock-operator set.
     ///   More addresses can be granted via `add_unblock_operator`. May equal `block_operator`.
-    /// * `pauser` - Address that can pause/unpause the contract
+    /// * `pauser` - Initial address with pause permission; added to the pauser set.
+    ///   More addresses can be granted via `add_pauser`.
     pub fn __constructor(
         e: Env,
         sac_token: Address,
@@ -86,7 +88,7 @@ impl YieldToken {
         write_forced_transfer_manager(&e, &forced_transfer_manager);
         insert_block_operator(&e, &block_operator);
         insert_unblock_operator(&e, &unblock_operator);
-        write_pauser(&e, &pauser);
+        insert_pauser(&e, &pauser);
 
         Ok(())
     }
@@ -192,17 +194,26 @@ impl YieldToken {
         }
     }
 
-    /// Sets a new pauser address. Admin only.
-    pub fn set_pauser(e: Env, new_pauser: Address) {
+    /// Grants pause permission to `addr`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address is already a pauser.
+    pub fn add_pauser(e: Env, addr: Address) {
         require_admin(&e);
-
-        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
-        let old = read_pauser(&e);
-        write_pauser(&e, &new_pauser);
+        if insert_pauser(&e, &addr) {
+            emit_pauser_added(&e, addr);
+        }
+    }
 
-        emit_pauser_set(&e, old, new_pauser);
+    /// Revokes pause permission from `addr`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address does not have pause permission.
+    pub fn remove_pauser(e: Env, addr: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        if delete_pauser(&e, &addr) {
+            emit_pauser_removed(&e, addr);
+        }
     }
 
     // =========================================================================
@@ -656,10 +667,10 @@ impl YieldToken {
         is_unblock_operator(&e, &addr)
     }
 
-    /// Returns the pauser address.
-    pub fn pauser(e: Env) -> Address {
+    /// Returns whether `addr` has pause permission.
+    pub fn is_pauser(e: Env, addr: Address) -> bool {
         extend_instance_ttl(&e);
-        read_pauser(&e)
+        is_pauser(&e, &addr)
     }
 }
 
@@ -678,9 +689,8 @@ impl Pausable for YieldToken {
     /// Pauses the contract. Blocks mint, burn, reconcile_burn, force_transfer, claim_yield.
     /// Pauser only.
     fn pause(e: &Env, caller: Address) {
-        caller.require_auth();
-        if caller != read_pauser(e) {
-            panic_with_error!(e, MinterGatewayError::UnauthorizedError);
+        if let Err(err) = require_pauser(e, &caller) {
+            panic_with_error!(e, err);
         }
 
         // Prolongs the Time-To-Live of the contract's instance storage.
@@ -692,9 +702,8 @@ impl Pausable for YieldToken {
     /// Unpauses the contract, resuming all blocked operations.
     /// Pauser only.
     fn unpause(e: &Env, caller: Address) {
-        caller.require_auth();
-        if caller != read_pauser(e) {
-            panic_with_error!(e, MinterGatewayError::UnauthorizedError);
+        if let Err(err) = require_pauser(e, &caller) {
+            panic_with_error!(e, err);
         }
 
         // Prolongs the Time-To-Live of the contract's instance storage.

@@ -146,15 +146,37 @@ pub fn require_unblock_operator(env: &Env, caller: &Address) -> Result<(), Minte
 }
 
 // =============================================================================
-// Pauser - Can pause/unpause the contract
+// Pauser - Membership set. Any pauser can pause/unpause the contract.
 // =============================================================================
 
-pub fn read_pauser(env: &Env) -> Address {
-    let key = DataKey::Pauser;
-    env.storage().instance().get(&key).unwrap()
+pub fn is_pauser(env: &Env, addr: &Address) -> bool {
+    env.storage().instance().has(&DataKey::Pauser(addr.clone()))
 }
 
-pub fn write_pauser(env: &Env, addr: &Address) {
-    let key = DataKey::Pauser;
-    env.storage().instance().set(&key, addr);
+/// Returns true if this call added a new pauser (false if already present).
+pub fn insert_pauser(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::Pauser(addr.clone());
+    if env.storage().instance().has(&key) {
+        return false;
+    }
+    env.storage().instance().set(&key, &());
+    true
+}
+
+/// Returns true if this call removed an existing pauser (false if not present).
+pub fn delete_pauser(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::Pauser(addr.clone());
+    if !env.storage().instance().has(&key) {
+        return false;
+    }
+    env.storage().instance().remove(&key);
+    true
+}
+
+pub fn require_pauser(env: &Env, caller: &Address) -> Result<(), MinterGatewayError> {
+    caller.require_auth();
+    if !is_pauser(env, caller) {
+        return Err(MinterGatewayError::UnauthorizedError);
+    }
+    Ok(())
 }

@@ -216,14 +216,23 @@ pub fn emit_upgraded(env: &Env, by: Address, new_wasm_hash: BytesN<32>) {
 }
 
 #[contractevent]
-pub struct PauserSet {
+pub struct PauserAdded {
     #[topic]
-    pub old: Address,
-    pub new: Address,
+    pub addr: Address,
 }
 
-pub fn emit_pauser_set(env: &Env, old: Address, new: Address) {
-    PauserSet { old, new }.publish(env);
+pub fn emit_pauser_added(env: &Env, addr: Address) {
+    PauserAdded { addr }.publish(env);
+}
+
+#[contractevent]
+pub struct PauserRemoved {
+    #[topic]
+    pub addr: Address,
+}
+
+pub fn emit_pauser_removed(env: &Env, addr: Address) {
+    PauserRemoved { addr }.publish(env);
 }
 
 #[contractevent]
