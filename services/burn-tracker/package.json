@@ -1,0 +1,20 @@
+{
+  "name": "burn-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "build": "tsc",
+    "start:dist": "node dist/index.js"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^14.5.0",
+    "dotenv": "^16.5.0",
+    "soroban-fireblocks-sdk": "file:../../soroban-fireblocks-sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
