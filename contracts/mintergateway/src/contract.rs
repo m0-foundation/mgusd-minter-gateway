@@ -41,6 +41,17 @@ fn extend_instance_ttl(e: &Env) {
         .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 }
 
+/// Preflights a SAC `mint` destination — converts the no-trustline host trap into a typed `NoTrustline` error. Mirrors `blocked()`: any non-`Ok(true)` is unauthorized.
+fn require_destination_trustline_authorized(
+    sac_client: &token::StellarAssetClient,
+    addr: &Address,
+) -> Result<(), MinterGatewayError> {
+    match sac_client.try_authorized(addr) {
+        Ok(Ok(true)) => Ok(()),
+        _ => Err(MinterGatewayError::NoTrustline),
+    }
+}
+
 #[contract]
 pub struct YieldToken;
 
@@ -368,12 +379,15 @@ impl YieldToken {
         // Update index before changing principal
         update_index(&e);
 
+        // Preflight destination so callers see a typed error, not a host trap.
+        let sac_addr = read_sac_token(&e);
+        let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+        require_destination_trustline_authorized(&sac_client, &to)?;
+
         // Increase both accumulators
         increase_both_accumulators(&e, amount);
 
-        // Mint SAC tokens to recipient
-        let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).mint(&to, &amount);
+        sac_client.mint(&to, &amount);
 
         let state = read_yield_state(&e);
         emit_mint(&e, to, amount, state.total_principal, state.total_supply);
@@ -484,9 +498,10 @@ impl YieldToken {
         // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
-        // SAC operations: clawback from source, mint to destination
+        // Preflight `to` before clawback so `from`'s balance stays intact on a doomed call.
         let sac_addr = read_sac_token(&e);
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+        require_destination_trustline_authorized(&sac_client, &to)?;
         sac_client.clawback(&from, &amount);
         sac_client.mint(&to, &amount);
 
@@ -540,11 +555,14 @@ impl YieldToken {
         let unclaimed_yield = get_accrued_yield(&e);
 
         if unclaimed_yield > 0 {
+            // Preflight recipient before advancing total_supply so a misconfigured recipient returns a typed error.
+            let sac_addr = read_sac_token(&e);
+            let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+            require_destination_trustline_authorized(&sac_client, &recipient)?;
+
             // Increase total_supply (but NOT total_principal — no compounding)
             increase_total_supply(&e, unclaimed_yield);
-            // Mint new tokens to yield recipient
-            let sac_addr = read_sac_token(&e);
-            token::StellarAssetClient::new(&e, &sac_addr).mint(&recipient, &unclaimed_yield);
+            sac_client.mint(&recipient, &unclaimed_yield);
 
             emit_yield_claimed(&e, recipient, unclaimed_yield);
         }
