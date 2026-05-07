@@ -1,6 +1,8 @@
+use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
+use crate::storage_types::INSTANCE_LIFETIME_THRESHOLD;
 use crate::yield_state::read_yield_state;
 
 // =============================================================================
@@ -41,6 +43,58 @@ fn test_double_initialization_returns_error() {
     assert_eq!(
         result,
         Err(crate::MinterGatewayError::AlreadyInitializedError)
+    );
+}
+
+// FIND-002: Constructor must bump instance TTL so storage doesn't sit at the
+// network minimum (~hours) between deploy and the first state-changing call.
+// Every other state-changing entrypoint calls `extend_instance_ttl`; the
+// constructor should match.
+//
+// This test isolates the constructor — it deploys via `env.register(...)` but
+// does NOT invoke any other entrypoint, so the TTL we observe is exactly what
+// the constructor leaves behind.
+#[test]
+fn test_constructor_extends_instance_ttl() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(T0);
+
+    let admin = Address::generate(&env);
+    let minter = Address::generate(&env);
+    let yield_recipient_manager = Address::generate(&env);
+    let yield_recipient = Address::generate(&env);
+    let forced_transfer_manager = Address::generate(&env);
+    let block_operator = Address::generate(&env);
+    let unblock_operator = Address::generate(&env);
+    let pauser = Address::generate(&env);
+
+    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let sac_addr = sac.address();
+
+    let contract_addr = env.register(
+        YieldToken,
+        (
+            &sac_addr,
+            &admin,
+            &minter,
+            &yield_recipient_manager,
+            &yield_recipient,
+            &forced_transfer_manager,
+            &block_operator,
+            &unblock_operator,
+            &pauser,
+        ),
+    );
+
+    let ttl = env.as_contract(&contract_addr, || env.storage().instance().get_ttl());
+
+    assert!(
+        ttl >= INSTANCE_LIFETIME_THRESHOLD,
+        "instance TTL after constructor = {} ledgers, expected >= {} \
+         (constructor should call extend_instance_ttl like every other entrypoint)",
+        ttl,
+        INSTANCE_LIFETIME_THRESHOLD,
     );
 }
 
