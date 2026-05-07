@@ -133,7 +133,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, force_transfer, reconcile_burn |
+| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, force_transfer, reconcile_burn, set_rate |
 | `unpause` | `(caller: Address)` | Unpause the contract — resumes all blocked operations |
 
 ### View / Query Functions (18)
@@ -382,6 +382,7 @@ When paused, the following operations revert immediately:
 |-----------------|------|
 | `mint` | Minter |
 | `burn` | Minter |
+| `set_rate` | Minter |
 | `reconcile_burn` | Admin |
 | `claim_yield` | Yield Recipient Manager |
 | `force_transfer` | Forced Transfer Manager |
