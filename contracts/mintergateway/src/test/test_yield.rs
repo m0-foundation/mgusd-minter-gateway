@@ -462,14 +462,7 @@ fn test_random_cannot_claim_yield() {
     );
 }
 
-// =============================================================================
-// FIND-005 — destination preflight on yield mint path
-// =============================================================================
-
-// claim_yield mints to the configured yield recipient. If that recipient is
-// rotated to an address without an authorized trustline, the SAC mint would
-// trap; with the preflight, the call returns the typed `NoTrustline` error
-// and accumulators are not advanced.
+// FIND-005 — destination preflight on yield mint path: rotating the recipient to a no-trustline address returns NoTrustline and leaves total_supply untouched.
 #[test]
 fn test_claim_yield_returns_no_trustline_when_recipient_unauthorized() {
     let s = setup();
@@ -485,7 +478,6 @@ fn test_claim_yield_returns_no_trustline_when_recipient_unauthorized() {
         .set_yield_recipient(&s.yield_recipient_manager, &stranger);
     assert!(s.contract.blocked(&stranger));
 
-    // Preflight short-circuits before total_supply is advanced.
     let total_supply_before = s.contract.total_supply();
     let result = s.contract.try_claim_yield(&s.yield_recipient_manager);
     assert_eq!(result, Err(Ok(crate::MinterGatewayError::NoTrustline)));

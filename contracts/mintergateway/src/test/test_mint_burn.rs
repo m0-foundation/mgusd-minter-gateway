@@ -275,8 +275,7 @@ fn test_unauthorized_account_cannot_receive_mint() {
     // Do NOT authorize — user is unauthorized by default (AUTH_REQUIRED)
     assert!(s.contract.blocked(&user));
 
-    // Minting to unauthorized account returns the typed NoTrustline error
-    // rather than an opaque host trap (FIND-005).
+    // Minting to an unauthorized account returns the typed NoTrustline error, not a host trap (FIND-005).
     let result = s.contract.try_mint(&s.minter, &user, &(1_000 * DECIMALS));
     assert_eq!(result, Err(Ok(crate::MinterGatewayError::NoTrustline)));
 }

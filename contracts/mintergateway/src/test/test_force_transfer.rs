@@ -300,9 +300,7 @@ fn test_force_transfer_to_unauthorized_account_reverts() {
     s.contract.unblock_user(&alice, &s.unblock_operator);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
 
-    // Bob has no authorized trustline. Preflight should short-circuit with the
-    // typed NoTrustline error before clawback runs (FIND-005), so alice's
-    // balance stays intact.
+    // Preflight short-circuits with NoTrustline before clawback (FIND-005); alice's balance stays intact.
     assert!(s.contract.blocked(&bob));
     let result =
         s.contract
