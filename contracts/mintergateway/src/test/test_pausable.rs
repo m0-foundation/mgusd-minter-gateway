@@ -1,7 +1,8 @@
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, IntoVal};
+use soroban_sdk::Address;
 
 use super::setup::*;
+use crate::events::PauserAdded;
 
 // =============================================================================
 // STATE — pause / unpause / paused
@@ -227,46 +228,118 @@ fn test_random_address_cannot_pause() {
 }
 
 // =============================================================================
-// SET PAUSER
+// PAUSER MEMBERSHIP — add / remove / multiple pausers
 // =============================================================================
 
 #[test]
-fn test_set_pauser_updates_pauser() {
+fn test_pauser_view() {
     let s = setup();
-    let new_pauser = Address::generate(&s.env);
-
-    s.contract.set_pauser(&new_pauser);
-    assert_eq!(s.contract.pauser(), new_pauser);
+    assert!(s.contract.is_pauser(&s.pauser));
+    let someone = Address::generate(&s.env);
+    assert!(!s.contract.is_pauser(&someone));
 }
 
 #[test]
-fn test_new_pauser_can_pause_after_set_pauser() {
+fn test_add_and_remove_pauser() {
+    let s = setup();
+    let extra = Address::generate(&s.env);
+
+    assert!(s.contract.is_pauser(&s.pauser));
+    assert!(!s.contract.is_pauser(&extra));
+
+    s.contract.add_pauser(&extra);
+    assert!(s.contract.is_pauser(&s.pauser));
+    assert!(s.contract.is_pauser(&extra));
+
+    s.contract.remove_pauser(&s.pauser);
+    assert!(!s.contract.is_pauser(&s.pauser));
+    assert!(s.contract.is_pauser(&extra));
+}
+
+#[test]
+fn test_add_pauser_is_idempotent() {
+    let s = setup();
+    s.contract.add_pauser(&s.pauser);
+    assert!(s.contract.is_pauser(&s.pauser));
+}
+
+#[test]
+fn test_remove_pauser_is_idempotent() {
+    let s = setup();
+    let never_added = Address::generate(&s.env);
+    s.contract.remove_pauser(&never_added);
+    assert!(!s.contract.is_pauser(&never_added));
+}
+
+// Repeated `add_pauser` calls for the same address must not accumulate
+// duplicate entries: storage is keyed-per-address, so re-adds are silent
+// no-ops. Pinned by (1) asserting no event fires on the duplicate add and
+// (2) verifying a single remove clears membership — which would fail if the
+// address had been stored more than once.
+#[test]
+fn test_add_pauser_does_not_accumulate_duplicates() {
+    let s = setup();
+    let extra = Address::generate(&s.env);
+
+    s.contract.add_pauser(&extra);
+    s.assert_event(PauserAdded {
+        addr: extra.clone(),
+    });
+    assert!(s.contract.is_pauser(&extra));
+
+    s.contract.add_pauser(&extra);
+    s.assert_no_events();
+
+    s.contract.add_pauser(&extra);
+    s.assert_no_events();
+
+    s.contract.remove_pauser(&extra);
+    assert!(!s.contract.is_pauser(&extra));
+}
+
+// Confirms pausers added via `add_pauser` — not the one wired up in the
+// constructor — can pause and unpause. Guards against a `require_pauser`
+// regression that checks a single address rather than set membership.
+#[test]
+fn test_added_pauser_can_pause_and_unpause() {
     let s = setup();
     let new_pauser = Address::generate(&s.env);
 
-    s.contract.set_pauser(&new_pauser);
+    s.contract.add_pauser(&new_pauser);
+
     s.contract.pause(&new_pauser);
     assert!(s.contract.paused());
+
+    s.contract.unpause(&new_pauser);
+    assert!(!s.contract.paused());
+}
+
+// Both pausers in the set should be able to act independently — pinning
+// that membership grants the role, not exclusive ownership.
+#[test]
+fn test_multiple_pausers_can_each_pause_and_unpause() {
+    let s = setup();
+    let second = Address::generate(&s.env);
+    s.contract.add_pauser(&second);
+
+    // Original pauser pauses, second pauser unpauses.
+    s.contract.pause(&s.pauser);
+    assert!(s.contract.paused());
+    s.contract.unpause(&second);
+    assert!(!s.contract.paused());
+
+    // Reverse: second pauses, original unpauses.
+    s.contract.pause(&second);
+    assert!(s.contract.paused());
+    s.contract.unpause(&s.pauser);
+    assert!(!s.contract.paused());
 }
 
 #[test]
-fn test_old_pauser_cannot_pause_after_set_pauser() {
-    let s = setup_no_mock_auth();
-    let new_pauser = Address::generate(&s.env);
+fn test_removed_pauser_cannot_pause() {
+    let s = setup();
+    s.contract.remove_pauser(&s.pauser);
 
-    // Use admin auth to set a new pauser
-    s.env.mock_auths(&[soroban_sdk::testutils::MockAuth {
-        address: &s.admin,
-        invoke: &soroban_sdk::testutils::MockAuthInvoke {
-            contract: &s.contract.address,
-            fn_name: "set_pauser",
-            args: (&new_pauser,).into_val(&s.env),
-            sub_invokes: &[],
-        },
-    }]);
-    s.contract.set_pauser(&new_pauser);
-
-    // Old pauser can no longer pause
     let result = s.contract.try_pause(&s.pauser);
     assert!(result.is_err());
 }

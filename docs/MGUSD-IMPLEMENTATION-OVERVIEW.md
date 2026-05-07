@@ -63,13 +63,13 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | **Forced Transfer Manager** | `force_transfer` | Crossmint |
 | **Block operator** (membership) | `block_user`, `batch_block_users` | Crossmint (typical) |
 | **Unblock operator** (membership) | `unblock_user`, `batch_unblock_users` | Crossmint (typical) |
-| **Pauser** | `pause`, `unpause` | M0 |
+| **Pauser** (membership) | `pause`, `unpause` | M0 |
 
 **Design properties:**
 
-- **Admin is *not* a super-role.** Admin's powers are limited to: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** call `mint`, `burn`, `set_interest_rate`, `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`, `claim_yield`, `set_yield_recipient`, `pause`, or `unpause` without first granting itself the relevant role.
-- **No implicit emergency fallback.** A cold admin signer cannot block a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role — e.g. `add_block_operator(admin)` / `add_unblock_operator(admin)` to gain block / unblock, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Runbooks should plan for the dedicated role signers being reachable.
-- All roles are **single-address** except **Block operator** and **Unblock operator**, each a membership set (any number of addresses can hold each role, granted / revoked by Admin via `add_block_operator` / `remove_block_operator` and `add_unblock_operator` / `remove_unblock_operator`).
+- **Admin is *not* a super-role.** Admin's powers are limited to: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `add_pauser`, `remove_pauser`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** call `mint`, `burn`, `set_interest_rate`, `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`, `claim_yield`, `set_yield_recipient`, `pause`, or `unpause` without first granting itself the relevant role.
+- **No implicit emergency fallback.** A cold admin signer cannot block a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role — e.g. `add_block_operator(admin)` / `add_unblock_operator(admin)` to gain block / unblock, `add_pauser(admin)` to gain pause, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Runbooks should plan for the dedicated role signers being reachable.
+- All roles are **single-address** except **Block operator**, **Unblock operator**, and **Pauser**, each a membership set (any number of addresses can hold each role, granted / revoked by Admin via `add_block_operator` / `remove_block_operator`, `add_unblock_operator` / `remove_unblock_operator`, and `add_pauser` / `remove_pauser`).
 - Only Admin can reassign roles (except Yield Recipient, which is set by the Yield Recipient Manager).
 - Every role-gated function calls `require_auth()` on the `caller` argument and verifies the caller equals the designated role holder — no implicit trust, no admin override.
 - Roles are stored in **Instance** storage.
@@ -80,7 +80,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 > **Note:** Each role can only call its own functions. Admin is **not** a super-role and cannot call non-admin functions without first granting itself the relevant role (see [Roles](#roles)).
 
-### Admin-Exclusive Functions (12)
+### Admin-Exclusive Functions (13)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -88,11 +88,12 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `set_minter` | `(new_minter: Address)` | Set a new minter address |
 | `set_yield_recipient_manager` | `(new_yrm: Address)` | Set a new yield recipient manager |
 | `set_forced_transfer_manager` | `(new_ftm: Address)` | Set a new forced transfer manager |
-| `set_pauser` | `(new_pauser: Address)` | Set the address allowed to pause/unpause the contract |
 | `add_block_operator` | `(addr: Address)` | Grant **block** permission to an address (membership set; idempotent) |
 | `remove_block_operator` | `(addr: Address)` | Revoke **block** permission from an address (idempotent) |
 | `add_unblock_operator` | `(addr: Address)` | Grant **unblock** permission to an address (membership set; idempotent) |
 | `remove_unblock_operator` | `(addr: Address)` | Revoke **unblock** permission from an address (idempotent) |
+| `add_pauser` | `(addr: Address)` | Grant **pause** permission to an address (membership set; idempotent) |
+| `remove_pauser` | `(addr: Address)` | Revoke **pause** permission from an address (idempotent) |
 | `reconcile_burn` | `(amount: i128)` | Decrease both accumulators to reconcile tokens destroyed outside the contract (e.g., sent to issuer) |
 | `transfer_sac_admin` | `(new_sac_admin: Address)` | Transfer SAC admin role from this contract to another address |
 | `upgrade` | `(new_wasm_hash: BytesN<32>)` | Upgrade contract WASM to a new version |
@@ -131,6 +132,8 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### Pauser Functions (2)
 
+`pause` and `unpause` require the caller to be a **pauser** (any address in the pauser membership set).
+
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, force_transfer, reconcile_burn, set_interest_rate |
@@ -147,6 +150,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `forced_transfer_manager` | `Address` | Current forced transfer manager |
 | `is_block_operator` | `bool` | Whether an address has **block** permission (membership) |
 | `is_unblock_operator` | `bool` | Whether an address has **unblock** permission (membership) |
+| `is_pauser` | `bool` | Whether an address has **pause** permission (membership) |
 | `sac_token` | `Address` | SAC token contract address |
 | `interest_rate` | `u32` | Current rate in basis points |
 | `current_index` | `i128` | Real-time index (includes pending growth) |
@@ -157,7 +161,6 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `blocked(account)` | `bool` | Whether a user is blocked on the SAC (inverse of SAC authorization) |
 | `balance(id)` | `i128` | SAC-reported balance for an address |
 | `paused` | `bool` | Whether the contract is currently paused |
-| `pauser` | `Address` | Current pauser address |
 
 ### Initialization (Constructor)
 
@@ -167,7 +170,7 @@ The contract is initialized via `__constructor` during deployment:
 __constructor(sac_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager, block_operator, unblock_operator, pauser)
 ```
 
-The constructor takes nine arguments: the SAC address plus eight role addresses. The same address may be used for `block_operator` and `unblock_operator` when a single key should hold both permissions. Returns `Err(AlreadyInitializedError)` if the contract has already been initialized (checked via `has_admin()`). The constructor does **not** initialize the yield state — index starts at `1.0` (`INDEX_SCALE`) on first use.
+The constructor takes nine arguments: the SAC address plus eight role addresses. The `block_operator`, `unblock_operator`, and `pauser` arguments seed each role's membership set with one initial address; additional addresses can be added afterwards via `add_block_operator`, `add_unblock_operator`, and `add_pauser`. The same address may be reused across these arguments when a single key should hold multiple permissions. Returns `Err(AlreadyInitializedError)` if the contract has already been initialized (checked via `has_admin()`). The constructor does **not** initialize the yield state — index starts at `1.0` (`INDEX_SCALE`) on first use.
 
 ---
 
@@ -372,7 +375,7 @@ pause(caller: Address)
 unpause(caller: Address)
 ```
 
-Only the **Pauser** role can call these functions. The Pauser is set by the Admin via `set_pauser`.
+Only addresses in the **Pauser** membership set can call these functions. Admin grants and revokes membership via `add_pauser` / `remove_pauser`.
 
 ### Effect of pausing
 
@@ -404,11 +407,12 @@ All events emitted by the contract. Event names are the snake_case form of the u
 | `yield_recipient_manager_set` | `set_yield_recipient_manager` | `old` **(topic)**, `new` |
 | `yield_recipient_set` | `set_yield_recipient` | `old` **(topic)**, `new` |
 | `forced_transfer_manager_set` | `set_forced_transfer_manager` | `old` **(topic)**, `new` |
-| `pauser_set` | `set_pauser` | `old` **(topic)**, `new` |
 | `block_operator_added` | `add_block_operator` | `addr` **(topic)** |
 | `block_operator_removed` | `remove_block_operator` | `addr` **(topic)** |
 | `unblock_operator_added` | `add_unblock_operator` | `addr` **(topic)** |
 | `unblock_operator_removed` | `remove_unblock_operator` | `addr` **(topic)** |
+| `pauser_added` | `add_pauser` | `addr` **(topic)** |
+| `pauser_removed` | `remove_pauser` | `addr` **(topic)** |
 | `interest_rate_set` | `set_interest_rate` | `rate_bps` |
 | `mint` | `mint` | `to` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
 | `burn` | `burn` | `from` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |

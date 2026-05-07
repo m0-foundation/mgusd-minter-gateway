@@ -370,6 +370,25 @@ fn test_remove_unblock_operator_reverts_without_auth() {
 }
 
 #[test]
+fn test_add_pauser_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let new_addr = Address::generate(&s.env);
+    let err = s.contract.try_add_pauser(&new_addr).unwrap_err().unwrap();
+    assert_eq!(err, auth_error());
+}
+
+#[test]
+fn test_remove_pauser_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let err = s
+        .contract
+        .try_remove_pauser(&s.pauser)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, auth_error());
+}
+
+#[test]
 fn test_set_yield_recipient_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
     let new_yr = Address::generate(&s.env);
