@@ -408,8 +408,11 @@ export class DeployClient {
     if (deps.fireblocksSign) {
       this.fireblocksSign = deps.fireblocksSign;
     } else {
-      const fb = createFireblocksClient(env.fireblocks);
+      // Lazy: read the PEM file only on the first actual sign call so that
+      // dry-run mode never requires the secret file to exist on disk.
+      let fb: ReturnType<typeof createFireblocksClient> | null = null;
       this.fireblocksSign = async (hashHex: string) => {
+        if (!fb) fb = createFireblocksClient(env.fireblocks);
         const result = await signHash(fb, env.fireblocks, hashHex);
         return result.signatureHex;
       };
