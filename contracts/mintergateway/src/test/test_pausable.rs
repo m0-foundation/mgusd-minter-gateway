@@ -156,13 +156,13 @@ fn test_set_interest_rate_blocked_when_paused_resumes_after_unpause() {
     // pause is meant to freeze.
     assert!(s
         .contract
-        .try_set_interest_rate(&s.minter, &10_000)
+        .try_set_interest_rate(&s.minter, &5_000)
         .is_err());
     assert_eq!(s.contract.interest_rate(), 500);
 
     s.contract.unpause(&s.pauser);
-    s.contract.set_interest_rate(&s.minter, &10_000);
-    assert_eq!(s.contract.interest_rate(), 10_000);
+    s.contract.set_interest_rate(&s.minter, &5_000);
+    assert_eq!(s.contract.interest_rate(), 5_000);
 }
 
 // =============================================================================

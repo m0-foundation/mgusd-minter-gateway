@@ -473,7 +473,7 @@ fn test_claim_yield_returns_no_trustline_when_recipient_unauthorized() {
     let principal = 1_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Rotate yield recipient to an address with no trustline.
