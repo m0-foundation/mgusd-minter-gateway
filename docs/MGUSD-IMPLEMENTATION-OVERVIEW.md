@@ -433,44 +433,42 @@ All events emitted by the contract. Event names are the snake_case form of the u
 
 Core mathematical properties the contract upholds. These should hold across every reachable state.
 
-Symbols: `P = total_principal`, `S = total_supply`, `Y = accrued_yield`, `I = latest_index`, `I* = current_index`, `K = INDEX_SCALE = 1e12`.
+The present value of a nominal amount at the current index is `amount × INDEX_SCALE / latest_index`.
 
 ### Bounds
 
-- **INV-1 — Non-negative accumulators.** `P ≥ 0`, `S ≥ 0`, `Y ≥ 0`.
-- **INV-2 — Index floor.** `I ≥ K` and `I* ≥ I`. The index never decreases and never falls below 1.0.
+- **INV-1 — Non-negative accumulators.** `total_principal ≥ 0`, `total_supply ≥ 0`, `accrued_yield ≥ 0`.
+- **INV-2 — Index floor and monotonicity.** `latest_index ≥ INDEX_SCALE` and `current_index ≥ latest_index`. The index never decreases and never falls below `1.0` (`= INDEX_SCALE`).
 - **INV-3 — Rate bound.** `0 ≤ rate_bps ≤ 10_000` (0%–100% APR).
 
 ### Conservation per operation
 
-For each state-changing call, with `pv(a) = a · K / I` (present value at the current index):
+Each state-changing call adjusts the accumulators as follows:
 
-| Operation | ΔP | ΔS | SAC effect |
-|-----------|-----|-----|------------|
-| `mint(amount)` | `+pv(amount)` | `+amount` | `+amount` minted to recipient |
-| `burn(amount)` | `−pv(amount)` | `−amount` | `−amount` clawed back from holder |
-| `reconcile_burn(amount)` | `−pv(amount)` | `−amount` | none (off-chain destruction already happened) |
-| `claim_yield()` → `y` | `0` | `+y` | `+y` minted to yield recipient |
-| `force_transfer(a)` | `0` | `0` | `−a` from sender, `+a` to recipient |
+| Operation | Δ `total_principal` | Δ `total_supply` | SAC effect |
+|-----------|---------------------|------------------|------------|
+| `mint(amount)` | `+ amount × INDEX_SCALE / latest_index` | `+ amount` | `+ amount` minted to recipient |
+| `burn(amount)` | `− amount × INDEX_SCALE / latest_index` | `− amount` | `− amount` clawed back from holder |
+| `reconcile_burn(amount)` | `− amount × INDEX_SCALE / latest_index` | `− amount` | none (off-chain destruction already happened) |
+| `claim_yield()` → `amount` | `0` | `+ amount` | `+ amount` minted to yield recipient |
+| `force_transfer(amount)` | `0` | `0` | `− amount` from sender, `+ amount` to recipient |
 | `set_rate`, `update_index` | `0` | `0` | none |
 
-- **INV-4 — Burn cannot exceed principal.** `burn` and `reconcile_burn` revert with `BurnExceedsPrincipal` if `pv(amount) > P`. Equivalently, `P` is never driven negative.
-- **INV-5 — Force transfer is supply-neutral.** `force_transfer` leaves `P`, `S`, and `Y` unchanged.
-- **INV-6 — Yield does not compound.** `claim_yield` increases `S` only. `P` is the sole yield-earning base; claimed yield never re-enters the principal accumulator.
+- **INV-4 — Burn cannot exceed principal.** `burn` and `reconcile_burn` revert with `BurnExceedsPrincipal` if `amount × INDEX_SCALE / latest_index > total_principal`. Equivalently, `total_principal` is never driven negative.
+- **INV-5 — Force transfer is supply-neutral.** `force_transfer` leaves `total_principal`, `total_supply`, and `accrued_yield` unchanged.
+- **INV-6 — Yield does not compound.** `claim_yield` increases `total_supply` only. `total_principal` is the sole yield-earning base; claimed yield never re-enters the principal accumulator.
 
 ### Yield accrual
 
-- **INV-7 — Pending yield identity.** Between index updates, `pending_yield = P · (I* − I) / K`. After `update_index`, this pending amount is added to `Y` and `I` is advanced to `I*`.
-- **INV-8 — Index-update neutrality.** `update_index` modifies only `(I, Y, last_update_timestamp)`. It never changes `P` or `S`.
-- **INV-9 — Index-before-state ordering.** Every operation that mutates `P`, `S`, or `rate_bps` (i.e. `mint`, `burn`, `reconcile_burn`, `claim_yield`, `set_rate`) finalizes the index first. Yield is therefore always accrued at the principal and rate that were in effect during the elapsed interval.
-- **INV-10 — Claim resets pending yield.** Immediately after `claim_yield` returns `y`, `Y = 0` and `S` has increased by exactly `y`.
+- **INV-7 — Pending yield identity.** Between index updates, `pending_yield = total_principal × (current_index − latest_index) / INDEX_SCALE`. After `update_index`, this pending amount is added to `accrued_yield` and `latest_index` is advanced to `current_index`.
+- **INV-8 — Index-update neutrality.** `update_index` modifies only `latest_index`, `accrued_yield`, and `last_update_timestamp`. It never changes `total_principal` or `total_supply`.
+- **INV-9 — Index-before-state ordering.** Every operation that mutates `total_principal`, `total_supply`, or `rate_bps` (i.e. `mint`, `burn`, `reconcile_burn`, `claim_yield`, `set_rate`) finalizes the index first. Yield is therefore always accrued at the principal and rate that were in effect during the elapsed interval.
+- **INV-10 — Claim resets pending yield.** Immediately after `claim_yield` returns `amount`, `accrued_yield = 0` and `total_supply` has increased by exactly `amount`.
 
 ### Supply ↔ SAC reconciliation
 
-Let `circulating_SAC` be the SAC's circulating supply (sum of holder balances).
-
-- **INV-11 — Supply bookkeeping.** Under normal operation (no off-contract destruction such as issuer burns), `S = circulating_SAC`. When tokens are destroyed outside the contract, `circulating_SAC < S` until `reconcile_burn` is called to restore equality.
-- **INV-12 — Authoritative source for supply changes.** `S` only changes via `mint`, `burn`, `reconcile_burn`, and `claim_yield`. SAC `transfer` between accounts does not change `S` or `P`.
+- **INV-11 — Supply bookkeeping.** Under normal operation (no off-contract destruction such as issuer burns), `total_supply` equals the SAC's circulating supply (sum of holder balances). When tokens are destroyed outside the contract, the SAC's circulating supply falls below `total_supply` until `reconcile_burn` is called to restore equality.
+- **INV-12 — Authoritative source for supply changes.** `total_supply` only changes via `mint`, `burn`, `reconcile_burn`, and `claim_yield`. SAC `transfer` between accounts does not change `total_supply` or `total_principal`.
 
 ### Roles and access
 
