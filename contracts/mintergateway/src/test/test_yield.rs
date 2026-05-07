@@ -14,7 +14,7 @@ fn test_yield_accrual_5pct_one_year() {
     let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     s.assert_event(InterestRateSet { rate_bps: 500 });
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -30,7 +30,7 @@ fn test_yield_accrual_10pct_half_year() {
     let principal = 10_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &1000);
+    s.contract.set_interest_rate(&s.minter, &1000);
 
     advance_time(&s.env, (SECONDS_PER_YEAR / 2) as u64);
 
@@ -44,7 +44,7 @@ fn test_yield_zero_when_no_time_elapsed() {
 
     s.contract
         .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     assert_eq!(s.contract.accrued_yield(), 0);
 }
@@ -65,7 +65,7 @@ fn test_yield_zero_when_no_rate() {
 fn test_yield_zero_when_no_principal() {
     let s = setup();
 
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -82,7 +82,7 @@ fn test_claim_yield_mints_tokens_to_yield_recipient() {
     let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -121,7 +121,7 @@ fn test_claim_yield_principal_unchanged() {
     let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -137,7 +137,7 @@ fn test_claim_yield_resets_accrued() {
 
     s.contract
         .mint(&s.minter, &s.yield_recipient, &(1_000_000 * DECIMALS));
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -173,7 +173,7 @@ fn test_yield_no_compounding() {
     let half_year = (SECONDS_PER_YEAR / 2) as u64;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     // --- First half-year ---
     advance_time(&s.env, half_year);
@@ -210,7 +210,7 @@ fn test_multiple_claims_accumulate_correctly() {
     let principal = 100_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &1000);
+    s.contract.set_interest_rate(&s.minter, &1000);
 
     let quarter_year = (SECONDS_PER_YEAR / 4) as u64;
     let mut total_claimed = 0i128;
@@ -253,7 +253,7 @@ fn test_rate_change_finalizes_yield_at_old_rate() {
     let half_year = (SECONDS_PER_YEAR / 2) as u64;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, half_year);
 
@@ -261,7 +261,7 @@ fn test_rate_change_finalizes_yield_at_old_rate() {
     assert_eq!(yield_before_change, 253_151_204_420);
 
     // Change rate to 10% — finalizes yield at 5%
-    s.contract.set_rate(&s.minter, &1000);
+    s.contract.set_interest_rate(&s.minter, &1000);
 
     assert_eq!(s.contract.accrued_yield(), yield_before_change);
 
@@ -275,17 +275,17 @@ fn test_rate_change_finalizes_yield_at_old_rate() {
 }
 
 #[test]
-fn test_set_rate_noop_when_unchanged() {
+fn test_set_interest_rate_noop_when_unchanged() {
     let s = setup();
 
     s.contract
         .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     let yield_before = s.contract.accrued_yield();
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     assert_eq!(s.contract.accrued_yield(), yield_before);
 }
 
@@ -305,7 +305,7 @@ fn test_full_flow_mint_rate_claim() {
     assert_eq!(s.sac_token.balance(&s.yield_recipient), one_million);
 
     // Step 2: Set rate to 5%
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     // Step 3: Advance 1 year
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -331,7 +331,7 @@ fn test_no_yield_accrues_after_principal_zero() {
     let amount = 1_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &amount);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     s.contract.burn(&s.minter, &s.yield_recipient, &amount);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -345,9 +345,9 @@ fn test_no_yield_accrues_after_principal_zero() {
 // =============================================================================
 
 #[test]
-fn test_set_rate_reverts_without_caller_auth() {
+fn test_set_interest_rate_reverts_without_caller_auth() {
     let s = setup_no_mock_auth();
-    let result = s.contract.try_set_rate(&s.minter, &500);
+    let result = s.contract.try_set_interest_rate(&s.minter, &500);
     assert_eq!(
         result.unwrap_err().unwrap_err(),
         soroban_sdk::InvokeError::Abort
@@ -365,14 +365,16 @@ fn test_claim_yield_reverts_without_caller_auth() {
 }
 
 // =============================================================================
-// ACCESS CONTROL — SET_RATE (admin or minter only)
+// ACCESS CONTROL — SET_INTEREST_RATE (admin or minter only)
 // =============================================================================
 
 #[test]
-fn test_yield_recipient_manager_cannot_set_rate() {
+fn test_yield_recipient_manager_cannot_set_interest_rate() {
     let s = setup();
 
-    let result = s.contract.try_set_rate(&s.yield_recipient_manager, &500);
+    let result = s
+        .contract
+        .try_set_interest_rate(&s.yield_recipient_manager, &500);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))
@@ -380,10 +382,10 @@ fn test_yield_recipient_manager_cannot_set_rate() {
 }
 
 #[test]
-fn test_yield_recipient_cannot_set_rate() {
+fn test_yield_recipient_cannot_set_interest_rate() {
     let s = setup();
 
-    let result = s.contract.try_set_rate(&s.yield_recipient, &500);
+    let result = s.contract.try_set_interest_rate(&s.yield_recipient, &500);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))
@@ -391,10 +393,12 @@ fn test_yield_recipient_cannot_set_rate() {
 }
 
 #[test]
-fn test_forced_transfer_manager_cannot_set_rate() {
+fn test_forced_transfer_manager_cannot_set_interest_rate() {
     let s = setup();
 
-    let result = s.contract.try_set_rate(&s.forced_transfer_manager, &500);
+    let result = s
+        .contract
+        .try_set_interest_rate(&s.forced_transfer_manager, &500);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))
@@ -402,11 +406,11 @@ fn test_forced_transfer_manager_cannot_set_rate() {
 }
 
 #[test]
-fn test_random_cannot_set_rate() {
+fn test_random_cannot_set_interest_rate() {
     let s = setup();
     let random = Address::generate(&s.env);
 
-    let result = s.contract.try_set_rate(&random, &500);
+    let result = s.contract.try_set_interest_rate(&random, &500);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))

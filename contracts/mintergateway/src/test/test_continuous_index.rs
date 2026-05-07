@@ -170,8 +170,8 @@ fn test_current_index_from_non_unity_base() {
 fn test_current_index_returns_stored_when_no_time_elapsed() {
     let s = setup();
 
-    // set_rate calls update_index, which stores T0 as last_update_timestamp
-    s.contract.set_rate(&s.minter, &500);
+    // set_interest_rate calls update_index, which stores T0 as last_update_timestamp
+    s.contract.set_interest_rate(&s.minter, &500);
 
     // Call current_index at the same timestamp (no advance_time)
     // This hits the `current_time <= last_update_timestamp` early return
@@ -199,7 +199,7 @@ fn test_index_unchanged_with_zero_rate() {
 fn test_index_unchanged_with_zero_principal() {
     let s = setup();
 
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -215,7 +215,7 @@ fn test_index_grows_after_mint_and_rate_set() {
     let one_million = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -229,7 +229,7 @@ fn test_index_stored_after_state_change() {
 
     s.contract
         .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -250,7 +250,7 @@ fn test_index_growth_1_day() {
 
     s.contract
         .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, 86_400);
 
@@ -265,7 +265,7 @@ fn test_index_growth_1_hour() {
 
     s.contract
         .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, 3_600);
 

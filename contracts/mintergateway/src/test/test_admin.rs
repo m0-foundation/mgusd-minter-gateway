@@ -246,10 +246,10 @@ fn test_admin_cannot_burn() {
 }
 
 #[test]
-fn test_admin_cannot_set_rate() {
+fn test_admin_cannot_set_interest_rate() {
     let s = setup();
 
-    let result = s.contract.try_set_rate(&s.admin, &500);
+    let result = s.contract.try_set_interest_rate(&s.admin, &500);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))

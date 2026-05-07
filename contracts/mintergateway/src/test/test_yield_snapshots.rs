@@ -15,7 +15,7 @@ fn test_second_mint_snapshots_yield() {
 
     // Step 1: Mint 1M, set rate 5%
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     // Step 2: Advance 1 year — yield accrues on 1M
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -53,7 +53,7 @@ fn test_rate_before_principal() {
     let one_million = 1_000_000 * DECIMALS;
 
     // Set rate with no principal — index grows but no yield earned
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     assert_eq!(s.contract.accrued_yield(), 0);
 
@@ -83,7 +83,7 @@ fn test_claim_then_claim_same_timestamp() {
     let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 

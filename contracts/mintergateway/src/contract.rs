@@ -429,7 +429,11 @@ impl YieldToken {
 
     /// Sets the interest rate in basis points (max 10000 = 100%). Minter only.
     /// No-op if the new rate equals the current rate.
-    pub fn set_rate(e: Env, caller: Address, rate_bps: u32) -> Result<(), MinterGatewayError> {
+    pub fn set_interest_rate(
+        e: Env,
+        caller: Address,
+        rate_bps: u32,
+    ) -> Result<(), MinterGatewayError> {
         pausable::when_not_paused(&e);
         require_role_holder(&caller, &read_minter(&e))?;
 

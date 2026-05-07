@@ -204,7 +204,7 @@ fn test_operations_work_after_failed_issuer_block() {
     assert_eq!(s.sac_token.balance(&user), amount);
 
     // Set rate and advance time for yield
-    s.contract.set_rate(&s.minter, &500); // 5% APY
+    s.contract.set_interest_rate(&s.minter, &500); // 5% APY
     super::setup::advance_time(&s.env, 365 * 24 * 3600);
 
     // Claim yield still works
