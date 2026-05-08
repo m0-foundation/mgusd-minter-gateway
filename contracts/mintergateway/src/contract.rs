@@ -484,6 +484,12 @@ impl YieldToken {
     /// Forces a transfer of SAC tokens from one account to another.
     /// Forced transfer manager only. Does not require source authorization.
     /// Implemented as clawback + mint. Accumulators are NOT touched — supply is unchanged.
+    ///
+    /// Intentionally NOT gated by `when_not_paused`: `force_transfer` is a
+    /// compliance primitive (sanctions enforcement, court-ordered seizures)
+    /// and must remain executable during a pause, alongside `block_user` /
+    /// `unblock_user`. Pause is for halting normal supply changes — not for
+    /// blocking regulatory action. (Certora FIND-L03)
     pub fn force_transfer(
         e: Env,
         caller: Address,
@@ -491,7 +497,6 @@ impl YieldToken {
         to: Address,
         amount: i128,
     ) -> Result<(), MinterGatewayError> {
-        pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_role_holder(&caller, &read_forced_transfer_manager(&e))?;
 
@@ -706,7 +711,9 @@ impl Pausable for YieldToken {
         pausable::paused(e)
     }
 
-    /// Pauses the contract. Blocks mint, burn, reconcile_burn, force_transfer, claim_yield.
+    /// Pauses the contract. Blocks mint, burn, reconcile_burn, claim_yield.
+    /// Compliance operations (`block_user`, `unblock_user`, `force_transfer`)
+    /// remain accessible while paused.
     /// Pauser only.
     fn pause(e: &Env, caller: Address) {
         if let Err(err) = require_pauser(e, &caller) {
