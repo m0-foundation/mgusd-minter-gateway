@@ -182,10 +182,11 @@ fn test_burn_after_index_growth_stores_present_value_principal() {
     let index_at_burn = s.contract.latest_index();
     assert!(index_at_burn > INDEX_SCALE);
 
-    // Correct PV of burn: amount * INDEX_SCALE / latest_index
+    // Correct PV of burn: ceil(amount * INDEX_SCALE / latest_index).
     // Since initial 2M was minted at INDEX_SCALE, its PV is 2M.
-    // The burn should subtract PV of the burned tokens.
-    let pv_of_burn = burn_amount * INDEX_SCALE / index_at_burn;
+    // The burn should subtract PV of the burned tokens. Burn rounds UP (FIND-M02)
+    // so dust burns can't accumulate phantom principal.
+    let pv_of_burn = pv_ceil(burn_amount, index_at_burn);
     let expected_principal = two_million - pv_of_burn;
 
     assert_eq!(
@@ -221,8 +222,8 @@ fn test_yield_underestimation_after_burn_at_grown_index() {
 
     let total_claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
-    // Correct year-2 principal uses PV-adjusted burn
-    let pv_of_burn = burn_amount * INDEX_SCALE / index_yr1;
+    // Correct year-2 principal uses PV-adjusted burn (ceil per FIND-M02).
+    let pv_of_burn = pv_ceil(burn_amount, index_yr1);
     let correct_principal_yr2 = two_million - pv_of_burn;
 
     let index_yr2 = s.contract.latest_index();
@@ -230,9 +231,13 @@ fn test_yield_underestimation_after_burn_at_grown_index() {
     let correct_yield_yr2 = correct_principal_yr2 * index_delta_yr2 / INDEX_SCALE;
     let expected_total = yield_after_yr1 + correct_yield_yr2;
 
-    assert_eq!(
-        total_claimed,
-        expected_total,
+    // The reference computation flooring twice (yr1 yield + yr2 yield) can
+    // disagree with the contract's single-floor derivation by 1 stroop of
+    // floor residue. Allow that 1-stroop tolerance; what matters is that the
+    // shortfall is bounded, not zero on the dot.
+    let diff = (expected_total - total_claimed).abs();
+    assert!(
+        diff <= 1,
         "Yield is underestimated after burn. Claimed {} but correct is {}. \
          Shortfall: {} tokens",
         total_claimed,
@@ -311,5 +316,61 @@ fn test_sequential_mints_at_different_indices_accumulate_pv() {
         actual_principal,
         expected_total_pv,
         actual_principal - expected_total_pv
+    );
+}
+
+// FIND-M02: dust burns at index > 1.0 must not accumulate phantom principal.
+//
+// With floor rounding on burn, `pv_amount = floor(amount × SCALE / latest_index)`
+// rounds to 0 for any `amount` smaller than `latest_index / SCALE`. `total_supply`
+// drops while `total_principal` is unchanged, leaving more PV principal earning
+// yield than the real circulating supply justifies. Repeated dust burns inflate
+// `accrued_yield` indefinitely. Ceil rounding plugs that path.
+#[test]
+fn test_dust_burn_at_grown_index_does_not_accumulate_phantom_principal() {
+    let s = setup();
+    let principal = 1_000_000 * DECIMALS;
+
+    s.contract.mint(&s.minter, &s.yield_recipient, &principal);
+    s.contract.set_rate(&s.minter, &500); // 5%
+
+    // Grow index above INDEX_SCALE so floor would zero out single-stroop burns.
+    advance_time(&s.env, SECONDS_PER_YEAR as u64);
+
+    // Materialize the grown index so subsequent burns share it.
+    s.contract.burn(&s.minter, &s.yield_recipient, &1);
+    let index_at_burn = s.contract.latest_index();
+    assert!(
+        index_at_burn > INDEX_SCALE,
+        "test setup must grow the index above INDEX_SCALE"
+    );
+
+    let principal_before = s.contract.total_principal();
+    let supply_before = s.contract.total_supply();
+
+    // Burn many single-stroop amounts. Under floor rounding, every iteration
+    // floors `pv_amount` to 0 and only `total_supply` drops. Under ceil
+    // rounding, `pv_amount` is at least 1, so principal tracks supply.
+    let dust_iterations: i128 = 1_000;
+    for _ in 0..dust_iterations {
+        s.contract.burn(&s.minter, &s.yield_recipient, &1);
+    }
+
+    let principal_after = s.contract.total_principal();
+    let supply_after = s.contract.total_supply();
+
+    // Supply drops by exactly the nominal amount burned.
+    assert_eq!(supply_before - supply_after, dust_iterations);
+
+    // Principal must drop by at least 1 PV unit per dust burn — ceil never
+    // returns 0 for `amount > 0` when `index > 0`. Under the floor bug this
+    // drop would be 0 because pv floors to 0 on each iteration.
+    let principal_drop = principal_before - principal_after;
+    assert!(
+        principal_drop >= dust_iterations,
+        "ceil(amount × SCALE / index) must be ≥ 1 per burn — \
+         principal dropped by {}, expected ≥ {}",
+        principal_drop,
+        dust_iterations
     );
 }
