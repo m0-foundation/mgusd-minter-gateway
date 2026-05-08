@@ -213,6 +213,31 @@ fn test_reconcile_burn_does_not_touch_sac_tokens() {
     assert_eq!(s.sac_token.balance(&user), balance_before);
 }
 
+/// FIND-M01: send-to-issuer destruction can happen during a pause (it is a
+/// SAC-layer transfer the wrapper does not gate). Admin must still be able to
+/// reconcile accumulators while paused; otherwise divergence grows unbounded.
+#[test]
+fn test_reconcile_burn_works_during_pause_after_send_to_issuer() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let amount = 1_000 * DECIMALS;
+    let destroyed = 600 * DECIMALS;
+
+    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.mint(&s.minter, &user, &amount);
+
+    // Pause first, then user destroys tokens at the SAC layer.
+    s.contract.pause(&s.pauser);
+    s.sac_token.transfer(&user, &s.issuer, &destroyed);
+
+    // Admin reconciles while still paused — must succeed.
+    s.contract.reconcile_burn(&destroyed);
+
+    assert!(s.contract.paused());
+    assert_eq!(s.contract.total_principal(), amount - destroyed);
+    assert_eq!(s.contract.total_supply(), amount - destroyed);
+}
+
 #[test]
 fn test_reconcile_burn_multiple_calls() {
     let s = setup();

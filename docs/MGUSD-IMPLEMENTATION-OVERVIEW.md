@@ -136,7 +136,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, force_transfer, reconcile_burn |
+| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, force_transfer |
 | `unpause` | `(caller: Address)` | Unpause the contract — resumes all blocked operations |
 
 ### View / Query Functions (18)
@@ -385,11 +385,12 @@ When paused, the following operations revert immediately:
 |-----------------|------|
 | `mint` | Minter |
 | `burn` | Minter |
-| `reconcile_burn` | Admin |
 | `claim_yield` | Yield Recipient Manager |
 | `force_transfer` | Forced Transfer Manager |
 
 Compliance operations (`block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`) and all view functions remain fully accessible while paused so that regulatory actions can still be executed.
+
+`reconcile_burn` is also intentionally callable while paused. Send-to-issuer destruction happens at the SAC layer outside wrapper control and continues during a pause; blocking reconciliation while paused would let accumulator divergence grow unboundedly. The function is admin-only and only mutates wrapper bookkeeping (no SAC interaction), so the pause carries no security benefit.
 
 ---
 

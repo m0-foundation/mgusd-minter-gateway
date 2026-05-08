@@ -429,8 +429,12 @@ impl YieldToken {
     /// Reconciles accumulators after tokens are destroyed by sending to the SAC issuer.
     /// Decreases both accumulators to reflect the reduced supply.
     /// Admin only — this is a reconciliation action, not normal operations.
+    ///
+    /// Intentionally NOT gated by `when_not_paused`: send-to-issuer destruction
+    /// happens at the SAC layer outside wrapper control and continues during a
+    /// pause, so blocking reconciliation while paused would let accumulator
+    /// divergence grow unboundedly. (Certora FIND-M01)
     pub fn reconcile_burn(e: Env, amount: i128) -> Result<(), MinterGatewayError> {
-        pausable::when_not_paused(&e);
         require_admin(&e);
         check_positive_amount(amount)?;
 
@@ -706,7 +710,7 @@ impl Pausable for YieldToken {
         pausable::paused(e)
     }
 
-    /// Pauses the contract. Blocks mint, burn, reconcile_burn, force_transfer, claim_yield.
+    /// Pauses the contract. Blocks mint, burn, force_transfer, claim_yield.
     /// Pauser only.
     fn pause(e: &Env, caller: Address) {
         if let Err(err) = require_pauser(e, &caller) {
