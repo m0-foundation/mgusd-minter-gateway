@@ -126,10 +126,9 @@ fn test_claim_yield_blocked_when_paused_resumes_after_unpause() {
 // UNBLOCKED OPERATIONS — compliance and view calls remain accessible
 // =============================================================================
 
-// FIND-L03: `force_transfer` is a compliance primitive (sanctions enforcement,
-// court-ordered seizures) and must remain executable during a pause, alongside
-// `block_user` / `unblock_user`. Pinning the un-gated behavior so a future
-// regression can't silently re-add `when_not_paused`.
+// `force_transfer` is a compliance primitive — must remain executable during
+// a pause, alongside `block_user` / `unblock_user`. Pin so a future regression
+// can't silently re-add `when_not_paused`.
 #[test]
 fn test_force_transfer_works_when_paused() {
     let s = setup();
