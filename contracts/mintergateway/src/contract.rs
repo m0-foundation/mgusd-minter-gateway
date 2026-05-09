@@ -440,8 +440,7 @@ impl YieldToken {
         // Update index before changing principal
         update_index(&e);
 
-        // Decrease both accumulators (same PV logic as burn).
-        // Supply/principal underflow guards live in decrease_both_accumulators.
+        // Decrease both accumulators (same PV logic as burn)
         decrease_both_accumulators(&e, amount)?;
 
         let state = read_yield_state(&e);

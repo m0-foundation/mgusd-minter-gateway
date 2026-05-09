@@ -185,10 +185,9 @@ fn test_burn_exceeding_principal_reverts() {
 }
 
 /// When index > 1.0, PV conversion shrinks the burn amount (pv < nominal).
-/// Without the nominal supply guard, the PV check alone would let `burn`
-/// proceed past `total_supply`, with `checked_sub` panicking on the supply
-/// update. The `BurnExceedsSupply` guard in `decrease_both_accumulators`
-/// (FIND-L01) catches this with a typed error before any state mutates.
+/// The PV check alone would let `burn` proceed past `total_supply`, so the
+/// nominal supply guard in `decrease_both_accumulators` returns a typed
+/// `BurnExceedsSupply` error before any state mutates.
 #[test]
 fn test_burn_exceeding_total_supply_reverts() {
     let s = setup();
