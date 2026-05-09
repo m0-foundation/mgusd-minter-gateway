@@ -35,7 +35,7 @@ cargo test
 
 ## Deploying
 
-Testnet / dev deploys are driven by `scripts/deploy-testnet.sh`, a thin bash wrapper around the `stellar` CLI that mirrors the 5-step pipeline (configure issuer flags → deploy SAC → upload WASM → deploy wrapper → transfer SAC admin). The script uses two `stellar keys` identities — an ISSUER (signs steps 1, 5) and a DEPLOYER (signs steps 2-4) — which can resolve to the same identity for testnet/dev or to distinct cold/warm signers for production.
+Both testnet/dev and production deploys are driven by `scripts/deploy-testnet.sh`, a thin bash wrapper around the `stellar` CLI that mirrors the deploy pipeline (configure issuer flags → deploy SAC → upload WASM → deploy wrapper → transfer SAC admin → optionally retire the issuer). The script uses two `stellar keys` identities — an ISSUER (signs steps 1, 5, and the optional Step 6 lock) and a DEPLOYER (signs steps 2-4) — which can resolve to the same identity for testnet/dev or to distinct cold/warm signers for production.
 
 ```bash
 cp scripts/deploy.env.example .env
@@ -46,7 +46,7 @@ make build
 
 The script auto-loads `.env` from the repo root if present (gitignored). All required env vars and per-role conventions are documented in [`scripts/deploy.env.example`](scripts/deploy.env.example) (STEL1-5: no role-collapsing default).
 
-**Production deploys** that require Fireblocks-custodied signing live on the [`sdk-integration`](https://github.com/m0-foundation/stellar-minter-gateway/tree/sdk-integration) branch. That branch retains the TypeScript SDK and its Fireblocks deploy pipeline; check it out when you need to deploy with MPC-signed issuer keys.
+**Production deploys** set `LOCK_ISSUER=true` to run **Step 6**: the script submits a `set_options` op zeroing the issuer's master-key weight (and `AUTH_IMMUTABLE` by default), then verifies via Horizon that the lock landed (`master_weight=0`, `thresholds=0/0/0`, no extra signers). After Step 6 the issuer key is permanently inert — all ongoing authority flows through the wrapper (SAC admin), so the key can be destroyed and no MPC custody is required to keep the asset operational. The lock is irreversible; testnet/dev deploys leave it off so the same issuer can be reused across redeploys.
 
 ---
 
