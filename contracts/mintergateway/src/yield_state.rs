@@ -113,19 +113,9 @@ pub fn increase_both_accumulators(env: &Env, amount: i128) {
     write_yield_state(env, &state);
 }
 
-/// Decreases both total_principal and total_supply.
-/// Used by burn.
-/// Must call update_index first to finalize yield at current principal.
-///
-/// `total_principal` is adjusted by the present value of the amount
-/// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
-/// by the nominal amount. Returns error if PV amount exceeds total_principal.
-///
-/// PV is rounded UP (ceil) — the opposite of `increase_both_accumulators`.
-/// Asymmetric rounding keeps both sides protocol-favorable: floor on mint
-/// under-records principal, ceil on burn over-removes it. Without ceil, dust
-/// burns at index > 1.0 floor to `pv_amount = 0` while supply still drops,
-/// leaving phantom principal that inflates `get_accrued_yield`. (Certora FIND-M02)
+/// Decreases both total_principal and total_supply. Used by burn.
+/// Must call update_index first. PV uses ceil rounding (opposite of mint's
+/// floor) so dust burns can't leave phantom principal earning yield.
 pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), MinterGatewayError> {
     let mut state = read_yield_state(env);
     let pv_amount = amount
