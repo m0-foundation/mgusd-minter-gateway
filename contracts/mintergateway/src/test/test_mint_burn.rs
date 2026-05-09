@@ -185,10 +185,10 @@ fn test_burn_exceeding_principal_reverts() {
 }
 
 /// When index > 1.0, PV conversion shrinks the burn amount (pv < nominal).
-/// This means the PV guard in `decrease_both_accumulators` alone would allow
-/// burning more tokens than `total_supply`. The `checked_sub` on `total_supply`
-/// inside `decrease_both_accumulators` panics before SAC clawback even runs
-/// (accumulators are updated before clawback in `burn`).
+/// Without the nominal supply guard, the PV check alone would let `burn`
+/// proceed past `total_supply`, with `checked_sub` panicking on the supply
+/// update. The `BurnExceedsSupply` guard in `decrease_both_accumulators`
+/// (FIND-L01) catches this with a typed error before any state mutates.
 #[test]
 fn test_burn_exceeding_total_supply_reverts() {
     let s = setup();
@@ -203,13 +203,13 @@ fn test_burn_exceeding_total_supply_reverts() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Try to burn 1 more than total_supply.
-    // PV ≈ 951 which is < total_principal (1000), so the PV guard passes.
-    // But checked_sub on total_supply panics — amount > total_supply.
+    // PV ≈ 951 which is < total_principal (1000), so the PV guard alone would pass.
+    // The nominal supply guard must catch this before total_supply underflows.
     let overshoot = mint_amount + 1;
     let result = s.contract.try_burn(&s.minter, &user, &overshoot);
-    assert!(
-        result.is_err(),
-        "checked_sub should panic when amount > total_supply"
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        crate::MinterGatewayError::BurnExceedsSupply,
     );
 
     // Accumulators unchanged — no state corruption

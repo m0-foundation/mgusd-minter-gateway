@@ -114,14 +114,22 @@ pub fn increase_both_accumulators(env: &Env, amount: i128) {
 }
 
 /// Decreases both total_principal and total_supply.
-/// Used by burn.
+/// Used by burn and reconcile_burn.
 /// Must call update_index first to finalize yield at current principal.
 ///
 /// `total_principal` is adjusted by the present value of the amount
 /// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
-/// by the nominal amount. Returns error if PV amount exceeds total_principal.
+/// by the nominal amount.
+///
+/// Returns `BurnExceedsSupply` if the nominal amount exceeds `total_supply`,
+/// or `BurnExceedsPrincipal` if the present value exceeds `total_principal`.
+/// Centralizing both guards here ensures every burn path is checked, since
+/// `burn` and `reconcile_burn` both flow through this function. (FIND-L01)
 pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), MinterGatewayError> {
     let mut state = read_yield_state(env);
+    if amount > state.total_supply {
+        return Err(MinterGatewayError::BurnExceedsSupply);
+    }
     let pv_amount = amount
         .fixed_mul_floor(INDEX_SCALE, state.latest_index)
         .unwrap();

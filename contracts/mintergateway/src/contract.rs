@@ -440,12 +440,8 @@ impl YieldToken {
         // Update index before changing principal
         update_index(&e);
 
-        // Guard: can't reconcile more tokens than the contract believes exist
-        if amount > get_total_supply(&e) {
-            return Err(MinterGatewayError::BurnExceedsSupply);
-        }
-
-        // Decrease both accumulators (same PV logic as burn)
+        // Decrease both accumulators (same PV logic as burn).
+        // Supply/principal underflow guards live in decrease_both_accumulators.
         decrease_both_accumulators(&e, amount)?;
 
         let state = read_yield_state(&e);
