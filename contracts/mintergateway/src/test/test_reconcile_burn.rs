@@ -52,7 +52,7 @@ fn test_reconcile_burn_after_yield_accrual() {
     s.contract.mint(&s.minter, &user, &mint_amount);
 
     // Set 5% rate and advance 1 year
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     advance_time(&s.env, 365 * 24 * 3600);
 
     let principal_before = s.contract.total_principal();
@@ -252,7 +252,7 @@ fn test_reconcile_burn_rejects_amount_exceeding_total_supply() {
     assert_eq!(s.contract.total_supply(), mint_amount);
 
     // Grow index via 5% rate for 1 year → index ≈ 1.0513
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // reconcile_burn with amount = total_supply + 1

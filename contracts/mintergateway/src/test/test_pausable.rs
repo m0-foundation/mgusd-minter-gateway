@@ -103,34 +103,12 @@ fn test_reconcile_burn_blocked_when_paused_resumes_after_unpause() {
 }
 
 #[test]
-fn test_force_transfer_blocked_when_paused_resumes_after_unpause() {
-    let s = setup();
-    let alice = Address::generate(&s.env);
-    let bob = Address::generate(&s.env);
-
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
-    s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
-    s.contract.pause(&s.pauser);
-
-    assert!(s
-        .contract
-        .try_force_transfer(&s.forced_transfer_manager, &alice, &bob, &(500 * DECIMALS))
-        .is_err());
-
-    s.contract.unpause(&s.pauser);
-    s.contract
-        .force_transfer(&s.forced_transfer_manager, &alice, &bob, &(500 * DECIMALS));
-    assert_eq!(s.sac_token.balance(&bob), 500 * DECIMALS);
-}
-
-#[test]
 fn test_claim_yield_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
 
     s.contract
         .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     s.contract.pause(&s.pauser);
 
@@ -144,9 +122,53 @@ fn test_claim_yield_blocked_when_paused_resumes_after_unpause() {
     assert!(claimed > 0);
 }
 
+#[test]
+fn test_set_interest_rate_blocked_when_paused_resumes_after_unpause() {
+    let s = setup();
+
+    s.contract.set_interest_rate(&s.minter, &500);
+    s.contract.pause(&s.pauser);
+
+    // While paused, set_interest_rate must revert — it crystallizes the index and
+    // mutates rate_bps, both of which are financial state changes that the
+    // pause is meant to freeze.
+    assert!(s.contract.try_set_interest_rate(&s.minter, &5_000).is_err());
+    assert_eq!(s.contract.interest_rate(), 500);
+
+    s.contract.unpause(&s.pauser);
+    s.contract.set_interest_rate(&s.minter, &5_000);
+    assert_eq!(s.contract.interest_rate(), 5_000);
+}
+
 // =============================================================================
 // UNBLOCKED OPERATIONS — compliance and view calls remain accessible
 // =============================================================================
+
+// `force_transfer` is a compliance primitive — must remain executable during
+// a pause, alongside `block_user` / `unblock_user`. Pin so a future regression
+// can't silently re-add `when_not_paused`.
+#[test]
+fn test_force_transfer_works_when_paused() {
+    let s = setup();
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+
+    s.contract.unblock_user(&alice, &s.unblock_operator);
+    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
+    s.contract.pause(&s.pauser);
+    assert!(s.contract.paused());
+
+    s.contract
+        .force_transfer(&s.forced_transfer_manager, &alice, &bob, &(500 * DECIMALS));
+
+    assert_eq!(s.sac_token.balance(&bob), 500 * DECIMALS);
+    assert_eq!(s.sac_token.balance(&alice), 500 * DECIMALS);
+    assert!(
+        s.contract.paused(),
+        "force_transfer must not silently unpause the contract"
+    );
+}
 
 #[test]
 fn test_block_unblock_work_when_paused() {
