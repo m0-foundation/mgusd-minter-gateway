@@ -87,22 +87,6 @@ fn test_burn_blocked_when_paused_resumes_after_unpause() {
 }
 
 #[test]
-fn test_reconcile_burn_blocked_when_paused_resumes_after_unpause() {
-    let s = setup();
-    let user = Address::generate(&s.env);
-
-    s.contract.unblock_user(&user, &s.unblock_operator);
-    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
-    s.contract.pause(&s.pauser);
-
-    assert!(s.contract.try_reconcile_burn(&(500 * DECIMALS)).is_err());
-
-    s.contract.unpause(&s.pauser);
-    s.contract.reconcile_burn(&(500 * DECIMALS));
-    assert_eq!(s.contract.total_principal(), 500 * DECIMALS);
-}
-
-#[test]
 fn test_claim_yield_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
 
@@ -168,6 +152,27 @@ fn test_force_transfer_works_when_paused() {
         s.contract.paused(),
         "force_transfer must not silently unpause the contract"
     );
+}
+
+// `reconcile_burn` must remain callable while paused so admins can correct
+// accumulator desync caused by SAC-layer send-to-issuer (Certora FIND-M01).
+// SAC-layer transfers to the issuer are not gated by the wrapper, so they
+// continue during a pause — blocking reconciliation would let divergence
+// grow unboundedly.
+#[test]
+fn test_reconcile_burn_works_when_paused() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
+    s.contract.pause(&s.pauser);
+
+    s.contract.reconcile_burn(&(500 * DECIMALS));
+
+    assert!(s.contract.paused());
+    assert_eq!(s.contract.total_principal(), 500 * DECIMALS);
+    assert_eq!(s.contract.total_supply(), 500 * DECIMALS);
 }
 
 #[test]

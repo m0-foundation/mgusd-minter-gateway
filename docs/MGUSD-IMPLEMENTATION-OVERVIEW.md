@@ -134,10 +134,10 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 `pause` and `unpause` require the caller to be a **pauser** (any address in the pauser membership set).
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, reconcile_burn, set_interest_rate (compliance ops including `force_transfer` remain accessible) |
-| `unpause` | `(caller: Address)` | Unpause the contract — resumes all blocked operations |
+| Function | Signature | Description                                                                                                                                               |
+|----------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, set_interest_rate (compliance ops including `force_transfer` and `reconcile_burn` remain accessible) |
+| `unpause` | `(caller: Address)` | Unpause the contract — resumes all blocked operations                                                                                                     |
 
 ### View / Query Functions (18)
 
@@ -386,10 +386,11 @@ When paused, the following operations revert immediately:
 | `mint` | Minter |
 | `burn` | Minter |
 | `set_interest_rate` | Minter |
-| `reconcile_burn` | Admin |
 | `claim_yield` | Yield Recipient Manager |
 
 Compliance operations (`block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`) and all view functions remain fully accessible while paused so that regulatory actions — sanctions enforcement, court-ordered seizures, allowlist updates — can still be executed.
+
+`reconcile_burn` is also intentionally callable while paused. Send-to-issuer destruction happens at the SAC layer outside wrapper control and continues during a pause; blocking reconciliation while paused would let accumulator divergence grow unboundedly. The function is admin-only and only mutates wrapper bookkeeping (no SAC interaction), so the pause carries no security benefit.
 
 ---
 

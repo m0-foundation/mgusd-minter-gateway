@@ -430,7 +430,6 @@ impl YieldToken {
     /// Decreases both accumulators to reflect the reduced supply.
     /// Admin only — this is a reconciliation action, not normal operations.
     pub fn reconcile_burn(e: Env, amount: i128) -> Result<(), MinterGatewayError> {
-        pausable::when_not_paused(&e);
         require_admin(&e);
         check_positive_amount(amount)?;
 
@@ -708,8 +707,8 @@ impl Pausable for YieldToken {
         pausable::paused(e)
     }
 
-    /// Pauses the contract. Blocks mint, burn, reconcile_burn, claim_yield;
-    /// compliance ops (`block_user`, `unblock_user`, `force_transfer`) stay live.
+    /// Pauses the contract. Blocks mint, burn, claim_yield, set_interest_rate;
+    /// compliance ops (`block_user`, `unblock_user`, `force_transfer`, `reconcile_burn`) stay live.
     /// Pauser only.
     fn pause(e: &Env, caller: Address) {
         if let Err(err) = require_pauser(e, &caller) {
