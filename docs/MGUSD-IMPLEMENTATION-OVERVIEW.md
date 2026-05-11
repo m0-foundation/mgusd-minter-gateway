@@ -31,7 +31,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 4. Yield Claiming (Bridge → MoneyGram)
 
-1. Bridge calls `set_rate(rate_bps)` to set the current interest rate (this is a **Minter** permission, not Admin)
+1. Bridge calls `set_interest_rate(rate_bps)` to set the current interest rate (this is a **Minter** permission, not Admin)
 2. Yield accrues continuously on `total_principal` using the exponential index
 3. Yield Recipient Manager calls `claim_yield()` to mint accrued yield as new SAC tokens to the Yield Recipient
 4. Claimed yield increases `total_supply` but **not** `total_principal` — it does not compound
@@ -57,7 +57,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | Role | Permissions | Intended Actor |
 |------|------------|----------------|
 | **Admin** | role administration only — see breakdown below | M0 |
-| **Minter** | `mint`, `burn`, `set_rate` | Bridge |
+| **Minter** | `mint`, `burn`, `set_interest_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient`, `claim_yield` | M0 |
 | **Yield Recipient** | passive — receives SAC tokens minted by `claim_yield` (does **not** call it) | MoneyGram |
 | **Forced Transfer Manager** | `force_transfer` | Crossmint |
@@ -67,7 +67,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 **Design properties:**
 
-- **Admin is *not* a super-role.** Admin's powers are limited to: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `add_pauser`, `remove_pauser`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** call `mint`, `burn`, `set_rate`, `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`, `claim_yield`, `set_yield_recipient`, `pause`, or `unpause` without first granting itself the relevant role.
+- **Admin is *not* a super-role.** Admin's powers are limited to: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `add_pauser`, `remove_pauser`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** call `mint`, `burn`, `set_interest_rate`, `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`, `claim_yield`, `set_yield_recipient`, `pause`, or `unpause` without first granting itself the relevant role.
 - **No implicit emergency fallback.** A cold admin signer cannot block a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role — e.g. `add_block_operator(admin)` / `add_unblock_operator(admin)` to gain block / unblock, `add_pauser(admin)` to gain pause, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Runbooks should plan for the dedicated role signers being reachable.
 - All roles are **single-address** except **Block operator**, **Unblock operator**, and **Pauser**, each a membership set (any number of addresses can hold each role, granted / revoked by Admin via `add_block_operator` / `remove_block_operator`, `add_unblock_operator` / `remove_unblock_operator`, and `add_pauser` / `remove_pauser`).
 - Only Admin can reassign roles (except Yield Recipient, which is set by the Yield Recipient Manager).
@@ -104,7 +104,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 |----------|-----------|-------------|
 | `mint` | `(caller: Address, to: Address, amount: i128)` | Mint SAC tokens and increase both accumulators |
 | `burn` | `(caller: Address, from: Address, amount: i128)` | Remove SAC tokens and decrease both accumulators |
-| `set_rate` | `(caller: Address, rate_bps: u32)` | Set interest rate in basis points (max 10000 = 100%) |
+| `set_interest_rate` | `(caller: Address, rate_bps: u32)` | Set interest rate in basis points (max 10000 = 100%) |
 
 ### Forced Transfer Manager Functions (1)
 
@@ -136,7 +136,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, reconcile_burn (compliance ops including `force_transfer` remain accessible) |
+| `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, reconcile_burn, set_interest_rate (compliance ops including `force_transfer` remain accessible) |
 | `unpause` | `(caller: Address)` | Unpause the contract — resumes all blocked operations |
 
 ### View / Query Functions (18)
@@ -209,7 +209,7 @@ Returns `Err(BurnExceedsPrincipal)` if the present-value amount exceeds `total_p
 ### Set Rate
 
 ```
-set_rate(rate_bps: u32)
+set_interest_rate(rate_bps: u32)
 ```
 
 1. No-op if rate is unchanged
@@ -309,7 +309,7 @@ When `claim_yield()` is called:
 
 ### Index Update Ordering
 
-The index is updated **before** every state-changing operation (`mint`, `burn`, `reconcile_burn`, `claim_yield`, `set_rate`). This ensures yield is finalized at the correct principal and rate before any changes take effect.
+The index is updated **before** every state-changing operation (`mint`, `burn`, `reconcile_burn`, `claim_yield`, `set_interest_rate`). This ensures yield is finalized at the correct principal and rate before any changes take effect.
 
 ---
 
@@ -385,6 +385,7 @@ When paused, the following operations revert immediately:
 |-----------------|------|
 | `mint` | Minter |
 | `burn` | Minter |
+| `set_interest_rate` | Minter |
 | `reconcile_burn` | Admin |
 | `claim_yield` | Yield Recipient Manager |
 
@@ -411,7 +412,7 @@ All events emitted by the contract. Event names are the snake_case form of the u
 | `unblock_operator_removed` | `remove_unblock_operator` | `addr` **(topic)** |
 | `pauser_added` | `add_pauser` | `addr` **(topic)** |
 | `pauser_removed` | `remove_pauser` | `addr` **(topic)** |
-| `interest_rate_set` | `set_rate` | `rate_bps` |
+| `interest_rate_set` | `set_interest_rate` | `rate_bps` |
 | `mint` | `mint` | `to` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
 | `burn` | `burn` | `from` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
 | `reconcile` | `reconcile_burn` | `amount`, `new_total_principal`, `new_total_supply` |
@@ -440,5 +441,5 @@ Two deploy paths are supported:
 
 - **Production:** the [`sdk-integration`](https://github.com/m0-foundation/stellar-minter-gateway/tree/sdk-integration) branch retains a TypeScript SDK that drives the same 5-step pipeline through Fireblocks MPC custody (`MPC_EDDSA_ED25519` raw signing). Production deploys check out that branch and run its `npm run deploy` pipeline; the contract source-of-truth on `main` stays Fireblocks-free.
 
-Bridge-side runtime invocations (`mint`, `burn`, `set_rate`) are also Bridge-operator concerns and live on the `sdk-integration` branch.
+Bridge-side runtime invocations (`mint`, `burn`, `set_interest_rate`) are also Bridge-operator concerns and live on the `sdk-integration` branch.
 

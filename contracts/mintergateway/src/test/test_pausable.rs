@@ -108,7 +108,7 @@ fn test_claim_yield_blocked_when_paused_resumes_after_unpause() {
 
     s.contract
         .mint(&s.minter, &s.yield_recipient, &(1_000 * DECIMALS));
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     s.contract.pause(&s.pauser);
 
@@ -120,6 +120,24 @@ fn test_claim_yield_blocked_when_paused_resumes_after_unpause() {
     s.contract.unpause(&s.pauser);
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
     assert!(claimed > 0);
+}
+
+#[test]
+fn test_set_interest_rate_blocked_when_paused_resumes_after_unpause() {
+    let s = setup();
+
+    s.contract.set_interest_rate(&s.minter, &500);
+    s.contract.pause(&s.pauser);
+
+    // While paused, set_interest_rate must revert — it crystallizes the index and
+    // mutates rate_bps, both of which are financial state changes that the
+    // pause is meant to freeze.
+    assert!(s.contract.try_set_interest_rate(&s.minter, &5_000).is_err());
+    assert_eq!(s.contract.interest_rate(), 500);
+
+    s.contract.unpause(&s.pauser);
+    s.contract.set_interest_rate(&s.minter, &5_000);
+    assert_eq!(s.contract.interest_rate(), 5_000);
 }
 
 // =============================================================================

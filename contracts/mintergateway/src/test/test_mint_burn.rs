@@ -75,7 +75,7 @@ fn test_burn_decreases_principal() {
     s.contract.mint(&s.minter, &s.yield_recipient, &initial);
     assert_eq!(s.contract.total_principal(), initial);
 
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -136,7 +136,7 @@ fn test_burn_exactly_principal() {
     let initial = 1_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &initial);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -164,7 +164,7 @@ fn test_burn_exceeding_principal_reverts() {
     let initial = 1_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &initial);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -198,7 +198,7 @@ fn test_burn_exceeding_total_supply_reverts() {
     s.contract.mint(&s.minter, &user, &mint_amount);
 
     // Grow index so PV conversion shrinks amounts
-    s.contract.set_rate(&s.minter, &500); // 5%
+    s.contract.set_interest_rate(&s.minter, &500); // 5%
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Try to burn 1 more than total_supply.
