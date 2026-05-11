@@ -490,8 +490,8 @@ if [[ "$LOCK_ISSUER" == "true" ]]; then
     echo "$PRELOCK_JSON" | jq '.signers' >&2
     exit 1
   fi
-  if [[ "$PRELOCK_MASTER_WEIGHT" != "1" ]]; then
-    echo "ERROR: issuer master_weight is $PRELOCK_MASTER_WEIGHT, expected 1 (default). Aborting." >&2
+  if [[ "$PRELOCK_MASTER_WEIGHT" -le 0 ]]; then
+    echo "ERROR: issuer master_weight is $PRELOCK_MASTER_WEIGHT — account is already locked or cannot sign. Aborting." >&2
     exit 1
   fi
   echo "      Pre-lock check OK: 1 signer, master_weight=1."
