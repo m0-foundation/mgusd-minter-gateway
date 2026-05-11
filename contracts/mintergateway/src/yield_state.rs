@@ -119,9 +119,13 @@ pub fn increase_both_accumulators(env: &Env, amount: i128) {
 ///
 /// `total_principal` is adjusted by the present value of the amount
 /// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
-/// by the nominal amount. Returns error if PV amount exceeds total_principal.
+/// by the nominal amount. Returns error if amount exceeds total_supply
+/// or PV amount exceeds total_principal.
 pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), MinterGatewayError> {
     let mut state = read_yield_state(env);
+    if amount > state.total_supply {
+        return Err(MinterGatewayError::BurnExceedsSupply);
+    }
     let pv_amount = amount
         .fixed_mul_floor(INDEX_SCALE, state.latest_index)
         .unwrap();
