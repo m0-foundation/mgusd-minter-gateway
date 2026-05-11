@@ -439,11 +439,6 @@ impl YieldToken {
         // Update index before changing principal
         update_index(&e);
 
-        // Guard: can't reconcile more tokens than the contract believes exist
-        if amount > get_total_supply(&e) {
-            return Err(MinterGatewayError::BurnExceedsSupply);
-        }
-
         // Decrease both accumulators (same PV logic as burn)
         decrease_both_accumulators(&e, amount)?;
 
@@ -455,7 +450,12 @@ impl YieldToken {
 
     /// Sets the interest rate in basis points (max 10000 = 100%). Minter only.
     /// No-op if the new rate equals the current rate.
-    pub fn set_rate(e: Env, caller: Address, rate_bps: u32) -> Result<(), MinterGatewayError> {
+    pub fn set_interest_rate(
+        e: Env,
+        caller: Address,
+        rate_bps: u32,
+    ) -> Result<(), MinterGatewayError> {
+        pausable::when_not_paused(&e);
         require_role_holder(&caller, &read_minter(&e))?;
 
         // Prolongs the Time-To-Live of the contract's instance storage.
@@ -480,9 +480,12 @@ impl YieldToken {
     // Forced Transfer Manager Functions
     // =========================================================================
 
-    /// Forces a transfer of SAC tokens from one account to another.
+    /// Forces a transfer of SAC tokens between accounts (clawback + mint).
     /// Forced transfer manager only. Does not require source authorization.
-    /// Implemented as clawback + mint. Accumulators are NOT touched — supply is unchanged.
+    /// Accumulators are not touched — supply is unchanged.
+    ///
+    /// Not pause-gated: a compliance primitive must stay executable during a
+    /// pause, alongside `block_user` / `unblock_user`.
     pub fn force_transfer(
         e: Env,
         caller: Address,
@@ -490,7 +493,6 @@ impl YieldToken {
         to: Address,
         amount: i128,
     ) -> Result<(), MinterGatewayError> {
-        pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_role_holder(&caller, &read_forced_transfer_manager(&e))?;
 
@@ -705,7 +707,8 @@ impl Pausable for YieldToken {
         pausable::paused(e)
     }
 
-    /// Pauses the contract. Blocks mint, burn, force_transfer, claim_yield.
+    /// Pauses the contract. Blocks mint, burn, claim_yield, set_interest_rate;
+    /// compliance ops (`block_user`, `unblock_user`, `force_transfer`, `reconcile_burn`) stay live.
     /// Pauser only.
     fn pause(e: &Env, caller: Address) {
         if let Err(err) = require_pauser(e, &caller) {

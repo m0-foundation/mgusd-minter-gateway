@@ -21,7 +21,7 @@ fn test_total_supply_increases_on_claim_yield() {
     let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -56,7 +56,7 @@ fn test_total_supply_invariant() {
     let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -88,7 +88,7 @@ fn test_mint_after_index_growth_stores_present_value_principal() {
 
     // First mint at index = INDEX_SCALE (PV == nominal here)
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
-    s.contract.set_rate(&s.minter, &500); // 5%
+    s.contract.set_interest_rate(&s.minter, &500); // 5%
 
     // Advance 1 year — index grows to ~1.0513
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -130,7 +130,7 @@ fn test_get_accrued_yield_clamps_floor_residue_to_zero() {
     let one_million = 1_000_000 * DECIMALS;
 
     // Grow the index with zero principal so the next mint happens at index > SCALE.
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     advance_time(&s.env, 1_000_000);
 
     // Reproduce the floor-residue scenario: mint at a grown index forces a
@@ -171,7 +171,7 @@ fn test_burn_after_index_growth_stores_present_value_principal() {
 
     // Mint 2M at index = INDEX_SCALE
     s.contract.mint(&s.minter, &s.yield_recipient, &two_million);
-    s.contract.set_rate(&s.minter, &500); // 5%
+    s.contract.set_interest_rate(&s.minter, &500); // 5%
 
     // Advance 1 year — index grows
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -208,7 +208,7 @@ fn test_yield_underestimation_after_burn_at_grown_index() {
 
     // Year 0: mint 2M, set 5%
     s.contract.mint(&s.minter, &s.yield_recipient, &two_million);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     // Year 1: burn 500K (triggers update_index)
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -248,7 +248,7 @@ fn test_large_index_growth_amplifies_principal_error() {
 
     // Mint 1M, set 10% rate
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
-    s.contract.set_rate(&s.minter, &1000); // 10%
+    s.contract.set_interest_rate(&s.minter, &1000); // 10%
 
     // Advance 3 years — index ~= e^0.3 ~= 1.3499
     advance_time(&s.env, 3 * SECONDS_PER_YEAR as u64);
@@ -282,7 +282,7 @@ fn test_sequential_mints_at_different_indices_accumulate_pv() {
 
     // Mint 1 at index = INDEX_SCALE
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
-    s.contract.set_rate(&s.minter, &500); // 5%
+    s.contract.set_interest_rate(&s.minter, &500); // 5%
 
     // Mint 2 after 1 year
     advance_time(&s.env, SECONDS_PER_YEAR as u64);

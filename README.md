@@ -128,7 +128,7 @@ the admin role does *not* implicitly carry these powers. See
 | Role | Permissions | Intended Actor |
 |------|------------|----------------|
 | **Admin** | role administration only — see breakdown below | M0 |
-| **Minter** | `mint`, `burn`, `set_rate` | Bridge |
+| **Minter** | `mint`, `burn`, `set_interest_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient`, `claim_yield` | M0 |
 | **Yield Recipient** | passive — receives the SAC tokens minted by `claim_yield` (does **not** call it) | MoneyGram |
 | **Block operator** (membership) | `block_user`, `batch_block_users` | Crossmint (typical) |
@@ -162,7 +162,7 @@ Admin (role administrator only — NOT a super-role)
 Minter (Bridge / Issuer)
 ├── Mints SAC tokens directly via mint()
 ├── Burns SAC tokens directly via burn()
-└── Sets interest rate for yield accrual via set_rate()
+└── Sets interest rate for yield accrual via set_interest_rate()
 
 Yield Recipient Manager
 ├── Sets/changes Yield Recipient address (set_yield_recipient)
