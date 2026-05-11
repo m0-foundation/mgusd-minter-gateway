@@ -31,7 +31,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 4. Yield Claiming (Bridge → MoneyGram)
 
-1. Bridge calls `set_rate(rate_bps)` to set the current interest rate (this is a **Minter** permission, not Admin)
+1. Bridge calls `set_interest_rate(rate_bps)` to set the current interest rate (this is a **Minter** permission, not Admin)
 2. Yield accrues continuously on `total_principal` using the exponential index
 3. Yield Recipient Manager calls `claim_yield()` to mint accrued yield as new SAC tokens to the Yield Recipient
 4. Claimed yield increases `total_supply` but **not** `total_principal` — it does not compound
@@ -57,7 +57,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | Role | Permissions | Intended Actor |
 |------|------------|----------------|
 | **Admin** | role administration only — see breakdown below | M0 |
-| **Minter** | `mint`, `burn`, `set_rate` | Bridge |
+| **Minter** | `mint`, `burn`, `set_interest_rate` | Bridge |
 | **Yield Recipient Manager** | `set_yield_recipient`, `claim_yield` | M0 |
 | **Yield Recipient** | passive — receives SAC tokens minted by `claim_yield` (does **not** call it) | MoneyGram |
 | **Forced Transfer Manager** | `force_transfer` | Crossmint |
@@ -67,7 +67,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 **Design properties:**
 
-- **Admin is *not* a super-role.** Admin's powers are limited to: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** call `mint`, `burn`, `set_rate`, `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`, `claim_yield`, `set_yield_recipient`, `pause`, or `unpause` without first granting itself the relevant role.
+- **Admin is *not* a super-role.** Admin's powers are limited to: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `set_pauser`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** call `mint`, `burn`, `set_interest_rate`, `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`, `claim_yield`, `set_yield_recipient`, `pause`, or `unpause` without first granting itself the relevant role.
 - **No implicit emergency fallback.** A cold admin signer cannot block a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role — e.g. `add_block_operator(admin)` / `add_unblock_operator(admin)` to gain block / unblock, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Runbooks should plan for the dedicated role signers being reachable.
 - All roles are **single-address** except **Block operator** and **Unblock operator**, each a membership set (any number of addresses can hold each role, granted / revoked by Admin via `add_block_operator` / `remove_block_operator` and `add_unblock_operator` / `remove_unblock_operator`).
 - Only Admin can reassign roles (except Yield Recipient, which is set by the Yield Recipient Manager).
@@ -103,7 +103,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 |----------|-----------|-------------|
 | `mint` | `(caller: Address, to: Address, amount: i128)` | Mint SAC tokens and increase both accumulators |
 | `burn` | `(caller: Address, from: Address, amount: i128)` | Remove SAC tokens and decrease both accumulators |
-| `set_rate` | `(caller: Address, rate_bps: u32)` | Set interest rate in basis points (max 10000 = 100%) |
+| `set_interest_rate` | `(caller: Address, rate_bps: u32)` | Set interest rate in basis points (max 5000 = 50%) |
 
 ### Forced Transfer Manager Functions (1)
 
@@ -206,14 +206,14 @@ Returns `Err(BurnExceedsPrincipal)` if the present-value amount exceeds `total_p
 ### Set Rate
 
 ```
-set_rate(rate_bps: u32)
+set_interest_rate(rate_bps: u32)
 ```
 
 1. No-op if rate is unchanged
 2. Calls `set_interest_rate()` which first updates the index at the old rate, then applies the new rate
 3. Emits `interest_rate_set` event with `(rate_bps)`
 
-Rate is in basis points: 100 = 1%, max 10,000 = 100%. Returns `Err(RateExceedsMax)` if rate exceeds 10,000.
+Rate is in basis points: 100 = 1%, max 5,000 = 50%. Returns `Err(RateExceedsMax)` if rate exceeds 5,000.
 
 ### Key Properties
 
@@ -306,7 +306,7 @@ When `claim_yield()` is called:
 
 ### Index Update Ordering
 
-The index is updated **before** every state-changing operation (`mint`, `burn`, `reconcile_burn`, `claim_yield`, `set_rate`). This ensures yield is finalized at the correct principal and rate before any changes take effect.
+The index is updated **before** every state-changing operation (`mint`, `burn`, `reconcile_burn`, `claim_yield`, `set_interest_rate`). This ensures yield is finalized at the correct principal and rate before any changes take effect.
 
 ---
 
@@ -382,6 +382,7 @@ When paused, the following operations revert immediately:
 |-----------------|------|
 | `mint` | Minter |
 | `burn` | Minter |
+| `set_interest_rate` | Minter |
 | `reconcile_burn` | Admin |
 | `claim_yield` | Yield Recipient Manager |
 | `force_transfer` | Forced Transfer Manager |
@@ -408,7 +409,7 @@ All events emitted by the contract. Event names are the snake_case form of the u
 | `block_operator_removed` | `remove_block_operator` | `addr` **(topic)** |
 | `unblock_operator_added` | `add_unblock_operator` | `addr` **(topic)** |
 | `unblock_operator_removed` | `remove_unblock_operator` | `addr` **(topic)** |
-| `interest_rate_set` | `set_rate` | `rate_bps` |
+| `interest_rate_set` | `set_interest_rate` | `rate_bps` |
 | `mint` | `mint` | `to` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
 | `burn` | `burn` | `from` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
 | `reconcile` | `reconcile_burn` | `amount`, `new_total_principal`, `new_total_supply` |
@@ -439,7 +440,7 @@ The present value of a nominal amount at the current index is `amount × INDEX_S
 
 - **INV-1 — Non-negative accumulators.** `total_principal ≥ 0`, `total_supply ≥ 0`, `accrued_yield ≥ 0`.
 - **INV-2 — Index floor and monotonicity.** `latest_index ≥ INDEX_SCALE` and `current_index ≥ latest_index`. The index never decreases and never falls below `1.0` (`= INDEX_SCALE`).
-- **INV-3 — Rate bound.** `0 ≤ rate_bps ≤ 10_000` (0%–100% APR).
+- **INV-3 — Rate bound.** `0 ≤ rate_bps ≤ 5_000` (0%–50% APR).
 
 ### Conservation per operation
 
@@ -452,7 +453,7 @@ Each state-changing call adjusts the accumulators as follows:
 | `reconcile_burn(amount)` | `− amount × INDEX_SCALE / latest_index` | `− amount` | none (off-chain destruction already happened) |
 | `claim_yield()` → `amount` | `0` | `+ amount` | `+ amount` minted to yield recipient |
 | `force_transfer(amount)` | `0` | `0` | `− amount` from sender, `+ amount` to recipient |
-| `set_rate`, `update_index` | `0` | `0` | none |
+| `set_interest_rate`, `update_index` | `0` | `0` | none |
 
 - **INV-4 — Burn cannot exceed principal.** `burn` and `reconcile_burn` revert with `BurnExceedsPrincipal` if `amount × INDEX_SCALE / latest_index > total_principal`. Equivalently, `total_principal` is never driven negative.
 - **INV-5 — Force transfer is supply-neutral.** `force_transfer` leaves `total_principal`, `total_supply`, and `accrued_yield` unchanged.
@@ -462,7 +463,7 @@ Each state-changing call adjusts the accumulators as follows:
 
 - **INV-7 — Pending yield identity.** Between index updates, `pending_yield = total_principal × (current_index − latest_index) / INDEX_SCALE`. After `update_index`, this pending amount is added to `accrued_yield` and `latest_index` is advanced to `current_index`.
 - **INV-8 — Index-update neutrality.** `update_index` modifies only `latest_index`, `accrued_yield`, and `last_update_timestamp`. It never changes `total_principal` or `total_supply`.
-- **INV-9 — Index-before-state ordering.** Every operation that mutates `total_principal`, `total_supply`, or `rate_bps` (i.e. `mint`, `burn`, `reconcile_burn`, `claim_yield`, `set_rate`) finalizes the index first. Yield is therefore always accrued at the principal and rate that were in effect during the elapsed interval.
+- **INV-9 — Index-before-state ordering.** Every operation that mutates `total_principal`, `total_supply`, or `rate_bps` (i.e. `mint`, `burn`, `reconcile_burn`, `claim_yield`, `set_interest_rate`) finalizes the index first. Yield is therefore always accrued at the principal and rate that were in effect during the elapsed interval.
 - **INV-10 — Claim resets pending yield.** Immediately after `claim_yield` returns `amount`, `accrued_yield = 0` and `total_supply` has increased by exactly `amount`.
 
 ### Supply ↔ SAC reconciliation
@@ -485,5 +486,5 @@ Two deploy paths are supported:
 
 - **Production:** the [`sdk-integration`](https://github.com/m0-foundation/stellar-minter-gateway/tree/sdk-integration) branch retains a TypeScript SDK that drives the same 5-step pipeline through Fireblocks MPC custody (`MPC_EDDSA_ED25519` raw signing). Production deploys check out that branch and run its `npm run deploy` pipeline; the contract source-of-truth on `main` stays Fireblocks-free.
 
-Bridge-side runtime invocations (`mint`, `burn`, `set_rate`) are also Bridge-operator concerns and live on the `sdk-integration` branch.
+Bridge-side runtime invocations (`mint`, `burn`, `set_interest_rate`) are also Bridge-operator concerns and live on the `sdk-integration` branch.
 
