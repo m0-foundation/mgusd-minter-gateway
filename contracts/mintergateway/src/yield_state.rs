@@ -113,21 +113,14 @@ pub fn increase_both_accumulators(env: &Env, amount: i128) {
     write_yield_state(env, &state);
 }
 
-/// Decreases both total_principal and total_supply.
-/// Used by burn.
-/// Must call update_index first to finalize yield at current principal.
-///
-/// `total_principal` is adjusted by the present value of the amount
-/// (amount × INDEX_SCALE / latest_index), while `total_supply` is adjusted
-/// by the nominal amount. Returns error if amount exceeds total_supply
-/// or PV amount exceeds total_principal.
+// Burn ceils PV — symmetric rounding with mint would leak dust burns.
 pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), MinterGatewayError> {
     let mut state = read_yield_state(env);
     if amount > state.total_supply {
         return Err(MinterGatewayError::BurnExceedsSupply);
     }
     let pv_amount = amount
-        .fixed_mul_floor(INDEX_SCALE, state.latest_index)
+        .fixed_mul_ceil(INDEX_SCALE, state.latest_index)
         .unwrap();
     if pv_amount > state.total_principal {
         return Err(MinterGatewayError::BurnExceedsPrincipal);

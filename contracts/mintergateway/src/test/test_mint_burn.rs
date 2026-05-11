@@ -82,14 +82,13 @@ fn test_burn_decreases_principal() {
     let yield_before_burn = s.contract.accrued_yield();
     assert!(yield_before_burn > 0);
 
-    // Burn half — PV conversion: pv_burn = burn_amount * INDEX_SCALE / current_index
-    // Use current_index because burn() calls update_index() which advances latest_index
+    // Burn half — PV uses ceil rounding against the post-update_index value.
     let burn_amount = 500_000 * DECIMALS;
     let idx_at_burn = s.contract.current_index();
     s.contract.burn(&s.minter, &s.yield_recipient, &burn_amount);
 
     // Principal reduced by PV of burn amount
-    let pv_burn = burn_amount * INDEX_SCALE / idx_at_burn;
+    let pv_burn = pv_ceil(burn_amount, idx_at_burn);
 
     // Assert emitted events before any view calls — they reset the host event buffer.
     // Time advanced since the last update, so burn emits UpdateIndex first, then Burn.
@@ -142,10 +141,10 @@ fn test_burn_exactly_principal() {
 
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
-    // After index growth, PV of `initial` < `initial` (index > INDEX_SCALE),
-    // so burning `initial` nominal tokens removes pv_burn < initial from principal.
+    // After index growth, PV of `initial` < `initial`, so burning `initial`
+    // nominal tokens removes pv_burn < initial from principal.
     let latest_idx = s.contract.latest_index();
-    let pv_burn = initial * INDEX_SCALE / latest_idx;
+    let pv_burn = pv_ceil(initial, latest_idx);
     s.contract.burn(&s.minter, &s.yield_recipient, &initial);
 
     // Principal has a small residual from PV rounding

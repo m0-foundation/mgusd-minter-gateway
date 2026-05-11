@@ -197,6 +197,12 @@ pub fn advance_time(env: &Env, seconds: u64) {
     env.ledger().set_timestamp(current + seconds);
 }
 
+/// Mirrors the ceil rounding used by `decrease_both_accumulators`.
+pub fn pv_ceil(amount: i128, index: i128) -> i128 {
+    let num = amount * INDEX_SCALE;
+    (num + index - 1) / index
+}
+
 pub mod dummy_issuer {
     use soroban_sdk::{contract, contractimpl, Env};
 
