@@ -3,26 +3,26 @@ use super::setup::*;
 // =============================================================================
 // RATE BOUNDARY VALIDATION TESTS
 // =============================================================================
-// Tests for set_rate at max/over-max, rate transitions to/from zero,
+// Tests for set_interest_rate at max/over-max, rate transitions to/from zero,
 // and yield accuracy at extreme rate boundaries.
 // Code paths: yield_state.rs:204-217 (set_interest_rate), contract.rs:280-282 (early return)
 
 #[test]
-fn test_set_rate_at_maximum_boundary() {
+fn test_set_interest_rate_at_maximum_boundary() {
     let s = setup();
 
-    // 10_000 bps = 100% — should succeed
-    s.contract.set_rate(&s.minter, &10_000);
+    // 5_000 bps = 50% — should succeed (MAX_RATE_BPS)
+    s.contract.set_interest_rate(&s.minter, &5_000);
 
-    assert_eq!(s.contract.interest_rate(), 10_000);
+    assert_eq!(s.contract.interest_rate(), 5_000);
 }
 
 #[test]
-fn test_set_rate_exceeds_maximum() {
+fn test_set_interest_rate_exceeds_maximum() {
     let s = setup();
 
-    // 10_001 bps > 100% — should return RateExceedsMax
-    let result = s.contract.try_set_rate(&s.minter, &10_001);
+    // 5_001 bps > 50% — should return RateExceedsMax
+    let result = s.contract.try_set_interest_rate(&s.minter, &5_001);
     assert_eq!(result, Err(Ok(crate::MinterGatewayError::RateExceedsMax)));
 
     // Rate unchanged (still default 0)
@@ -30,19 +30,19 @@ fn test_set_rate_exceeds_maximum() {
 }
 
 #[test]
-fn test_set_rate_to_zero_stops_accrual() {
+fn test_set_interest_rate_to_zero_stops_accrual() {
     let s = setup();
     let principal = 1_000_000 * DECIMALS;
 
     // Mint and set 5% rate
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     // Advance 1 year — yield accrues
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Set rate to 0 — finalizes pending yield, stops future accrual
-    s.contract.set_rate(&s.minter, &0);
+    s.contract.set_interest_rate(&s.minter, &0);
     let yield_after_zero = s.contract.accrued_yield();
     assert!(yield_after_zero > 0);
 
@@ -52,7 +52,7 @@ fn test_set_rate_to_zero_stops_accrual() {
 }
 
 #[test]
-fn test_set_rate_zero_to_nonzero() {
+fn test_set_interest_rate_zero_to_nonzero() {
     let s = setup();
     let principal = 1_000_000 * DECIMALS;
 
@@ -64,14 +64,14 @@ fn test_set_rate_zero_to_nonzero() {
     assert_eq!(s.contract.accrued_yield(), 0);
 
     // Set rate to 5% — starts accrual from now
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     // Advance 1 year at 5%
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     let yield_amount = s.contract.accrued_yield();
 
     // When rate was 0, index stayed at INDEX_SCALE (e^(0*t) = 1).
-    // After set_rate(500), index grows for 1 year:
+    // After set_interest_rate(500), index grows for 1 year:
     // yield = 1M × (e^0.05 − 1) = 512_710_937_490
     assert_eq!(yield_amount, 512_710_937_490);
 }
@@ -101,10 +101,10 @@ fn test_update_index_advances_timestamp_through_zero_rate_period() {
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
     assert_eq!(s.contract.accrued_yield(), 0);
 
-    // Flip the rate on. set_rate calls update_index first; the bug would
+    // Flip the rate on. set_interest_rate calls update_index first; the bug would
     // leave last_update_timestamp stuck at its pre-year value because
     // rate=0 keeps current_index == latest_index and the emit guard false.
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     // Accrue for exactly one hour at 5%.
     advance_time(&s.env, 3_600);
@@ -122,21 +122,21 @@ fn test_update_index_advances_timestamp_through_zero_rate_period() {
 }
 
 #[test]
-fn test_set_rate_to_zero_finalizes_pending() {
+fn test_set_interest_rate_to_zero_finalizes_pending() {
     let s = setup();
     let principal = 1_000_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &principal);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
-    // Pending yield before set_rate(0)
+    // Pending yield before set_interest_rate(0)
     let pending = s.contract.accrued_yield();
     assert_eq!(pending, 512_710_937_490);
 
-    // set_rate(0) calls update_index which stores pending yield permanently
-    s.contract.set_rate(&s.minter, &0);
+    // set_interest_rate(0) calls update_index which stores pending yield permanently
+    s.contract.set_interest_rate(&s.minter, &0);
 
     // Stored yield equals what was pending
     assert_eq!(s.contract.accrued_yield(), pending);
@@ -147,21 +147,21 @@ fn test_set_rate_to_zero_finalizes_pending() {
 }
 
 // =============================================================================
-// YIELD ACCURACY AT MAX RATE (100%)
+// YIELD ACCURACY AT MAX RATE (50%)
 // =============================================================================
 // Validates the 5-term Taylor series approximation at the upper rate boundary.
-// At 100% rate (x=1.0), the 5-term Taylor gives e^1 ≈ 2.708333..., which
-// underestimates the true e ≈ 2.718281... by ~0.37%. This is expected and
-// protocol-favorable (less yield accrued).
+// At 50% rate (x=0.5), the 5-term Taylor gives e^0.5 ≈ 1.648437..., which
+// underestimates the true e^0.5 ≈ 1.648721... by ~0.017%. This is expected
+// and protocol-favorable (less yield accrued).
 
 #[test]
 fn test_yield_accuracy_at_max_rate() {
     let s = setup();
     let one_million = 1_000_000 * DECIMALS;
 
-    // Mint 1M and set rate to 100% (10000 bps)
+    // Mint 1M and set rate to 50% (MAX_RATE_BPS = 5000 bps)
     s.contract.mint(&s.minter, &s.yield_recipient, &one_million);
-    s.contract.set_rate(&s.minter, &10_000);
+    s.contract.set_interest_rate(&s.minter, &5_000);
 
     // Advance 1 year
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
@@ -169,24 +169,21 @@ fn test_yield_accuracy_at_max_rate() {
     // Claim yield
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
-    // 5-term Taylor: e^1.0 ≈ 1 + 1 + 1/2 + 1/6 + 1/24 = 2.708333...
-    // So yield ≈ 1M × (2.708333... - 1) = 1M × 1.708333...
-    // The exact Taylor value (at INDEX_SCALE precision):
-    // index = exponent(1_000_000_000_000) computed via Taylor
-    let index_1yr = current_index(INDEX_SCALE, 10_000, SECONDS_PER_YEAR as u64);
+    // 5-term Taylor: e^0.5 ≈ 1 + 0.5 + 0.125 + 0.020833 + 0.002604 = 1.648437...
+    // So yield ≈ 1M × (1.648437... - 1) = 1M × 0.648437...
+    let index_1yr = current_index(INDEX_SCALE, 5_000, SECONDS_PER_YEAR as u64);
     let expected_yield = one_million * (index_1yr - INDEX_SCALE) / INDEX_SCALE;
 
     assert_eq!(claimed, expected_yield);
     assert!(claimed > 0);
 
-    // Verify the ~0.37% underestimate vs true e:
-    // True yield = 1M × (e - 1) ≈ 1M × 1.718281828...
-    // Taylor yield ≈ 1M × 1.708333...
-    // The Taylor result should be between 1.70 and 1.72 of principal
+    // Verify the ~0.017% underestimate vs true e^0.5:
+    // True yield = 1M × (e^0.5 - 1) ≈ 1M × 0.648721...
+    // Taylor yield ≈ 1M × 0.648437...
+    // The Taylor result should be between 0.64 and 0.65 of principal
     let ratio_times_100 = (claimed * 100) / one_million;
     assert!(
-        (170..=172).contains(&ratio_times_100),
-        //ratio_times_100 >= 170 && ratio_times_100 <= 172,
+        (64..=65).contains(&ratio_times_100),
         "yield/principal ratio outside expected range: {}",
         ratio_times_100
     );
@@ -205,7 +202,7 @@ fn test_first_update_index_from_timestamp_zero() {
     let one_million = 1_000_000 * DECIMALS;
 
     // Set rate before any mint — index will grow from timestamp 0
-    s.contract.set_rate(&s.minter, &500); // 5%
+    s.contract.set_interest_rate(&s.minter, &500); // 5%
 
     // Advance to T0 + 1_000_000 seconds (~11.6 days)
     advance_time(&s.env, 1_000_000);

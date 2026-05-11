@@ -15,4 +15,5 @@ pub enum MinterGatewayError {
     RateExceedsMax = 101,
     BatchTooLargeError = 102,
     BurnExceedsSupply = 103,
+    NoTrustline = 104, // SAC destination has no trustline or trustline is not authorized
 }

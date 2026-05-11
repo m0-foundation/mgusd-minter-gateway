@@ -41,7 +41,8 @@ pub fn convert_from_basis_points(bps: u32) -> i128 {
 /// Uses the recurrence: term_n = term_{n-1} * x / n, computed via
 /// `fixed_mul_floor` (i.e., mulDivDown) to minimize truncation points.
 ///
-/// This is accurate for x < 0.2 (20% per year) which covers all realistic rates.
+/// Truncation error is x⁵/120 + tail; <2e-4 at the 5,000 bps rate cap (x ≤ 0.5
+/// for one full year), and negligible at realistic MGUSD yields.
 ///
 /// # Rounding
 /// Every term division rounds DOWN (via `fixed_mul_floor`), so the result

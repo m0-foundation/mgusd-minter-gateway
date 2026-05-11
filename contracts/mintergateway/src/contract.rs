@@ -6,16 +6,17 @@ use crate::errors::MinterGatewayError;
 use crate::events::{
     emit_admin_set, emit_block_operator_added, emit_block_operator_removed, emit_burn,
     emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set, emit_mint,
-    emit_minter_set, emit_pauser_set, emit_reconcile, emit_sac_admin_transferred,
-    emit_unblock_operator_added, emit_unblock_operator_removed, emit_upgraded, emit_yield_claimed,
-    emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_minter_set, emit_pauser_added, emit_pauser_removed, emit_reconcile,
+    emit_sac_admin_transferred, emit_unblock_operator_added, emit_unblock_operator_removed,
+    emit_upgraded, emit_yield_claimed, emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    delete_block_operator, delete_unblock_operator, insert_block_operator, insert_unblock_operator,
-    is_block_operator, is_unblock_operator, read_forced_transfer_manager, read_minter, read_pauser,
-    read_yield_recipient, read_yield_recipient_manager, require_block_operator,
-    require_role_holder, require_unblock_operator, write_forced_transfer_manager, write_minter,
-    write_pauser, write_yield_recipient, write_yield_recipient_manager,
+    delete_block_operator, delete_pauser, delete_unblock_operator, insert_block_operator,
+    insert_pauser, insert_unblock_operator, is_block_operator, is_pauser, is_unblock_operator,
+    read_forced_transfer_manager, read_minter, read_yield_recipient, read_yield_recipient_manager,
+    require_block_operator, require_pauser, require_role_holder, require_unblock_operator,
+    write_forced_transfer_manager, write_minter, write_yield_recipient,
+    write_yield_recipient_manager,
 };
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
@@ -40,6 +41,17 @@ fn extend_instance_ttl(e: &Env) {
         .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 }
 
+/// Preflights a SAC `mint` destination — converts the no-trustline host trap into a typed `NoTrustline` error. Mirrors `blocked()`: any non-`Ok(true)` is unauthorized.
+fn require_destination_trustline_authorized(
+    sac_client: &token::StellarAssetClient,
+    addr: &Address,
+) -> Result<(), MinterGatewayError> {
+    match sac_client.try_authorized(addr) {
+        Ok(Ok(true)) => Ok(()),
+        _ => Err(MinterGatewayError::NoTrustline),
+    }
+}
+
 #[contract]
 pub struct YieldToken;
 
@@ -58,7 +70,8 @@ impl YieldToken {
     ///   More addresses can be granted via `add_block_operator`.
     /// * `unblock_operator` - Initial address with unblock permission; added to the unblock-operator set.
     ///   More addresses can be granted via `add_unblock_operator`. May equal `block_operator`.
-    /// * `pauser` - Address that can pause/unpause the contract
+    /// * `pauser` - Initial address with pause permission; added to the pauser set.
+    ///   More addresses can be granted via `add_pauser`.
     pub fn __constructor(
         e: Env,
         sac_token: Address,
@@ -86,7 +99,9 @@ impl YieldToken {
         write_forced_transfer_manager(&e, &forced_transfer_manager);
         insert_block_operator(&e, &block_operator);
         insert_unblock_operator(&e, &unblock_operator);
-        write_pauser(&e, &pauser);
+        insert_pauser(&e, &pauser);
+
+        extend_instance_ttl(&e);
 
         Ok(())
     }
@@ -192,17 +207,26 @@ impl YieldToken {
         }
     }
 
-    /// Sets a new pauser address. Admin only.
-    pub fn set_pauser(e: Env, new_pauser: Address) {
+    /// Grants pause permission to `addr`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address is already a pauser.
+    pub fn add_pauser(e: Env, addr: Address) {
         require_admin(&e);
-
-        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
-        let old = read_pauser(&e);
-        write_pauser(&e, &new_pauser);
+        if insert_pauser(&e, &addr) {
+            emit_pauser_added(&e, addr);
+        }
+    }
 
-        emit_pauser_set(&e, old, new_pauser);
+    /// Revokes pause permission from `addr`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address does not have pause permission.
+    pub fn remove_pauser(e: Env, addr: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        if delete_pauser(&e, &addr) {
+            emit_pauser_removed(&e, addr);
+        }
     }
 
     // =========================================================================
@@ -355,12 +379,15 @@ impl YieldToken {
         // Update index before changing principal
         update_index(&e);
 
+        // Preflight destination so callers see a typed error, not a host trap.
+        let sac_addr = read_sac_token(&e);
+        let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+        require_destination_trustline_authorized(&sac_client, &to)?;
+
         // Increase both accumulators
         increase_both_accumulators(&e, amount);
 
-        // Mint SAC tokens to recipient
-        let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).mint(&to, &amount);
+        sac_client.mint(&to, &amount);
 
         let state = read_yield_state(&e);
         emit_mint(&e, to, amount, state.total_principal, state.total_supply);
@@ -413,11 +440,6 @@ impl YieldToken {
         // Update index before changing principal
         update_index(&e);
 
-        // Guard: can't reconcile more tokens than the contract believes exist
-        if amount > get_total_supply(&e) {
-            return Err(MinterGatewayError::BurnExceedsSupply);
-        }
-
         // Decrease both accumulators (same PV logic as burn)
         decrease_both_accumulators(&e, amount)?;
 
@@ -429,7 +451,12 @@ impl YieldToken {
 
     /// Sets the interest rate in basis points (max 10000 = 100%). Minter only.
     /// No-op if the new rate equals the current rate.
-    pub fn set_rate(e: Env, caller: Address, rate_bps: u32) -> Result<(), MinterGatewayError> {
+    pub fn set_interest_rate(
+        e: Env,
+        caller: Address,
+        rate_bps: u32,
+    ) -> Result<(), MinterGatewayError> {
+        pausable::when_not_paused(&e);
         require_role_holder(&caller, &read_minter(&e))?;
 
         // Prolongs the Time-To-Live of the contract's instance storage.
@@ -454,9 +481,12 @@ impl YieldToken {
     // Forced Transfer Manager Functions
     // =========================================================================
 
-    /// Forces a transfer of SAC tokens from one account to another.
+    /// Forces a transfer of SAC tokens between accounts (clawback + mint).
     /// Forced transfer manager only. Does not require source authorization.
-    /// Implemented as clawback + mint. Accumulators are NOT touched — supply is unchanged.
+    /// Accumulators are not touched — supply is unchanged.
+    ///
+    /// Not pause-gated: a compliance primitive must stay executable during a
+    /// pause, alongside `block_user` / `unblock_user`.
     pub fn force_transfer(
         e: Env,
         caller: Address,
@@ -464,16 +494,16 @@ impl YieldToken {
         to: Address,
         amount: i128,
     ) -> Result<(), MinterGatewayError> {
-        pausable::when_not_paused(&e);
         check_positive_amount(amount)?;
         require_role_holder(&caller, &read_forced_transfer_manager(&e))?;
 
         // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
-        // SAC operations: clawback from source, mint to destination
+        // Preflight `to` before clawback so `from`'s balance stays intact on a doomed call.
         let sac_addr = read_sac_token(&e);
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+        require_destination_trustline_authorized(&sac_client, &to)?;
         sac_client.clawback(&from, &amount);
         sac_client.mint(&to, &amount);
 
@@ -527,11 +557,14 @@ impl YieldToken {
         let unclaimed_yield = get_accrued_yield(&e);
 
         if unclaimed_yield > 0 {
+            // Preflight recipient before advancing total_supply so a misconfigured recipient returns a typed error.
+            let sac_addr = read_sac_token(&e);
+            let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+            require_destination_trustline_authorized(&sac_client, &recipient)?;
+
             // Increase total_supply (but NOT total_principal — no compounding)
             increase_total_supply(&e, unclaimed_yield);
-            // Mint new tokens to yield recipient
-            let sac_addr = read_sac_token(&e);
-            token::StellarAssetClient::new(&e, &sac_addr).mint(&recipient, &unclaimed_yield);
+            sac_client.mint(&recipient, &unclaimed_yield);
 
             emit_yield_claimed(&e, recipient, unclaimed_yield);
         }
@@ -656,10 +689,10 @@ impl YieldToken {
         is_unblock_operator(&e, &addr)
     }
 
-    /// Returns the pauser address.
-    pub fn pauser(e: Env) -> Address {
+    /// Returns whether `addr` has pause permission.
+    pub fn is_pauser(e: Env, addr: Address) -> bool {
         extend_instance_ttl(&e);
-        read_pauser(&e)
+        is_pauser(&e, &addr)
     }
 }
 
@@ -675,12 +708,12 @@ impl Pausable for YieldToken {
         pausable::paused(e)
     }
 
-    /// Pauses the contract. Blocks mint, burn, reconcile_burn, force_transfer, claim_yield.
+    /// Pauses the contract. Blocks mint, burn, reconcile_burn, claim_yield;
+    /// compliance ops (`block_user`, `unblock_user`, `force_transfer`) stay live.
     /// Pauser only.
     fn pause(e: &Env, caller: Address) {
-        caller.require_auth();
-        if caller != read_pauser(e) {
-            panic_with_error!(e, MinterGatewayError::UnauthorizedError);
+        if let Err(err) = require_pauser(e, &caller) {
+            panic_with_error!(e, err);
         }
 
         // Prolongs the Time-To-Live of the contract's instance storage.
@@ -692,9 +725,8 @@ impl Pausable for YieldToken {
     /// Unpauses the contract, resuming all blocked operations.
     /// Pauser only.
     fn unpause(e: &Env, caller: Address) {
-        caller.require_auth();
-        if caller != read_pauser(e) {
-            panic_with_error!(e, MinterGatewayError::UnauthorizedError);
+        if let Err(err) = require_pauser(e, &caller) {
+            panic_with_error!(e, err);
         }
 
         // Prolongs the Time-To-Live of the contract's instance storage.
