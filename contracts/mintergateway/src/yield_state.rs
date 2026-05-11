@@ -113,11 +113,7 @@ pub fn increase_both_accumulators(env: &Env, amount: i128) {
     write_yield_state(env, &state);
 }
 
-/// Decreases both total_principal and total_supply. Used by burn.
-/// Must call update_index first. Errors if amount > total_supply
-/// (BurnExceedsSupply) or PV > total_principal (BurnExceedsPrincipal).
-/// PV uses ceil rounding (opposite of mint's floor) so dust burns at
-/// index > 1.0 can't leave phantom principal earning yield.
+// Burn ceils PV — symmetric rounding with mint would leak dust burns.
 pub fn decrease_both_accumulators(env: &Env, amount: i128) -> Result<(), MinterGatewayError> {
     let mut state = read_yield_state(env);
     if amount > state.total_supply {
