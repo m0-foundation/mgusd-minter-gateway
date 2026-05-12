@@ -167,12 +167,10 @@ if [[ "$MODE" == "probe" ]]; then
   else
     probe_out=""
     probe_rc=0
-    if ! probe_out=$(stellar tx new set-options \
-         --source-account "$ISSUER_KEY_NAME" \
-         --network "$STELLAR_NETWORK" \
-         --home-domain renounce-check.invalid 2>&1); then
-      probe_rc=$?
-    fi
+    probe_out=$(stellar tx new set-options \
+       --source-account "$ISSUER_KEY_NAME" \
+       --network "$STELLAR_NETWORK" \
+       --home-domain renounce-check.invalid 2>&1) || probe_rc=$?
     if [[ $probe_rc -eq 0 ]]; then
       echo "FAIL: burned issuer submitted a tx successfully — burn did NOT take effect" >&2
       echo "$probe_out" | tail -5 >&2
