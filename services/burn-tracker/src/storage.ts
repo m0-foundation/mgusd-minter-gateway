@@ -15,7 +15,7 @@ export class Storage {
       INSERT OR IGNORE INTO state (id, sac_ledger) VALUES (1, 0);
 
       CREATE TABLE IF NOT EXISTS burns (
-        tx_hash           TEXT PRIMARY KEY,
+        tx_hash           TEXT NOT NULL,
         operation_id      TEXT NOT NULL,
         operation_index   INTEGER NOT NULL,
         ledger            INTEGER NOT NULL,
@@ -23,15 +23,16 @@ export class Storage {
         from_address      TEXT NOT NULL,
         amount            TEXT NOT NULL,
         reconciled        INTEGER NOT NULL DEFAULT 0,
-        reconcile_tx_hash TEXT
+        reconcile_tx_hash TEXT,
+        PRIMARY KEY (tx_hash, operation_index)
       );
     `);
   }
 
-  hasReconciledBurn(txHash: string): boolean {
+  hasReconciledBurn(txHash: string, operationIndex: number): boolean {
     const row = this.db
-      .prepare("SELECT 1 FROM burns WHERE tx_hash = ? AND reconciled = 1")
-      .get(txHash);
+      .prepare("SELECT 1 FROM burns WHERE tx_hash = ? AND operation_index = ? AND reconciled = 1")
+      .get(txHash, operationIndex);
     return row !== undefined;
   }
 
@@ -56,10 +57,10 @@ export class Storage {
       );
   }
 
-  markReconciled(txHash: string, reconcileTxHash: string): void {
+  markReconciled(txHash: string, operationIndex: number, reconcileTxHash: string): void {
     this.db
-      .prepare("UPDATE burns SET reconciled = 1, reconcile_tx_hash = ? WHERE tx_hash = ?")
-      .run(reconcileTxHash, txHash);
+      .prepare("UPDATE burns SET reconciled = 1, reconcile_tx_hash = ? WHERE tx_hash = ? AND operation_index = ?")
+      .run(reconcileTxHash, txHash, operationIndex);
   }
 
   getPendingReconciliation(): BurnRecord[] {

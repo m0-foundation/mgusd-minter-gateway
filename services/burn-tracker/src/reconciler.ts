@@ -43,7 +43,7 @@ export class Reconciler {
   }
 
   async reconcile(burn: BurnRecord): Promise<void> {
-    if (this.storage.hasReconciledBurn(burn.txHash)) {
+    if (this.storage.hasReconciledBurn(burn.txHash, burn.operationIndex)) {
       return;
     }
 
@@ -86,7 +86,7 @@ export class Reconciler {
         throw new Error(`reconcile_burn tx ${result.txHash} landed with status ${result.status}`);
       }
 
-      this.storage.markReconciled(burn.txHash, result.txHash);
+      this.storage.markReconciled(burn.txHash, burn.operationIndex, result.txHash);
       console.log(`[reconciler] reconcile_burn SUCCESS — tx ${result.txHash}`);
     } catch (err) {
       console.error(`[reconciler] reconcile_burn FAILED for burn ${burn.txHash}:`, err);
