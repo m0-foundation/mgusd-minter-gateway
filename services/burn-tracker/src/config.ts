@@ -9,8 +9,10 @@ export interface Config {
   assetIssuer: string;
   /** Ledger sequence to start scanning from */
   startLedger: number;
-  /** Path to the JSON file used to persist burns and the cursor. */
-  storageFile: string;
+  /** Path to the SQLite database file used to persist burns and the cursor. */
+  dbPath: string;
+  /** SAC contract address (C...) — used to detect burns via Soroban events */
+  sacContractId: string;
   /** Wrapper contract ID (C...) */
   contractId: string;
   /** Soroban RPC URL used by the Fireblocks SDK to submit reconcile_burn */
@@ -29,6 +31,8 @@ export interface Config {
   fireblocksBasePath: string;
   /** Admin public key (G...) */
   adminPublicKey: string;
+  /** How often to retry unreconciled burns, in milliseconds */
+  retryPendingIntervalMs: number;
 }
 
 function requireEnv(name: string): string {
@@ -53,7 +57,8 @@ export function loadConfig(): Config {
     assetCode: requireEnv("ASSET_CODE"),
     assetIssuer: requireEnv("ASSET_ISSUER"),
     startLedger,
-    storageFile: process.env.STORAGE_FILE ?? "./burns.json",
+    dbPath: process.env.DB_PATH ?? "./burns.db",
+    sacContractId: requireEnv("SAC_CONTRACT_ID"),
     contractId: requireEnv("CONTRACT_ID"),
     sorobanRpcUrl: requireEnv("SOROBAN_RPC_URL"),
     networkPassphrase: requireEnv("SOROBAN_NETWORK_PASSPHRASE"),
@@ -63,5 +68,6 @@ export function loadConfig(): Config {
     fireblocksAssetId: requireEnv("FIREBLOCKS_ASSET_ID"),
     fireblocksBasePath: process.env.FIREBLOCKS_BASE_PATH ?? "sandbox",
     adminPublicKey: requireEnv("ADMIN_PUBLIC_KEY"),
+    retryPendingIntervalMs: parseInt(process.env.RETRY_PENDING_INTERVAL_MS ?? "60000", 10),
   };
 }

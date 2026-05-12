@@ -5,7 +5,7 @@ import { BurnTracker } from "./tracker";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const storage = new Storage(config.storageFile);
+  const storage = new Storage(config.dbPath);
   const reconciler = new Reconciler(config, storage);
   const tracker = new BurnTracker(config, storage, reconciler);
   await tracker.run();

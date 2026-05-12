@@ -6,10 +6,6 @@ import { BurnRecord } from "./types";
 
 const STROOPS_PER_UNIT = 10_000_000n;
 
-/**
- * Convert a Horizon amount string (decimal, 7 d.p.) to stroops as BigInt.
- * e.g. "1234.5678901" -> 12345678901n
- */
 function toStroops(amount: string): bigint {
   const [whole, frac = ""] = amount.split(".");
   const fracPadded = frac.padEnd(7, "0").slice(0, 7);
@@ -37,17 +33,20 @@ export class Reconciler {
     });
   }
 
-  /** Retry any burns that were tracked but never reconciled (e.g. after a crash). */
   async retryPending(): Promise<void> {
     const pending = this.storage.getPendingReconciliation();
     if (pending.length === 0) return;
     console.log(`[reconciler] Retrying ${pending.length} pending reconciliation(s)...`);
     for (const burn of pending) {
-      await this.reconcile(burn);
+      await this.reconcileExisting(burn);
     }
   }
 
   async reconcile(burn: BurnRecord): Promise<void> {
+    if (this.storage.hasReconciledBurn(burn.txHash)) {
+      return;
+    }
+
     const amount = toStroops(burn.amount);
     console.log(
       `[reconciler] Calling reconcile_burn: ${burn.amount} (${amount} stroops) — burn tx ${burn.txHash}`,
@@ -63,11 +62,34 @@ export class Reconciler {
         throw new Error(`reconcile_burn tx ${result.txHash} landed with status ${result.status}`);
       }
 
-      this.storage.markReconciled(burn.id, result.txHash);
+      this.storage.addBurn(burn, result.txHash);
       console.log(`[reconciler] reconcile_burn SUCCESS — tx ${result.txHash}`);
     } catch (err) {
-      console.error(`[reconciler] reconcile_burn FAILED for burn ${burn.id}:`, err);
-      // Leave reconciled=false so retryPending() picks it up on next start
+      console.error(`[reconciler] reconcile_burn FAILED for burn ${burn.txHash}:`, err);
+      this.storage.addBurn(burn);
+    }
+  }
+
+  private async reconcileExisting(burn: BurnRecord): Promise<void> {
+    const amount = toStroops(burn.amount);
+    console.log(
+      `[reconciler] Retrying reconcile_burn: ${burn.amount} (${amount} stroops) — burn tx ${burn.txHash}`,
+    );
+
+    try {
+      const result = await this.client.reconcileBurn({
+        contractId: this.config.contractId,
+        amount,
+      });
+
+      if (result.status !== "SUCCESS") {
+        throw new Error(`reconcile_burn tx ${result.txHash} landed with status ${result.status}`);
+      }
+
+      this.storage.markReconciled(burn.txHash, result.txHash);
+      console.log(`[reconciler] reconcile_burn SUCCESS — tx ${result.txHash}`);
+    } catch (err) {
+      console.error(`[reconciler] reconcile_burn FAILED for burn ${burn.txHash}:`, err);
     }
   }
 }

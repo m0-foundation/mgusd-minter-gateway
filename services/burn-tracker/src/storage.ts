@@ -1,52 +1,115 @@
-import * as fs from "fs";
-import { BurnRecord, StorageState } from "./types";
+import Database from "better-sqlite3";
+import { BurnRecord } from "./types";
 
 export class Storage {
-  private state: StorageState;
+  private readonly db: Database.Database;
 
-  constructor(private readonly filePath: string) {
-    if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, "utf-8");
-      this.state = JSON.parse(raw) as StorageState;
-    } else {
-      this.state = { cursor: "", burns: [] };
-    }
+  constructor(dbPath: string) {
+    this.db = new Database(dbPath);
+    this.db.pragma("journal_mode = WAL");
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS state (
+        id          INTEGER PRIMARY KEY CHECK (id = 1),
+        sac_ledger  INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT OR IGNORE INTO state (id, sac_ledger) VALUES (1, 0);
+
+      CREATE TABLE IF NOT EXISTS burns (
+        tx_hash           TEXT PRIMARY KEY,
+        operation_id      TEXT NOT NULL,
+        operation_index   INTEGER NOT NULL,
+        ledger            INTEGER NOT NULL,
+        timestamp         TEXT NOT NULL,
+        from_address      TEXT NOT NULL,
+        amount            TEXT NOT NULL,
+        reconciled        INTEGER NOT NULL DEFAULT 0,
+        reconcile_tx_hash TEXT
+      );
+    `);
   }
 
-  getCursor(): string {
-    return this.state.cursor;
+  hasReconciledBurn(txHash: string): boolean {
+    const row = this.db
+      .prepare("SELECT 1 FROM burns WHERE tx_hash = ? AND reconciled = 1")
+      .get(txHash);
+    return row !== undefined;
   }
 
-  addBurn(record: BurnRecord): void {
-    this.state.burns.push(record);
-    this.state.cursor = record.pagingToken;
-    this.flush();
+  /** Inserts burn record. If reconcileTxHash provided — stores as reconciled=1, otherwise reconciled=0. */
+  addBurn(record: BurnRecord, reconcileTxHash?: string): void {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO burns
+           (tx_hash, operation_id, operation_index, ledger, timestamp, from_address, amount, reconciled, reconcile_tx_hash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.txHash,
+        record.operationId,
+        record.operationIndex,
+        record.ledger,
+        record.timestamp,
+        record.from,
+        record.amount,
+        reconcileTxHash ? 1 : 0,
+        reconcileTxHash ?? null,
+      );
   }
 
-  markReconciled(id: string, reconcileTxHash: string): void {
-    const record = this.state.burns.find((b) => b.id === id);
-    if (record) {
-      record.reconciled = true;
-      record.reconcileTxHash = reconcileTxHash;
-      this.flush();
-    }
+  markReconciled(txHash: string, reconcileTxHash: string): void {
+    this.db
+      .prepare("UPDATE burns SET reconciled = 1, reconcile_tx_hash = ? WHERE tx_hash = ?")
+      .run(reconcileTxHash, txHash);
   }
 
   getPendingReconciliation(): BurnRecord[] {
-    return this.state.burns.filter((b) => !b.reconciled);
+    const rows = this.db
+      .prepare("SELECT * FROM burns WHERE reconciled = 0 ORDER BY ledger ASC")
+      .all() as DbRow[];
+    return rows.map(toRecord);
   }
 
-  /** Advance cursor without adding a burn (for non-burn payments). */
-  advanceCursor(pagingToken: string): void {
-    this.state.cursor = pagingToken;
-    this.flush();
+  getSacLedger(): number {
+    const row = this.db.prepare("SELECT sac_ledger FROM state WHERE id = 1").get() as
+      | { sac_ledger: number }
+      | undefined;
+    return row?.sac_ledger ?? 0;
+  }
+
+  advanceSacLedger(ledger: number): void {
+    this.db.prepare("UPDATE state SET sac_ledger = MAX(sac_ledger, ?) WHERE id = 1").run(ledger);
   }
 
   getBurns(): BurnRecord[] {
-    return this.state.burns;
+    const rows = this.db
+      .prepare("SELECT * FROM burns ORDER BY ledger ASC")
+      .all() as DbRow[];
+    return rows.map(toRecord);
   }
+}
 
-  private flush(): void {
-    fs.writeFileSync(this.filePath, JSON.stringify(this.state, null, 2));
-  }
+interface DbRow {
+  tx_hash: string;
+  operation_id: string;
+  operation_index: number;
+  ledger: number;
+  timestamp: string;
+  from_address: string;
+  amount: string;
+  reconciled: number;
+  reconcile_tx_hash: string | null;
+}
+
+function toRecord(row: DbRow): BurnRecord {
+  return {
+    txHash: row.tx_hash,
+    operationId: row.operation_id,
+    operationIndex: row.operation_index,
+    ledger: row.ledger,
+    timestamp: row.timestamp,
+    from: row.from_address,
+    amount: row.amount,
+    reconciled: row.reconciled === 1,
+    reconcileTxHash: row.reconcile_tx_hash ?? undefined,
+  };
 }

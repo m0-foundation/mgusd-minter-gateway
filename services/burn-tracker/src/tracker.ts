@@ -1,152 +1,199 @@
-import { Asset, Horizon } from "@stellar/stellar-sdk";
+import { Address, nativeToScVal, scValToNative, rpc as SorobanRpc } from "@stellar/stellar-sdk";
 import { Config } from "./config";
 import { Reconciler } from "./reconciler";
 import { Storage } from "./storage";
 import { BurnRecord } from "./types";
 
-/**
- * Converts a ledger sequence number into a Horizon paging_token cursor.
- * The token encodes (ledger * 2^32), placing the cursor just before any
- * operation in that ledger
- */
-function ledgerToCursor(ledger: number): string {
-  return String((BigInt(ledger) - 1n) * 4294967296n);
-}
+const SAC_POLL_INTERVAL_MS = 6_000;
 
-function isPaymentToIssuer(
-  op: Horizon.ServerApi.PaymentOperationRecord,
-  assetCode: string,
-  assetIssuer: string,
-): boolean {
-  return (
-    op.to === assetIssuer &&
-    op.asset_type !== "native" &&
-    op.asset_code === assetCode &&
-    op.asset_issuer === assetIssuer
-  );
-}
-
-function ledgerFromPagingToken(pagingToken: string): number {
-  return Number(BigInt(pagingToken) / 4294967296n);
-}
-
-function toRecord(op: Horizon.ServerApi.PaymentOperationRecord): BurnRecord {
-  return {
-    id: op.id,
-    txHash: op.transaction_hash,
-    ledger: ledgerFromPagingToken(op.paging_token),
-    timestamp: op.created_at,
-    from: op.from,
-    amount: op.amount,
-    pagingToken: op.paging_token,
-    reconciled: false,
-  };
+function stroopsToAmount(stroops: bigint): string {
+  const UNIT = 10_000_000n;
+  const whole = stroops / UNIT;
+  const frac = stroops % UNIT;
+  return `${whole}.${frac.toString().padStart(7, "0")}`;
 }
 
 export class BurnTracker {
-  private readonly horizon: Horizon.Server;
-  private readonly asset: Asset;
+  private readonly rpc: SorobanRpc.Server;
+  private readonly burnTopicXdr: string;
 
   constructor(
     private readonly config: Config,
     private readonly storage: Storage,
     private readonly reconciler: Reconciler,
   ) {
-    this.horizon = new Horizon.Server(config.horizonUrl);
-    this.asset = new Asset(config.assetCode, config.assetIssuer);
+    this.rpc = new SorobanRpc.Server(config.sorobanRpcUrl);
+    this.burnTopicXdr = nativeToScVal("burn", { type: "symbol" }).toXDR("base64");
   }
 
   async run(): Promise<void> {
-    const startCursor = this.storage.getCursor() || ledgerToCursor(this.config.startLedger);
-    console.log(`[burn-tracker] Starting from cursor ${startCursor} (ledger ~${this.config.startLedger})`);
     console.log(`[burn-tracker] Asset: ${this.config.assetCode}:${this.config.assetIssuer}`);
+    console.log(`[burn-tracker] SAC:   ${this.config.sacContractId}`);
     console.log(`[burn-tracker] Known burns so far: ${this.storage.getBurns().length}`);
 
-    // Retry any burns that were tracked but not yet reconciled before last shutdown
-    await this.reconciler.retryPending();
+    const { sequence: latestLedger } = await this.rpc.getLatestLedger();
 
-    await this.backfill(startCursor);
-    await this.stream();
+    await Promise.all([
+      this.backfillSacEvents(latestLedger),
+      this.pollSacEvents(latestLedger),
+      this.retryPendingLoop(),
+    ]);
   }
 
-  /** Paginate through historical payments to the issuer */
-  private async backfill(startCursor: string): Promise<void> {
-    console.log("[burn-tracker] Backfill: scanning historical payments...");
-    let cursor = startCursor;
-    let count = 0;
-
+  private async retryPendingLoop(): Promise<void> {
     while (true) {
-      const page = await this.horizon
-        .payments()
-        .forAccount(this.config.assetIssuer)
-        .limit(200)
-        .cursor(cursor)
-        .order("asc")
-        .call();
-
-      const ops = page.records.filter(
-        (r): r is Horizon.ServerApi.PaymentOperationRecord => r.type === "payment",
-      );
-
-      if (ops.length === 0) break;
-
-      for (const op of ops) {
-        if (isPaymentToIssuer(op, this.config.assetCode, this.config.assetIssuer)) {
-          const record = toRecord(op);
-          this.storage.addBurn(record);
-          count++;
-          console.log(
-            `[burn-tracker] Burn: ${record.amount} ${this.config.assetCode} from ${record.from} (ledger ${record.ledger}, tx ${record.txHash})`,
-          );
-          await this.reconciler.reconcile(record);
-        } else {
-          this.storage.advanceCursor(op.paging_token);
-        }
-        cursor = op.paging_token;
+      try {
+        await this.reconciler.retryPending();
+      } catch (err) {
+        console.error("[burn-tracker] retryPending error:", err);
       }
+      await new Promise((r) => setTimeout(r, this.config.retryPendingIntervalMs));
+    }
+  }
 
-      // reached the latest ledger
-      if (ops.length < 200) break;
+  private async backfillSacEvents(latestLedger: number): Promise<void> {
+    const probe = await this.rpc.getEvents({ filters: this.sacEventFilters(), startLedger: latestLedger, limit: 1 });
+    const oldestLedger = probe.oldestLedger;
+    const savedLedger = this.storage.getSacLedger();
+    const effectiveStart = Math.max(
+      savedLedger > 0 ? savedLedger : this.config.startLedger,
+      oldestLedger,
+    );
+
+    console.log(`[burn-tracker] Backfill SAC events from ledger ${effectiveStart} (RPC range: ${oldestLedger}-${latestLedger})...`);
+    if (this.config.startLedger < oldestLedger) {
+      console.log(`[burn-tracker] WARNING: START_LEDGER (${this.config.startLedger}) is before RPC retention window (${oldestLedger}), clamped.`);
     }
 
-    console.log(`[burn-tracker] Backfill complete — ${count} new burn(s) found.`);
+    let count = 0;
+    let fromLedger = effectiveStart;
+
+    while (fromLedger <= latestLedger) {
+      const toLedger = Math.min(fromLedger + 999, latestLedger);
+      let eventCursor: string | undefined;
+
+      while (true) {
+        const request: SorobanRpc.Api.GetEventsRequest = eventCursor
+          ? { filters: this.sacEventFilters(), cursor: eventCursor, limit: 200 }
+          : { filters: this.sacEventFilters(), startLedger: fromLedger, endLedger: toLedger, limit: 200 };
+
+        const response = await this.rpc.getEvents(request);
+        console.log(`[burn-tracker] SAC events ledger ${fromLedger}-${toLedger}: ${response.events.length} event(s)`);
+
+        for (const event of this.extractDirectBurns(response.events)) {
+          console.log(`[burn-tracker]   sac event ${event.id} ledger=${event.ledger} txHash=${event.txHash}`);
+          const burn = this.sacEventToRecord(event);
+          if (burn) {
+            count++;
+            console.log(`[burn-tracker] Burn: ${burn.amount} from ${burn.from} tx ${burn.txHash}`);
+            await this.reconciler.reconcile(burn);
+          }
+        }
+
+        if (response.events.length < 200) break;
+        eventCursor = response.cursor;
+      }
+
+      this.storage.advanceSacLedger(toLedger);
+      fromLedger = toLedger + 1;
+    }
+
+    console.log(`[burn-tracker] Backfill SAC events complete — ${count} burn(s).`);
   }
 
-  /** Stream real-time payments to the issuer using Horizon */
-  private stream(): Promise<void> {
-    const cursor = this.storage.getCursor() || ledgerToCursor(this.config.startLedger);
-    console.log(`[burn-tracker] Streaming from cursor ${cursor}...`);
+  private async pollSacEvents(fromLedger: number): Promise<void> {
+    console.log(`[burn-tracker] Polling SAC events from ledger ${fromLedger}...`);
+    while (true) {
+      await new Promise((r) => setTimeout(r, SAC_POLL_INTERVAL_MS));
+      try {
+        fromLedger = Math.max(this.storage.getSacLedger() + 1, fromLedger);
+        let eventCursor: string | undefined;
 
-    return new Promise((_resolve, reject) => {
-      this.horizon
-        .payments()
-        .forAccount(this.config.assetIssuer)
-        .cursor(cursor)
-        .order("asc")
-        .stream({
-          onmessage: (op) => {
-            if (op.type !== "payment") return;
-            const payment = op as Horizon.ServerApi.PaymentOperationRecord;
-            if (isPaymentToIssuer(payment, this.config.assetCode, this.config.assetIssuer)) {
-              const record = toRecord(payment);
-              this.storage.addBurn(record);
-              console.log(
-                `[burn-tracker] Burn detected: ${record.amount} ${this.config.assetCode} from ${record.from} (ledger ${record.ledger}, tx ${record.txHash})`,
-              );
-              this.reconciler.reconcile(record).catch((err) => {
-                console.error("[burn-tracker] Unexpected reconcile error:", err);
+        while (true) {
+          const request: SorobanRpc.Api.GetEventsRequest = eventCursor
+            ? { filters: this.sacEventFilters(), cursor: eventCursor, limit: 200 }
+            : { filters: this.sacEventFilters(), startLedger: fromLedger, limit: 200 };
+
+          const response = await this.rpc.getEvents(request);
+
+          if (response.events.length > 0) {
+            console.log(`[burn-tracker] SAC poll: ${response.events.length} event(s) ledger ${fromLedger}-${response.latestLedger}`);
+          }
+
+          for (const event of this.extractDirectBurns(response.events)) {
+            console.log(`[burn-tracker]   sac event ${event.id} ledger=${event.ledger} txHash=${event.txHash}`);
+            const burn = this.sacEventToRecord(event);
+            if (burn) {
+              console.log(`[burn-tracker] Burn: ${burn.amount} from ${burn.from} tx ${burn.txHash}`);
+              this.reconciler.reconcile(burn).catch((err) => {
+                console.error("[burn-tracker] Reconcile error:", err);
               });
-            } else {
-              this.storage.advanceCursor(payment.paging_token);
             }
-          },
-          onerror: (err) => {
-            console.error("[burn-tracker] Stream error:", err);
-            if ((err as { status?: number }).status) {
-              reject(new Error(`Stream fatal error: ${JSON.stringify(err)}`));
-            }
-          },
-        });
-    });
+          }
+
+          this.storage.advanceSacLedger(response.latestLedger);
+
+          if (response.events.length < 200) break;
+          eventCursor = response.cursor;
+        }
+      } catch (err) {
+        console.error("[burn-tracker] SAC poll error:", err);
+      }
+    }
+  }
+
+  /**
+   * We reconcile only SAC burns whose txHash has no corresponding wrapper burn.
+   */
+  private sacEventFilters(): SorobanRpc.Api.EventFilter[] {
+    return [
+      { type: "contract", contractIds: [this.config.sacContractId] },
+      { type: "contract", contractIds: [this.config.contractId] },
+    ];
+  }
+
+  private isBurnEvent(event: SorobanRpc.Api.EventResponse): boolean {
+    try {
+      return event.topic[0].toXDR("base64") === this.burnTopicXdr;
+    } catch {
+      return false;
+    }
+  }
+
+  private extractDirectBurns(events: SorobanRpc.Api.EventResponse[]): SorobanRpc.Api.EventResponse[] {
+    const wrapperBurnTxHashes = new Set(
+      events
+        .filter((e) => e.contractId?.toString() === this.config.contractId && this.isBurnEvent(e))
+        .map((e) => e.txHash),
+    );
+
+    return events.filter(
+      (e) =>
+        e.contractId?.toString() === this.config.sacContractId &&
+        this.isBurnEvent(e) &&
+        !wrapperBurnTxHashes.has(e.txHash),
+    );
+  }
+
+  private sacEventToRecord(event: SorobanRpc.Api.EventResponse): BurnRecord | null {
+    try {
+      const from = Address.fromScVal(event.topic[1]).toString();
+      const amountRaw = scValToNative(event.value) as bigint;
+      const amount = stroopsToAmount(amountRaw);
+
+      return {
+        operationId: event.id,
+        txHash: event.txHash,
+        operationIndex: event.operationIndex,
+        ledger: event.ledger,
+        timestamp: event.ledgerClosedAt,
+        from,
+        amount,
+        reconciled: false,
+      };
+    } catch (err) {
+      console.error("[burn-tracker] Failed to parse SAC event:", event.id, err);
+      return null;
+    }
   }
 }
