@@ -17,7 +17,7 @@ The end state: every compliance lever lives in the wrapper. The issuer account r
 
 ### Non-goals
 
-- **Burning the wrapper admin key.** That is the territory of `docs/multisig-admin-architecture.md` (Option A applies the same `masterWeight = 0` primitive to a separate admin G-account behind a 2-of-3 Fireblocks-backed multisig). The wrapper admin in this plan remains a configured `ADMIN_PUBLIC_KEY`; any handoff to a multisig is a follow-up performed by the admin holder, not by this script.
+- **Burning the wrapper admin key.** That is the territory of the multisig-admin track (a separate plan, not yet merged onto `develop` — applies the same `masterWeight = 0` primitive to a separate admin G-account behind a 2-of-3 Fireblocks-backed multisig). The wrapper admin in this plan remains a configured `ADMIN_PUBLIC_KEY`; any handoff to a multisig is a follow-up performed by the admin holder, not by this script. Note: after renunciation, the wrapper admin's authority becomes load-bearing — they can still `transfer_sac_admin` and `upgrade` the wrapper WASM, and there is no classic-issuer override anymore. Multisig'ing the wrapper admin is the natural follow-up.
 - **Recovering issuer minimum-reserve XLM.** Account merge requires a signature, which `masterWeight = 0` makes impossible. The reserve (~1.5 XLM at current schedule) is locked forever. Operators should fund the issuer with the minimum required, nothing more.
 - **Partial renunciation modes.** No "weight 0 but keep a backup signer," no "immutable flags but keep master weight," no "renounce just the master and add Fireblocks signers." The whole proposition of the script is irreversibility; partial modes belong in the multisig-admin doc, not here.
 - **Mutating wrapper roles.** The 8 role addresses passed to `__constructor` are out of scope — this script performs no `set_minter` / `set_pauser` / `add_block_operator` calls.
@@ -34,19 +34,26 @@ The end state: every compliance lever lives in the wrapper. The issuer account r
 
 Stellar classic `SetOptionsOp` is the only primitive needed. Two fields matter:
 
-- **`master_weight = 0`** — the master signer (the seed that controls the G-account from genesis) contributes 0 to every signature threshold. With no other signers configured, no key on the network can sign for the account, ever. This is the same primitive Option A in `docs/multisig-admin-architecture.md` uses on the wrapper admin G-account; here we apply it to the issuer.
+- **`master_weight = 0`** — the master signer (the seed that controls the G-account from genesis) contributes 0 to every signature threshold. With no other signers configured, no key on the network can sign for the account, ever. (This is the same primitive the multisig-admin track applies to the wrapper admin G-account; here we apply it to the issuer.)
 - **`set_flags = AUTH_IMMUTABLE`** — locks the issuer's asset-control flags (`AUTH_REQUIRED | AUTH_REVOCABLE | AUTH_CLAWBACK_ENABLED`, set in step 1) into a permanent state. `AUTH_IMMUTABLE` is itself irreversible — once set, no future op can clear or alter the flag set. This is the belt to `master_weight = 0`'s suspenders: even if a future Stellar protocol change introduced some way to re-enable a master with weight 0 (it won't, but defense in depth), the asset flag configuration is independently locked.
 
-### Single transaction, two ops, ordered
+### Single transaction, single op
 
-The renunciation is one transaction submitted by the issuer with two `SetOptionsOp`s in this order:
+The renunciation is one `SetOptionsOp` in one transaction, with both `setFlags = AUTH_IMMUTABLE` and `masterWeight = 0` set in the same op. A `SetOptionsOp` is a flat record with optional fields — there is no field-ordering ambiguity within one op. The op is signed by the master, the signature is checked once against the pre-op signer state (`master_weight = 1`, default `high_threshold = 0`, master signature weight 1 ≥ HIGH — authorized), and both fields apply atomically.
 
-1. `set_flags = AUTH_IMMUTABLE`
-2. `master_weight = 0`
+Empirical verification on the pinned CLI (`stellar 25.2.0`):
 
-The ordering constraint is the same one called out in `docs/multisig-admin-architecture.md`: **`master_weight = 0` must be the last op in the bundle, otherwise the master can't sign the rest of the bundle.** Stellar evaluates op authorization sequentially against the post-op signer state; a `master_weight = 0` in op 1 invalidates the master's signature on op 2.
+```
+$ stellar tx new set-options --master-weight 0 --set-immutable --build-only
+$ stellar xdr decode --type TransactionEnvelope ...
+operations: [
+  { set_options: { set_flags: 4, master_weight: 0, ... } }
+]
+```
 
-Atomicity rationale: bundling into one tx guarantees we never observe the intermediate state where `master_weight = 0` lands but `AUTH_IMMUTABLE` does not (or vice versa). Either both apply or neither does. The alternative — two separate txs — opens a window where a partial outcome forces operator judgment about whether to push or roll back, with no rollback actually possible (you can't un-set `master_weight = 0`).
+→ exactly one op, both fields set. Open question Q1 resolved.
+
+Atomicity rationale: a single op never observes an intermediate state where one field lands but not the other. The two-op alternative bundled in one tx is also safe *if* `master_weight = 0` is the last op (otherwise op 2 fails signature — Stellar evaluates each op's authorization against the post-op signer state, so a `master_weight = 0` in op 1 zeros the master's weight before op 2's signature is checked), but it is strictly more complex than the single-op form and offers no additional guarantee. We use the single-op form.
 
 ### No new signers
 
@@ -113,7 +120,21 @@ Two reasonable shapes:
 
 ## 5. Step-by-step pipeline
 
-Steps 1–5 are unchanged from `scripts/deploy-testnet.sh`. Steps 6–8 are new.
+Steps 1–5 mirror `scripts/deploy-testnet.sh`. Step 0 and steps 6–8 are new.
+
+### Step 0 — Pre-deploy issuer-cleanliness preflight (read-only, no signing)
+
+`deploy-testnet.sh` today only asks operators to verify cleanliness manually (its in-script comment: *"This script does NOT verify the issuer is clean — verify manually before running."*). The renounce script promotes this to a non-skippable preflight, because — unlike the testnet script — there is no classic-clawback fallback once step 7 lands.
+
+The script aborts if any of the following return non-empty for `(ASSET_CODE, ISSUER_PUBLIC_KEY)`:
+
+| Source | What "non-empty" means | Why |
+|---|---|---|
+| Horizon `/accounts/{issuer}` | Issuer account already has any of: `flags.auth_required`, `flags.auth_revocable`, `flags.auth_clawback_enabled`, `flags.auth_immutable` set | Step 1 would either no-op or fail; either is a sign of a contaminated deploy. |
+| Horizon `/assets?asset_code=…&asset_issuer=…` | Any record returned with `num_accounts > 0` or `num_claimable_balances > 0` or `num_liquidity_pools > 0` | Pre-existing trustlines / claimable balances / pools would predate step 1's `AUTH_REQUIRED` and auto-authorize outside the wrapper's reach. |
+| Horizon `/accounts?asset=…:…` | Any holder account returned | Same. |
+
+This is the load-bearing precondition §3 calls out. It must be enforced in code, not in the runbook.
 
 ### Step 1 — [ISSUER signs] `set_options` on issuer
 
@@ -152,12 +173,12 @@ Optionally (open question, see §10): assert SAC `name() / symbol() / decimals()
 
 ### Step 7 — [ISSUER signs] The renunciation transaction
 
-One atomic transaction, source = `ISSUER`, two ops:
+One atomic transaction, source = `ISSUER`, one `SetOptionsOp` with two fields set:
 
-1. `set_options { set_flags: AUTH_IMMUTABLE }`
-2. `set_options { master_weight: 0 }`
+- `setFlags = AUTH_IMMUTABLE`
+- `masterWeight = 0`
 
-CLI invocation (provisional — depends on `stellar tx new set-options` capabilities; see open implementation question below):
+CLI invocation (verified on `stellar 25.2.0` — see §2 for decoded XDR):
 
 ```bash
 stellar tx new set-options \
@@ -167,13 +188,7 @@ stellar tx new set-options \
   --master-weight 0
 ```
 
-If the CLI accepts both flags in one invocation, this submits a single transaction. If it generates one op per invocation, the script must:
-
-1. Use `stellar tx new set-options --build-only --set-immutable …` to build op 1 as XDR.
-2. Use the SDK or `stellar tx op add set-options …` (if available) to append op 2.
-3. Sign and submit the combined envelope.
-
-Either way, `master_weight = 0` must be the **last** op the issuer signs over, ever. After this transaction lands, the script makes no further attempt to sign with `ISSUER_KEY`.
+This produces a single transaction with one `SetOptionsOp` containing both fields. The op requires HIGH threshold; signature check runs against pre-op state (master weight 1 ≥ default HIGH 0), then both fields apply atomically. After this transaction lands, the script makes no further attempt to sign with `ISSUER_KEY`.
 
 ### Step 8 — Post-renounce verification (read-only)
 
@@ -211,11 +226,11 @@ Non-zero exit on any assertion mismatch.
 | CLI entry — issuer key consistency | Asserts `stellar keys public-key $ISSUER_KEY_NAME == $ISSUER_PUBLIC_KEY` (inherited). |
 | CLI entry — opt-in gate | Refuses to perform step 7 unless `RENOUNCE_ISSUER=1` (or `--renounce-issuer`) is set explicitly. Default behavior is steps 1–5 + smoke only, equivalent to `deploy-testnet.sh`. |
 | CLI entry — interactive confirm | On `--execute --network=public`, prompts the operator to type the network passphrase verbatim. Mismatch aborts. Skipped on `--dry-run`. |
-| Step 0 — issuer contamination preflight | Aborts if `(asset_code, issuer)` already has trustlines, claimable balances, pools, or contract holders (STEL1-6). |
+| Step 0 — issuer cleanliness preflight | Aborts if issuer flags are non-default, or if `(asset_code, issuer)` already has trustlines, claimable balances, or pools (STEL1-6). Promoted from manual-only in `deploy-testnet.sh` to non-skippable here — see §5 step 0 for the exact Horizon queries. |
 | Step 3 — WASM hash verification | Re-derives `sha256(WASM)` locally; aborts if RPC's returned hash differs (STEL1-7). |
 | Step 6 — renounce preflight | Five non-skippable assertions: issuer flags exact match, signer list has only master, SAC admin == wrapper, wrapper admin == configured `ADMIN_PUBLIC_KEY`, no extra signers added since deploy. Warn-only on excess issuer XLM. |
-| Step 7 — op ordering | `master_weight = 0` is the **last** op in the renounce tx, and the script makes no further `ISSUER_KEY` calls. |
-| Step 7 — atomicity | Single tx with both ops; never two separate txs. If the CLI cannot construct that, the script aborts with a clear "implementation not supported on this `stellar` CLI version" error, not a fallback to two txs. |
+| Step 7 — single-op form | Both fields (`AUTH_IMMUTABLE`, `masterWeight = 0`) are set in one `SetOptionsOp`, applied atomically. Script makes no further `ISSUER_KEY` calls after this tx lands. |
+| Step 7 — atomicity | One tx, one op, both fields. Never split into two txs. If a future CLI version stops accepting both flags in one invocation, the script aborts with a clear error rather than falling back to two txs. |
 | Step 8 — post-renounce verification | Reads back chain state and asserts post-conditions; non-zero exit on mismatch. |
 
 ---
@@ -297,7 +312,7 @@ The script should refuse `--network=public` outright if `ISSUER_KEY_NAME` does n
 | HIGH | Bricked deploy if extra signers were added to the issuer between deploy and renounce — those signers retain control after `master_weight = 0`, defeating the entire premise. | Step 6 preflight asserts the signer list contains only the master. Abort otherwise. |
 | HIGH | Operator runs `--renounce-issuer` without realizing they wanted to keep classic clawback as a compliance backstop. | Opt-in flag is non-default. `--dry-run` mode prints the XDR loudly. README-level documentation (this plan + the follow-up runbook) states "irreversible" prominently. The trade-off table in §3 must be reviewed before sign-off. |
 | HIGH | `AUTH_IMMUTABLE` locks in a wrong flag set (e.g., operator forgot `CLAWBACK_ENABLED` in step 1). | Step 6 preflight asserts the exact flag set. Abort otherwise. Forces operators to either (a) re-run step 1 with the correct flags before renouncing, or (b) walk away from the deploy. |
-| MEDIUM | `stellar tx new set-options` may not support both `--set-immutable` and `--master-weight 0` in one invocation, forcing a build-and-sign-via-XDR codepath. | Verify on the pinned CLI version (v25.2.0) during implementation. If unsupported, the script must use `tx new --build-only` + a small XDR-stitching helper rather than fall back to two separate txs. Two-tx fallback is not safe (the intermediate state is itself a deploy outcome we don't want). |
+| LOW | A future `stellar` CLI version regresses on accepting both `--set-immutable` and `--master-weight 0` in one invocation. | Verified on pinned `stellar 25.2.0`: one invocation → one `SetOptionsOp` with both fields. The script pins (or asserts) a known-good CLI version at startup. If a future bump regresses this, the script aborts with a clear error rather than splitting into two txs. |
 | MEDIUM | Issuer key is on a Ledger and the device fails mid-renounce (battery, cable, firmware). | Pre-step-7 checklist in the runbook: full battery, fresh cable, firmware version verified. The deploy is recoverable up to and including step 5 (SAC admin handoff has already landed; the wrapper is operational). Only step 7 itself blocks on the device. Operator can re-run with `--skip-deploy` once the device is back. |
 | LOW | Minimum-reserve XLM (~1.5 XLM) locked forever. | Documented in this plan, in `--help`, in the runbook. The reserve is small enough that we accept it. |
 | LOW | Mainnet operators may reflexively assume an `AUTH_IMMUTABLE` issuer is "uncontactable" for compliance. | The runbook's compliance section explicitly maps every classic-issuer compliance action to its wrapper-side equivalent (the table in §3 of this plan). Reviewers must sign off on that table before mainnet rollout. |
@@ -307,7 +322,7 @@ The script should refuse `--network=public` outright if `ISSUER_KEY_NAME` does n
 
 ## 10. Open questions for review
 
-1. **`stellar tx new set-options` capabilities.** Does the pinned CLI (v25.2.0) accept `--set-immutable` and `--master-weight 0` in the same invocation, producing one tx with two ops? If not, what is the cleanest XDR-stitching path? Implementation must answer this before the script lands.
+1. ~~**`stellar tx new set-options` capabilities.** Does the pinned CLI (v25.2.0) accept `--set-immutable` and `--master-weight 0` in the same invocation, producing one tx with two ops? If not, what is the cleanest XDR-stitching path? Implementation must answer this before the script lands.~~ **Resolved.** Verified on `stellar 25.2.0`: one invocation → one tx with one `SetOptionsOp` containing both `set_flags = 4` and `master_weight = 0`. Single-op form is the implementation path. See §2 and §7.
 2. **Cosmetic clears.** Should the renunciation tx also clear `home_domain` and `inflation_dest` (and ensure `low/med/high thresholds` are at expected values) before locking? They become immutable too. Recommend yes for `home_domain` (defaults to empty; locking a nonempty stale value is awkward), no for `inflation_dest` (deprecated, no operational impact).
 3. **SAC metadata assertions.** Should step 6 assert `sac.name() / symbol() / decimals()` match expected values? Defends against a wrong-WASM upload that somehow passed step 3's hash check (e.g., a malicious mirror RPC that returns the correct hash but stores a different blob). Recommend yes for `decimals()` (cheap, catches the worst-case mismatch); name/symbol are typically stable and lower-leverage.
 4. **"Renounce on demand" envelope.** Is there value in a `--build-renounce-only` mode that produces and signs the renounce tx but doesn't submit, so the operator can hold the signed XDR offline and submit later? Recommend no — it defeats the atomic-deploy story and creates a footgun (signed envelope leaks → adversary submits at unexpected time).
