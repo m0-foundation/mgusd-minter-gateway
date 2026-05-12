@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # deploy-testnet.sh — 5-step deploy of the Stellar Minter Gateway.
-# TESTNET / DEV ONLY. Reuses scripts/lib/deploy-pipeline.sh for the step bodies.
+# TESTNET / DEV ONLY. Reuses scripts/deploy-pipeline.sh for the step bodies.
 #
 # Production no-Fireblocks deploy (with issuer renunciation):
 #   scripts/deploy-renounce.sh + docs/issuer-renunciation.md
@@ -13,8 +13,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/deploy-pipeline.sh
-source "$SCRIPT_DIR/lib/deploy-pipeline.sh"
+# shellcheck source=scripts/deploy-pipeline.sh
+source "$SCRIPT_DIR/deploy-pipeline.sh"
 
 init_deploy_pipeline_env
 print_deploy_banner

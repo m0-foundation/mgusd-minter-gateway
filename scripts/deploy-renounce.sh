@@ -3,7 +3,7 @@
 # deploy-renounce.sh — deploy the Stellar Minter Gateway and (optionally)
 # permanently neuter the issuer key.
 #
-# Steps 1-5 mirror deploy-testnet.sh (via scripts/lib/deploy-pipeline.sh).
+# Steps 1-5 mirror deploy-testnet.sh (via scripts/deploy-pipeline.sh).
 # Steps 6-7 are renounce-specific:
 #   6. [ISSUER] set_options(set-immutable + master-weight 0)   IRREVERSIBLE
 #   7. Post-renounce verification — on-chain state read only   (read-only)
@@ -85,8 +85,8 @@ else
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/deploy-pipeline.sh
-source "$SCRIPT_DIR/lib/deploy-pipeline.sh"
+# shellcheck source=scripts/deploy-pipeline.sh
+source "$SCRIPT_DIR/deploy-pipeline.sh"
 
 if [[ "$SKIP_DEPLOY" == "1" ]]; then
   init_deploy_pipeline_env --skip-wasm-check

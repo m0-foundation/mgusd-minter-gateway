@@ -38,7 +38,7 @@ The wrapper admin is a separate Stellar account passed to the wrapper's `__const
 | **6** | Issuer | `set_options` → `AUTH_IMMUTABLE + master_weight = 0`  ⚠️ **IRREVERSIBLE** |
 | **7** | — (read-only) | Verify post-renounce chain state |
 
-Steps 1–5 plus the smoke test mirror `scripts/deploy-testnet.sh` exactly (they share the same code via `scripts/lib/deploy-pipeline.sh`). Steps 6 and 7 are renounce-specific.
+Steps 1–5 plus the smoke test mirror `scripts/deploy-testnet.sh` exactly (they share the same code via `scripts/deploy-pipeline.sh`). Steps 6 and 7 are renounce-specific.
 
 ## The compliance trade-off
 
@@ -69,5 +69,5 @@ The "no future flag changes" gap means the step 1 flag set is what you live with
 ## Further reading
 
 - Script: [scripts/deploy-renounce.sh](../scripts/deploy-renounce.sh)
-- Shared pipeline: [scripts/lib/deploy-pipeline.sh](../scripts/lib/deploy-pipeline.sh)
+- Shared pipeline: [scripts/deploy-pipeline.sh](../scripts/deploy-pipeline.sh)
 - Environment template: [scripts/deploy.env.example](../scripts/deploy.env.example)

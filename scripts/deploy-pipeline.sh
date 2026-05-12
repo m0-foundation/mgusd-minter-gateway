@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# scripts/lib/deploy-pipeline.sh
+# scripts/deploy-pipeline.sh
 #
 # Shared 5-step deploy pipeline for the Stellar Minter Gateway. Sourced by
 # scripts/deploy-testnet.sh and scripts/deploy-renounce.sh. See
@@ -70,7 +70,7 @@ init_deploy_pipeline_env() {
   # Auto-load .env at repo root (resolved relative to this helper's location).
   local helper_dir repo_root
   helper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  repo_root="$(cd "$helper_dir/../.." && pwd)"
+  repo_root="$(cd "$helper_dir/.." && pwd)"
   if [[ -f "$repo_root/.env" ]]; then
     echo "Loading $repo_root/.env"
     set -a

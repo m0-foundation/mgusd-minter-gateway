@@ -13,8 +13,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/deploy-pipeline.sh
-source "$SCRIPT_DIR/lib/deploy-pipeline.sh"
+# shellcheck source=scripts/deploy-pipeline.sh
+source "$SCRIPT_DIR/deploy-pipeline.sh"
 
 ISSUER_PUBLIC_KEY="${ISSUER_PUBLIC_KEY:-}"
 ISSUER_KEY_NAME="${ISSUER_KEY_NAME:-}"
