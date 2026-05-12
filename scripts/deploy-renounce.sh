@@ -4,13 +4,11 @@
 # permanently neuter the issuer key.
 #
 # Steps 1-5 mirror deploy-testnet.sh (via scripts/lib/deploy-pipeline.sh).
-# Steps 0, 6, 7, 8 are renounce-specific:
-#   0. Pre-deploy issuer-cleanliness preflight  (read-only)
-#   6. Renounce-issuer preflight                (read-only)
-#   7. [ISSUER] set_options(set-immutable + master-weight 0)   IRREVERSIBLE
-#   8. Post-renounce verification — on-chain state read only   (read-only)
+# Steps 6-7 are renounce-specific:
+#   6. [ISSUER] set_options(set-immutable + master-weight 0)   IRREVERSIBLE
+#   7. Post-renounce verification — on-chain state read only   (read-only)
 #
-# Step 8 confirms the renounce landed via Horizon + Soroban reads (master
+# Step 7 confirms the renounce landed via Horizon + Soroban reads (master
 # weight 0, AUTH_IMMUTABLE set, admin invariants preserved). For behavioral
 # confirmation (submit a tx, expect TxBadAuth) run the separate auditor:
 #   ./scripts/verify-issuer-burned.sh --probe
@@ -25,10 +23,8 @@
 
 set -euo pipefail
 
-# Stellar AccountFlags bitmask. Step 1 installs 11 (REQUIRED|REVOCABLE|
-# CLAWBACK_ENABLED); step 7 ORs in IMMUTABLE → 15. Step 6 enforces == 11;
-# step 8 enforces == 15.
-EXPECTED_FLAGS_PRE_RENOUNCE=11
+# Step 1 installs flags 11 (REQUIRED|REVOCABLE|CLAWBACK_ENABLED); step 6 ORs
+# in IMMUTABLE → 15. Step 7 enforces == 15.
 EXPECTED_FLAGS_POST_RENOUNCE=15
 
 RENOUNCE_ISSUER="${RENOUNCE_ISSUER:-0}"
@@ -44,17 +40,16 @@ permanently neuter the issuer key.
 Usage: ./scripts/deploy-renounce.sh [flags]
 
 Flags:
-  --renounce-issuer    Enable steps 6-8 (the renounce path). Without this,
+  --renounce-issuer    Enable steps 6-7 (the renounce path). Without this,
                        behaves like deploy-testnet.sh. Env: RENOUNCE_ISSUER=1.
   --dry-run            Build the renounce tx and print its XDR; do NOT submit.
                        Steps 1-5 still execute. Requires --renounce-issuer.
-  --execute            Submit the full pipeline (step 7 included). On
-                       --network=public, requires passphrase confirm.
-  --skip-deploy        Skip steps 0-5; run only 6-8 against an existing deploy.
+  --execute            Submit the full pipeline (step 6 included).
+  --skip-deploy        Skip steps 1-5; run only 6-7 against an existing deploy.
                        Reads SAC_CONTRACT_ID and WRAPPER_CONTRACT_ID from env.
   -h, --help           Print this help and exit.
 
-WARNING: Step 7 is IRREVERSIBLE. After it lands, the issuer key is
+WARNING: Step 6 is IRREVERSIBLE. After it lands, the issuer key is
          cryptographically unsignable forever; minimum-reserve XLM is locked.
          Read docs/issuer-renunciation.md before running --execute.
 EOF
@@ -72,7 +67,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-# Step 7 is irreversible — every path to it must be explicitly opted into.
+# Step 6 is irreversible — every path to it must be explicitly opted into.
 if [[ "$RENOUNCE_ISSUER" != "1" ]]; then
   if [[ "$DRY_RUN" == "1" || "$SKIP_DEPLOY" == "1" ]]; then
     echo "ERROR: --dry-run / --skip-deploy require --renounce-issuer (or RENOUNCE_ISSUER=1)" >&2
@@ -101,189 +96,48 @@ else
   init_deploy_pipeline_env
 fi
 
-ISSUER_RESERVE_XLM_THRESHOLD="${ISSUER_RESERVE_XLM_THRESHOLD:-5}"
-
 mode_str="deploy-only (no renounce)"
 if [[ "$RENOUNCE_ISSUER" == "1" ]]; then
   if [[ "$DRY_RUN" == "1" ]]; then
-    mode_str="deploy + renounce (DRY-RUN — step 7 builds XDR but does not submit)"
+    mode_str="deploy + renounce (DRY-RUN — step 6 builds XDR but does not submit)"
   elif [[ "$SKIP_DEPLOY" == "1" ]]; then
-    mode_str="RENOUNCE ONLY against existing deploy (skip steps 0-5)"
+    mode_str="RENOUNCE ONLY against existing deploy (skip steps 1-5)"
   else
     mode_str="deploy + RENOUNCE (IRREVERSIBLE)"
   fi
 fi
 print_deploy_banner "Stellar Minter Gateway — Deploy + Renounce  [$mode_str]"
 
-# STEL1-6: pre-existing trustlines / balances / pools predate step 1's
-# AUTH_REQUIRED and auto-authorize outside the wrapper's reach. With no
-# classic-clawback fallback post-renunciation, this preflight is non-skippable.
-preflight_clean_issuer() {
-  echo "[0] Issuer-cleanliness preflight (read-only)..."
-
-  local acct_resp http_code
+# Holders/trustlines established before step 1's AUTH_REQUIRED are auto-authorized
+# and outside the wrapper's block_user reach — un-freezable forever post-renounce.
+assert_clean_issuer() {
+  local http_code acct flags_any holders
   http_code=$(curl -sS -o /tmp/deploy-renounce-acct.json -w '%{http_code}' \
     "$HORIZON_URL/accounts/$ISSUER" || true)
-
   if [[ "$http_code" == "404" ]]; then
-    echo "      Issuer account not found on $STELLAR_NETWORK."
-    echo "      Fund it first. Testnet: curl \"https://friendbot.stellar.org?addr=$ISSUER\""
+    echo "ERROR: issuer $ISSUER not found on $STELLAR_NETWORK. Fund it first." >&2
+    echo "       Testnet: curl \"https://friendbot.stellar.org?addr=$ISSUER\"" >&2
     exit 1
   fi
-  if [[ "$http_code" != "200" ]]; then
-    echo "ERROR: Horizon HTTP $http_code for /accounts/$ISSUER" >&2
-    cat /tmp/deploy-renounce-acct.json >&2 || true
+  [[ "$http_code" != "200" ]] && { echo "ERROR: Horizon HTTP $http_code for /accounts/$ISSUER" >&2; exit 1; }
+  acct=$(cat /tmp/deploy-renounce-acct.json)
+
+  flags_any=$(echo "$acct" | jq -r '[.flags.auth_required, .flags.auth_revocable, .flags.auth_clawback_enabled, .flags.auth_immutable] | any')
+  [[ "$flags_any" == "true" ]] && { echo "ERROR: issuer $ISSUER already has account flags set — contaminated." >&2; exit 1; }
+
+  holders=$(curl -sS "$HORIZON_URL/assets?asset_code=$ASSET_CODE&asset_issuer=$ISSUER" \
+    | jq '([._embedded.records[0]? | (.num_accounts // 0), (.num_claimable_balances // 0), (.num_liquidity_pools // 0)] | add) // 0')
+  if [[ "${holders:-0}" -gt 0 ]]; then
+    echo "ERROR: asset $ASSET_CODE:$ISSUER already has $holders holders/CBs/pools — contaminated." >&2
     exit 1
   fi
-  acct_resp=$(cat /tmp/deploy-renounce-acct.json)
-
-  local flags_bools
-  flags_bools=$(echo "$acct_resp" | jq -r '[.flags.auth_required, .flags.auth_revocable, .flags.auth_clawback_enabled, .flags.auth_immutable] | join(",")')
-  if [[ "$flags_bools" != "false,false,false,false" ]]; then
-    echo "ERROR: issuer already has flags set: $flags_bools — contaminated issuer." >&2
-    exit 1
-  fi
-
-  local assets_resp records_len
-  assets_resp=$(curl -sS "$HORIZON_URL/assets?asset_code=$ASSET_CODE&asset_issuer=$ISSUER")
-  records_len=$(echo "$assets_resp" | jq '._embedded.records | length')
-
-  if [[ "$records_len" -gt 0 ]]; then
-    local na ncb nlp
-    na=$(echo "$assets_resp" | jq -r '._embedded.records[0].num_accounts // 0')
-    ncb=$(echo "$assets_resp" | jq -r '._embedded.records[0].num_claimable_balances // 0')
-    nlp=$(echo "$assets_resp" | jq -r '._embedded.records[0].num_liquidity_pools // 0')
-
-    if [[ "$na" -gt 0 || "$ncb" -gt 0 || "$nlp" -gt 0 ]]; then
-      echo "ERROR: asset $ASSET_CODE:$ISSUER already has holders:" >&2
-      echo "         num_accounts=$na  num_claimable_balances=$ncb  num_liquidity_pools=$nlp" >&2
-      exit 1
-    fi
-  fi
-
-  echo "      issuer flags:          all false ✓"
-  echo "      asset records:         $records_len (na=ncb=nlp=0) ✓"
-  echo ""
-}
-
-# Each check defends against a specific bricked-deploy class. All non-skippable
-# except check 5 (warning only).
-preflight_renounce() {
-  echo "[6] Renounce-issuer preflight (read-only)..."
-
-  local acct_resp http_code
-  http_code=$(curl -sS -o /tmp/deploy-renounce-acct.json -w '%{http_code}' \
-    "$HORIZON_URL/accounts/$ISSUER" || true)
-  if [[ "$http_code" != "200" ]]; then
-    echo "ERROR: Horizon HTTP $http_code for /accounts/$ISSUER" >&2
-    exit 1
-  fi
-  acct_resp=$(cat /tmp/deploy-renounce-acct.json)
-
-  # 1. Flags must match step-1 exactly. Step 7 makes them immutable forever.
-  local flags_num
-  flags_num=$(echo "$acct_resp" | jq -r '
-    .flags |
-    (if .auth_required then 1 else 0 end)
-    + (if .auth_revocable then 2 else 0 end)
-    + (if .auth_immutable then 4 else 0 end)
-    + (if .auth_clawback_enabled then 8 else 0 end)
-  ')
-  if [[ "$flags_num" != "$EXPECTED_FLAGS_PRE_RENOUNCE" ]]; then
-    echo "ERROR: issuer flags = $flags_num, expected $EXPECTED_FLAGS_PRE_RENOUNCE (REQUIRED|REVOCABLE|CLAWBACK_ENABLED)" >&2
-    echo "$acct_resp" | jq -r '.flags' >&2
-    exit 1
-  fi
-  echo "      issuer flags:          $flags_num (REQUIRED|REVOCABLE|CLAWBACK_ENABLED) ✓"
-
-  # 2. Master must be the only signer. An extra signer would retain control
-  # after master_weight=0 — the opposite of the intent.
-  local n_signers
-  n_signers=$(echo "$acct_resp" | jq '.signers | length')
-  if [[ "$n_signers" != "1" ]]; then
-    echo "ERROR: issuer has $n_signers signers; expected 1 (master only)" >&2
-    echo "$acct_resp" | jq -r '.signers[] | "         \(.key) weight=\(.weight)"' >&2
-    exit 1
-  fi
-  local signer_key signer_weight
-  signer_key=$(echo "$acct_resp" | jq -r '.signers[0].key')
-  signer_weight=$(echo "$acct_resp" | jq -r '.signers[0].weight')
-  if [[ "$signer_key" != "$ISSUER" || "$signer_weight" != "1" ]]; then
-    echo "ERROR: issuer signer mismatch — key=$signer_key weight=$signer_weight (expected $ISSUER weight=1)" >&2
-    exit 1
-  fi
-  echo "      signers:               [master weight=1] ✓"
-
-  # 3. SAC admin must be the wrapper. Otherwise renouncing strands the asset.
-  local sac_admin
-  sac_admin=$(stellar contract invoke \
-    --source-account "$DEPLOYER_KEY" \
-    --network "$STELLAR_NETWORK" \
-    --send=no \
-    --id "$SAC_CONTRACT_ID" \
-    -- \
-    admin \
-    | tr -d '\r\n"')
-  if [[ "$sac_admin" != "$WRAPPER_CONTRACT_ID" ]]; then
-    echo "ERROR: SAC.admin() = $sac_admin, expected wrapper $WRAPPER_CONTRACT_ID (step 5 didn't land?)" >&2
-    exit 1
-  fi
-  echo "      SAC.admin():           $sac_admin (== wrapper) ✓"
-
-  # 4. Wrapper admin must be the configured G-account.
-  local wrapper_admin
-  wrapper_admin=$(stellar contract invoke \
-    --source-account "$DEPLOYER_KEY" \
-    --network "$STELLAR_NETWORK" \
-    --send=no \
-    --id "$WRAPPER_CONTRACT_ID" \
-    -- \
-    admin \
-    | tr -d '\r\n"')
-  if [[ "$wrapper_admin" != "$ADMIN" ]]; then
-    echo "ERROR: wrapper.admin() = $wrapper_admin, expected $ADMIN" >&2
-    exit 1
-  fi
-  echo "      wrapper.admin():       $wrapper_admin ✓"
-
-  # 5. Warn on excess XLM (locked forever post-step-7). awk for floating-point.
-  local xlm
-  xlm=$(echo "$acct_resp" | jq -r '.balances[] | select(.asset_type=="native") | .balance')
-  if awk -v xlm="$xlm" -v t="$ISSUER_RESERVE_XLM_THRESHOLD" 'BEGIN{exit !(xlm+0 > t+0)}'; then
-    echo "      WARNING: issuer XLM $xlm > threshold $ISSUER_RESERVE_XLM_THRESHOLD — anything above min reserve will be locked"
-  else
-    echo "      issuer XLM:            $xlm (≤ threshold $ISSUER_RESERVE_XLM_THRESHOLD) ✓"
-  fi
-
-  # 6. Mainnet --execute: require interactive passphrase confirm.
-  if [[ "$EXECUTE" == "1" && "$STELLAR_NETWORK" == "public" && "$DRY_RUN" == "0" ]]; then
-    local expected_passphrase confirmation
-    expected_passphrase=$(passphrase_for "$STELLAR_NETWORK")
-    echo ""
-    echo "      ============================================================"
-    echo "      ABOUT TO PERMANENTLY BRICK THE ISSUER ON MAINNET"
-    echo "        Issuer: $ISSUER"
-    echo "      ============================================================"
-    echo "      Type the network passphrase verbatim to proceed:"
-    echo "        ($expected_passphrase)"
-    printf "      > "
-    IFS= read -r confirmation
-    if [[ "$confirmation" != "$expected_passphrase" ]]; then
-      echo "ERROR: passphrase mismatch. Aborting." >&2
-      exit 1
-    fi
-    echo "      passphrase confirmed ✓"
-  fi
-
-  echo "      ✓ preflight passed."
-  echo ""
 }
 
 # Single atomic SetOptionsOp: master_weight=0 + AUTH_IMMUTABLE, signed by the
 # master against pre-op signer state. After this lands, the master can never
 # sign again and the flag set is locked forever.
 renounce() {
-  echo "[7] [ISSUER] Renouncing issuer key (set-immutable + master-weight 0)..."
+  echo "[6] [ISSUER] Renouncing issuer key (set-immutable + master-weight 0)..."
 
   if [[ "$DRY_RUN" == "1" ]]; then
     echo "      DRY-RUN: building tx envelope (--build-only), NOT submitting."
@@ -314,7 +168,7 @@ renounce() {
 # successful burn. NO transaction submission — for behavioral confirmation
 # (submit-then-expect-TxBadAuth), run scripts/verify-issuer-burned.sh --probe.
 verify_renounced() {
-  echo "[8] Post-renounce verification (on-chain read)..."
+  echo "[7] Post-renounce verification (on-chain read)..."
 
   local acct_resp http_code
   http_code=$(curl -sS -o /tmp/deploy-renounce-acct.json -w '%{http_code}' \
@@ -401,7 +255,7 @@ EOF
 }
 
 if [[ "$SKIP_DEPLOY" == "0" ]]; then
-  preflight_clean_issuer
+  assert_clean_issuer
   step_1_issuer_set_options
   step_2_deploy_sac
   step_3_upload_wasm
@@ -416,7 +270,6 @@ else
 fi
 
 if [[ "$RENOUNCE_ISSUER" == "1" ]]; then
-  preflight_renounce
   renounce
   [[ "$DRY_RUN" == "0" ]] && verify_renounced
 else

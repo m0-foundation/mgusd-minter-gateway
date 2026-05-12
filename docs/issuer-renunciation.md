@@ -29,18 +29,16 @@ The wrapper admin is a separate Stellar account passed to the wrapper's `__const
 
 | Step | Signer | What happens |
 |---|---|---|
-| **0** | — (read-only) | Preflight: assert issuer has no pre-existing flags / trustlines / balances / pools |
 | **1** | Issuer | `set_options` → `AUTH_REQUIRED \| AUTH_REVOCABLE \| AUTH_CLAWBACK_ENABLED` |
 | **2** | Deployer | Deploy the Stellar Asset Contract (SAC) for `(code, issuer)` |
 | **3** | Deployer | Upload the wrapper contract WASM |
 | **4** | Deployer | Deploy the wrapper + run `__constructor` with the 8 role pubkeys |
 | **5** | Issuer | Transfer SAC admin from issuer to wrapper |
 | **smoke** | Deployer | Read `wrapper.admin()` — verify the deploy landed correctly |
-| **6** | — (read-only) | Renounce preflight: assert flags, signers, SAC admin, wrapper admin |
-| **7** | Issuer | `set_options` → `AUTH_IMMUTABLE + master_weight = 0`  ⚠️ **IRREVERSIBLE** |
-| **8** | — (read-only) | Verify post-renounce chain state |
+| **6** | Issuer | `set_options` → `AUTH_IMMUTABLE + master_weight = 0`  ⚠️ **IRREVERSIBLE** |
+| **7** | — (read-only) | Verify post-renounce chain state |
 
-Steps 1–5 plus the smoke test mirror `scripts/deploy-testnet.sh` exactly (they share the same code via `scripts/lib/deploy-pipeline.sh`). Steps 0, 6, 7, and 8 are renounce-specific.
+Steps 1–5 plus the smoke test mirror `scripts/deploy-testnet.sh` exactly (they share the same code via `scripts/lib/deploy-pipeline.sh`). Steps 6 and 7 are renounce-specific.
 
 ## The compliance trade-off
 
@@ -53,15 +51,14 @@ Renouncing forfeits the classic-Stellar issuer levers. The wrapper has equivalen
 | `AllowTrustOp` setting `AUTHORIZED` (unfreeze) | `unblock_user` — SAC `set_authorized(true)` |
 | Future `set_options` flag changes | **None** — flags are locked by `AUTH_IMMUTABLE` |
 
-The "no future flag changes" gap is why step 6 enforces the exact pre-renounce flag set: wrong flags become wrong forever.
+The "no future flag changes" gap means the step 1 flag set is what you live with forever — get it right before step 6.
 
 ## Safety properties
 
-- **Opt-in.** Step 7 only runs if `--renounce-issuer` is set explicitly. Default behavior is steps 0–5 only — equivalent to `deploy-testnet.sh`.
+- **Opt-in.** Step 6 only runs if `--renounce-issuer` is set explicitly. Default behavior is steps 1–5 only — equivalent to `deploy-testnet.sh`.
 - **Dry-run.** `--dry-run` builds the renounce transaction's XDR and prints it without submitting, so operators can review before committing.
-- **Mainnet confirmation gate.** On `--execute --network=public`, the operator must type the network passphrase verbatim to proceed.
-- **Six preflight checks.** Step 6 verifies issuer flags, signer list, SAC admin, wrapper admin, and XLM reserve before letting step 7 fire. Any anomaly aborts.
-- **Clean-issuer enforcement.** Step 0 makes the "deploy onto a clean issuer" property load-bearing in code, not just in the runbook.
+- **Clean-issuer assertion.** Before step 1, the script aborts if the issuer already has account flags, holders, claimable balances, or liquidity pools. Pre-existing holders auto-authorize past `AUTH_REQUIRED` and are un-freezable post-renounce.
+- **Post-renounce verification.** Step 7 reads chain state back and asserts master weight, AUTH_IMMUTABLE, and the admin invariants. For behavioral confirmation, run `./scripts/verify-issuer-burned.sh --probe` separately.
 
 ## After renunciation
 
