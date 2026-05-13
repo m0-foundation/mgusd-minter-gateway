@@ -57,7 +57,7 @@ The "no future flag changes" gap means the step 1 flag set is what you live with
 
 - **Opt-in.** Step 6 only runs if `--renounce-issuer` is set explicitly. Default behavior is steps 1–5 only — equivalent to `deploy-testnet.sh`.
 - **Dry-run.** `--dry-run` builds the renounce transaction's XDR and prints it without submitting, so operators can review before committing.
-- **Clean-issuer assertion.** Before step 1, the script aborts if the issuer already has account flags, holders, claimable balances, or liquidity pools. Pre-existing holders auto-authorize past `AUTH_REQUIRED` and are un-freezable post-renounce.
+- **Clean-issuer assertion.** Before step 1, the script aborts if the issuer already has account flags, holders, claimable balances, or liquidity pools. Pre-existing trustlines bypass `AUTH_REQUIRED` (they auto-authorize because the issuer had no flags at create time) **and cannot be clawed back** — the per-trustline `TRUSTLINE_CLAWBACK_ENABLED` bit is set only at trustline creation and only if the issuer has `AUTH_CLAWBACK_ENABLED` at that moment. After renunciation, `force_transfer` (which routes through SAC clawback) fails on those holders forever. Block/unblock still works on them — that gates on the issuer's `AUTH_REVOCABLE` flag, which step 1 sets, not on a per-trustline bit.
 - **Post-renounce verification.** Step 7 reads chain state back and asserts master weight, AUTH_IMMUTABLE, and the admin invariants. For behavioral confirmation, run `./scripts/verify-issuer-burned.sh --probe` separately.
 
 ## After renunciation

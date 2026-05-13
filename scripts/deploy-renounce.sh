@@ -108,8 +108,10 @@ if [[ "$RENOUNCE_ISSUER" == "1" ]]; then
 fi
 print_deploy_banner "Stellar Minter Gateway — Deploy + Renounce  [$mode_str]"
 
-# Holders/trustlines established before step 1's AUTH_REQUIRED are auto-authorized
-# and outside the wrapper's block_user reach — un-freezable forever post-renounce.
+# Trustlines established before step 1 lack the per-trustline TRUSTLINE_CLAWBACK_ENABLED
+# bit (which is set only at create time, only if the issuer has AUTH_CLAWBACK_ENABLED then).
+# After renunciation those holders are un-clawback-able forever — wrapper.force_transfer
+# fails on them. Block/unblock still works (gates on AUTH_REVOCABLE, not a per-trustline bit).
 assert_clean_issuer() {
   local http_code acct flags_any holders
   http_code=$(curl -sS -o /tmp/deploy-renounce-acct.json -w '%{http_code}' \
@@ -125,8 +127,11 @@ assert_clean_issuer() {
   flags_any=$(echo "$acct" | jq -r '[.flags.auth_required, .flags.auth_revocable, .flags.auth_clawback_enabled, .flags.auth_immutable] | any')
   [[ "$flags_any" == "true" ]] && { echo "ERROR: issuer $ISSUER already has account flags set — contaminated." >&2; exit 1; }
 
+  # Sum trustline counts (authorized + AML + unauthorized) plus claimable balances and
+  # liquidity pools for (asset_code, issuer). Zero confirms nobody has established any
+  # relationship with this asset yet — i.e. the issuer is clean for our deploy.
   holders=$(curl -sS "$HORIZON_URL/assets?asset_code=$ASSET_CODE&asset_issuer=$ISSUER" \
-    | jq '([._embedded.records[0]? | (.num_accounts // 0), (.num_claimable_balances // 0), (.num_liquidity_pools // 0)] | add) // 0')
+    | jq '([._embedded.records[0]? | (.accounts.authorized // 0), (.accounts.authorized_to_maintain_liabilities // 0), (.accounts.unauthorized // 0), (.num_claimable_balances // 0), (.num_liquidity_pools // 0)] | add) // 0')
   if [[ "${holders:-0}" -gt 0 ]]; then
     echo "ERROR: asset $ASSET_CODE:$ISSUER already has $holders holders/CBs/pools — contaminated." >&2
     exit 1
