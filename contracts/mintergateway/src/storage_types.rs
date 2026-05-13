@@ -44,5 +44,6 @@ pub enum DataKey {
     BlockOperator(Address),
     /// Instance: () — membership set; presence allows `unblock_user` / `batch_unblock_users`
     UnblockOperator(Address),
-    Pauser, // Instance: Address (can pause/unpause the contract)
+    /// Instance: () — membership set; presence allows `pause` / `unpause`
+    Pauser(Address),
 }

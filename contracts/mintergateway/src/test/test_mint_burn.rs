@@ -75,21 +75,20 @@ fn test_burn_decreases_principal() {
     s.contract.mint(&s.minter, &s.yield_recipient, &initial);
     assert_eq!(s.contract.total_principal(), initial);
 
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     let yield_before_burn = s.contract.accrued_yield();
     assert!(yield_before_burn > 0);
 
-    // Burn half — PV conversion: pv_burn = burn_amount * INDEX_SCALE / current_index
-    // Use current_index because burn() calls update_index() which advances latest_index
+    // Burn half — PV uses ceil rounding against the post-update_index value.
     let burn_amount = 500_000 * DECIMALS;
     let idx_at_burn = s.contract.current_index();
     s.contract.burn(&s.minter, &s.yield_recipient, &burn_amount);
 
     // Principal reduced by PV of burn amount
-    let pv_burn = burn_amount * INDEX_SCALE / idx_at_burn;
+    let pv_burn = pv_ceil(burn_amount, idx_at_burn);
 
     // Assert emitted events before any view calls — they reset the host event buffer.
     // Time advanced since the last update, so burn emits UpdateIndex first, then Burn.
@@ -136,16 +135,16 @@ fn test_burn_exactly_principal() {
     let initial = 1_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &initial);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     let claimed = s.contract.claim_yield(&s.yield_recipient_manager);
 
-    // After index growth, PV of `initial` < `initial` (index > INDEX_SCALE),
-    // so burning `initial` nominal tokens removes pv_burn < initial from principal.
+    // After index growth, PV of `initial` < `initial`, so burning `initial`
+    // nominal tokens removes pv_burn < initial from principal.
     let latest_idx = s.contract.latest_index();
-    let pv_burn = initial * INDEX_SCALE / latest_idx;
+    let pv_burn = pv_ceil(initial, latest_idx);
     s.contract.burn(&s.minter, &s.yield_recipient, &initial);
 
     // Principal has a small residual from PV rounding
@@ -164,7 +163,7 @@ fn test_burn_exceeding_principal_reverts() {
     let initial = 1_000 * DECIMALS;
 
     s.contract.mint(&s.minter, &s.yield_recipient, &initial);
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
 
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
@@ -185,10 +184,9 @@ fn test_burn_exceeding_principal_reverts() {
 }
 
 /// When index > 1.0, PV conversion shrinks the burn amount (pv < nominal).
-/// This means the PV guard in `decrease_both_accumulators` alone would allow
-/// burning more tokens than `total_supply`. The `checked_sub` on `total_supply`
-/// inside `decrease_both_accumulators` panics before SAC clawback even runs
-/// (accumulators are updated before clawback in `burn`).
+/// The PV check alone would let `burn` proceed past `total_supply`, so the
+/// nominal supply guard in `decrease_both_accumulators` returns a typed
+/// `BurnExceedsSupply` error before any state mutates.
 #[test]
 fn test_burn_exceeding_total_supply_reverts() {
     let s = setup();
@@ -199,17 +197,17 @@ fn test_burn_exceeding_total_supply_reverts() {
     s.contract.mint(&s.minter, &user, &mint_amount);
 
     // Grow index so PV conversion shrinks amounts
-    s.contract.set_rate(&s.minter, &500); // 5%
+    s.contract.set_interest_rate(&s.minter, &500); // 5%
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Try to burn 1 more than total_supply.
-    // PV ≈ 951 which is < total_principal (1000), so the PV guard passes.
-    // But checked_sub on total_supply panics — amount > total_supply.
+    // PV ≈ 951 which is < total_principal (1000), so the PV guard alone would pass.
+    // The nominal supply guard must catch this before total_supply underflows.
     let overshoot = mint_amount + 1;
     let result = s.contract.try_burn(&s.minter, &user, &overshoot);
-    assert!(
-        result.is_err(),
-        "checked_sub should panic when amount > total_supply"
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        crate::MinterGatewayError::BurnExceedsSupply,
     );
 
     // Accumulators unchanged — no state corruption
@@ -275,9 +273,9 @@ fn test_unauthorized_account_cannot_receive_mint() {
     // Do NOT authorize — user is unauthorized by default (AUTH_REQUIRED)
     assert!(s.contract.blocked(&user));
 
-    // Minting to unauthorized account should fail
+    // Minting to an unauthorized account returns the typed NoTrustline error, not a host trap (FIND-005).
     let result = s.contract.try_mint(&s.minter, &user, &(1_000 * DECIMALS));
-    assert!(result.is_err());
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::NoTrustline)));
 }
 
 #[test]
