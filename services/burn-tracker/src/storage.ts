@@ -81,6 +81,13 @@ export class Storage {
     this.db.prepare("UPDATE state SET sac_ledger = MAX(sac_ledger, ?) WHERE id = 1").run(ledger);
   }
 
+  getPendingAmount(): string {
+    const row = this.db
+      .prepare("SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) as total FROM burns WHERE reconciled = 0")
+      .get() as { total: number };
+    return row.total.toFixed(7);
+  }
+
   getBurns(): BurnRecord[] {
     const rows = this.db
       .prepare("SELECT * FROM burns ORDER BY ledger ASC")
