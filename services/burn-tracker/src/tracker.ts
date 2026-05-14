@@ -33,11 +33,15 @@ export class BurnTracker {
 
     const { sequence: latestLedger } = await this.rpc.getLatestLedger();
 
-    await Promise.all([
+    const loops = [
       this.backfillSacEvents(latestLedger),
       this.pollSacEvents(latestLedger),
-      this.retryPendingLoop(),
-    ]);
+    ];
+    if (!this.config.dryRun) {
+      loops.push(this.retryPendingLoop());
+    }
+
+    await Promise.all(loops);
   }
 
   private async retryPendingLoop(): Promise<void> {

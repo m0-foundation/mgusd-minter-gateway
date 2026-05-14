@@ -33,6 +33,8 @@ export interface Config {
   adminPublicKey: string;
   /** How often to retry unreconciled burns, in milliseconds */
   retryPendingIntervalMs: number;
+  /** If true, detect and store burns but do not submit reconcile_burn transactions */
+  dryRun: boolean;
 }
 
 function requireEnv(name: string): string {
@@ -47,9 +49,14 @@ export function loadConfig(): Config {
     throw new Error("START_LEDGER must be a positive integer");
   }
 
-  const fireblocksSecretPath = requireEnv("FIREBLOCKS_SECRET_PATH");
-  if (!fs.existsSync(fireblocksSecretPath)) {
-    throw new Error(`FIREBLOCKS_SECRET_PATH file not found: ${fireblocksSecretPath}`);
+  const dryRun = process.env.DRY_RUN === "true";
+
+  let fireblocksSecretPath = "";
+  if (!dryRun) {
+    fireblocksSecretPath = requireEnv("FIREBLOCKS_SECRET_PATH");
+    if (!fs.existsSync(fireblocksSecretPath)) {
+      throw new Error(`FIREBLOCKS_SECRET_PATH file not found: ${fireblocksSecretPath}`);
+    }
   }
 
   return {
@@ -61,13 +68,14 @@ export function loadConfig(): Config {
     sacContractId: requireEnv("SAC_CONTRACT_ID"),
     contractId: requireEnv("CONTRACT_ID"),
     sorobanRpcUrl: requireEnv("SOROBAN_RPC_URL"),
-    networkPassphrase: requireEnv("SOROBAN_NETWORK_PASSPHRASE"),
-    fireblocksApiKey: requireEnv("FIREBLOCKS_API_KEY"),
+    networkPassphrase: dryRun ? "" : requireEnv("SOROBAN_NETWORK_PASSPHRASE"),
+    fireblocksApiKey: dryRun ? "" : requireEnv("FIREBLOCKS_API_KEY"),
     fireblocksSecretPath,
-    fireblocksVaultAccountId: requireEnv("FIREBLOCKS_VAULT_ACCOUNT_ID"),
-    fireblocksAssetId: requireEnv("FIREBLOCKS_ASSET_ID"),
+    fireblocksVaultAccountId: dryRun ? "" : requireEnv("FIREBLOCKS_VAULT_ACCOUNT_ID"),
+    fireblocksAssetId: dryRun ? "" : requireEnv("FIREBLOCKS_ASSET_ID"),
     fireblocksBasePath: process.env.FIREBLOCKS_BASE_PATH ?? "sandbox",
-    adminPublicKey: requireEnv("ADMIN_PUBLIC_KEY"),
+    adminPublicKey: dryRun ? "" : requireEnv("ADMIN_PUBLIC_KEY"),
     retryPendingIntervalMs: parseInt(process.env.RETRY_PENDING_INTERVAL_MS ?? "60000", 10),
+    dryRun,
   };
 }
