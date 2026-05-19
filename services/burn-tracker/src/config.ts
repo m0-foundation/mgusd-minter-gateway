@@ -35,14 +35,8 @@ export interface Config {
   fireblocksBasePath: string;
   /** Admin public key (G...) */
   adminPublicKey: string;
-  /** How often to retry unreconciled burns, in milliseconds */
-  retryPendingIntervalMs: number;
   /** If true, detect and store burns but do not submit reconcile_burn transactions */
   dryRun: boolean;
-  /** Whether to enable the HTTP status API */
-  apiEnabled: boolean;
-  /** HTTP port for the status API */
-  apiPort: number;
 }
 
 function requireEnv(name: string): string {
@@ -85,9 +79,6 @@ export function loadConfig(): Config {
     fireblocksAssetId: dryRun ? "" : requireEnv("FIREBLOCKS_ASSET_ID"),
     fireblocksBasePath: process.env.FIREBLOCKS_BASE_PATH ?? "sandbox",
     adminPublicKey: dryRun ? "" : requireEnv("ADMIN_PUBLIC_KEY"),
-    retryPendingIntervalMs: parseInt(process.env.RETRY_PENDING_INTERVAL_MS ?? "60000", 10),
     dryRun,
-    apiEnabled: process.env.API_ENABLED === "true",
-    apiPort: parseInt(process.env.API_PORT ?? "3000", 10),
   };
 }

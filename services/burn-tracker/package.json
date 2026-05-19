@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "start": "ts-node src/index.ts",
-    "build": "tsc",
-    "start:dist": "node dist/index.js"
+    "build": "esbuild src/lambda.ts --bundle --platform=node --target=node20 --outfile=dist/lambda.js"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.0.0",
@@ -16,6 +15,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.2.1",
+    "esbuild": "^0.25.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

@@ -4,8 +4,6 @@ import { Reconciler } from "./reconciler";
 import { Storage } from "./storage";
 import { BurnRecord } from "./types";
 
-const SAC_POLL_INTERVAL_MS = 6_000;
-
 function stroopsToAmount(stroops: bigint): string {
   const UNIT = 10_000_000n;
   const whole = stroops / UNIT;
@@ -29,29 +27,13 @@ export class BurnTracker {
   async run(): Promise<void> {
     console.log(`[burn-tracker] Asset: ${this.config.assetCode}:${this.config.assetIssuer}`);
     console.log(`[burn-tracker] SAC:   ${this.config.sacContractId}`);
-    console.log(`[burn-tracker] Known burns so far: ${(await this.storage.getBurns()).length}`);
 
     const { sequence: latestLedger } = await this.rpc.getLatestLedger();
 
-    const loops = [
-      this.backfillSacEvents(latestLedger),
-      this.pollSacEvents(latestLedger),
-    ];
+    await this.backfillSacEvents(latestLedger);
+
     if (!this.config.dryRun) {
-      loops.push(this.retryPendingLoop());
-    }
-
-    await Promise.all(loops);
-  }
-
-  private async retryPendingLoop(): Promise<void> {
-    while (true) {
-      try {
-        await this.reconciler.retryPending();
-      } catch (err) {
-        console.error("[burn-tracker] retryPending error:", err);
-      }
-      await new Promise((r) => setTimeout(r, this.config.retryPendingIntervalMs));
+      await this.reconciler.retryPending();
     }
   }
 
@@ -105,50 +87,6 @@ export class BurnTracker {
     console.log(`[burn-tracker] Backfill SAC events complete — ${count} burn(s).`);
   }
 
-  private async pollSacEvents(fromLedger: number): Promise<void> {
-    console.log(`[burn-tracker] Polling SAC events from ledger ${fromLedger}...`);
-    while (true) {
-      await new Promise((r) => setTimeout(r, SAC_POLL_INTERVAL_MS));
-      try {
-        fromLedger = Math.max(await this.storage.getSacLedger() + 1, fromLedger);
-        let eventCursor: string | undefined;
-
-        while (true) {
-          const request: SorobanRpc.Api.GetEventsRequest = eventCursor
-            ? { filters: this.sacEventFilters(), cursor: eventCursor, limit: 200 }
-            : { filters: this.sacEventFilters(), startLedger: fromLedger, limit: 200 };
-
-          const response = await this.rpc.getEvents(request);
-
-          if (response.events.length > 0) {
-            console.log(`[burn-tracker] SAC poll: ${response.events.length} event(s) ledger ${fromLedger}-${response.latestLedger}`);
-          }
-
-          for (const event of this.extractDirectBurns(response.events)) {
-            console.log(`[burn-tracker]   sac event ${event.id} ledger=${event.ledger} txHash=${event.txHash}`);
-            const burn = this.sacEventToRecord(event);
-            if (burn) {
-              console.log(`[burn-tracker] Burn: ${burn.amount} from ${burn.from} tx ${burn.txHash}`);
-              this.reconciler.reconcile(burn).catch((err) => {
-                console.error("[burn-tracker] Reconcile error:", err);
-              });
-            }
-          }
-
-          await this.storage.advanceSacLedger(response.latestLedger);
-
-          if (response.events.length < 200) break;
-          eventCursor = response.cursor;
-        }
-      } catch (err) {
-        console.error("[burn-tracker] SAC poll error:", err);
-      }
-    }
-  }
-
-  /**
-   * We reconcile only SAC burns whose txHash has no corresponding wrapper burn.
-   */
   private sacEventFilters(): SorobanRpc.Api.EventFilter[] {
     return [
       { type: "contract", contractIds: [this.config.sacContractId] },
