@@ -1,0 +1,62 @@
+name: release-contract
+
+# Builds the MGUSD wrapper contract reproducibly and publishes a GitHub release
+# with build provenance attestation. The resulting WASM embeds:
+#   - source_repo = github:m0-foundation/stellar-minter-gateway#<commit-sha>
+#   - home_domain = mgusd.m0.org
+#
+# Block explorers (lab.stellar.org, stellar.expert) read source_repo from the
+# deployed WASM's contractmetav0 section and verify it against the GitHub
+# attestation at:
+#   https://api.github.com/repos/m0-foundation/stellar-minter-gateway/attestations/sha256:<wasm-hash>
+#
+# Spec: SEP-0055 (Contract Source Validation)
+#   https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0055.md
+#
+# Determinism inputs pinned for reproducibility:
+#   - Rust toolchain: rust-toolchain.toml (channel = "1.94.0")
+#   - Cargo deps:     Cargo.lock + --locked (handled inside the reusable workflow)
+#   - Build pipeline: stellar-expert/soroban-build-workflow pinned by SHA below
+#   - Runner:         pinned inside the reusable workflow
+
+on:
+  # Tag a release with `git tag v1.0.0 && git push --tags` to trigger.
+  push:
+    tags:
+      - 'v*'
+  # Manual run for testing.
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Release name / tag (e.g. v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  id-token: write       # OIDC token for attestation signing
+  contents: write       # Create GitHub release + upload WASM asset
+  attestations: write   # Publish build provenance attestation
+
+jobs:
+  release:
+    # Pinned to v25.1.0 by commit SHA. Bump deliberately — any change here
+    # produces a different WASM hash even with identical source.
+    uses: stellar-expert/soroban-build-workflow/.github/workflows/release.yml@e43b241f114bcf02151c30d61088506c6ad3ae0b
+    with:
+      release_name: ${{ inputs.release_name || github.ref_name }}
+      package: mintergateway
+      relative_path: '["contracts/mintergateway"]'
+      home_domain: mgusd.m0.org
+      release_description: |
+        Reproducible build of the MGUSD wrapper contract.
+
+        Verify the build:
+          stellar contract info build --wasm <downloaded-wasm>
+
+        Or against a deployed contract:
+          stellar contract info build \
+            --rpc-url https://mainnet.sorobanrpc.com \
+            --network-passphrase "Public Global Stellar Network ; September 2015" \
+            --contract-id <contract-id>
+    secrets:
+      release_token: ${{ secrets.GITHUB_TOKEN }}
