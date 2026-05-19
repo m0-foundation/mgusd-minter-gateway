@@ -9,8 +9,12 @@ export interface Config {
   assetIssuer: string;
   /** Ledger sequence to start scanning from */
   startLedger: number;
-  /** Path to the SQLite database file used to persist burns and the cursor. */
-  dbPath: string;
+  /** AWS region for DynamoDB */
+  awsRegion: string;
+  /** DynamoDB table name for burn records */
+  burnsTableName: string;
+  /** DynamoDB table name for tracker state (sac_ledger cursor) */
+  stateTableName: string;
   /** SAC contract address (C...) — used to detect burns via Soroban events */
   sacContractId: string;
   /** Wrapper contract ID (C...) */
@@ -68,7 +72,9 @@ export function loadConfig(): Config {
     assetCode: requireEnv("ASSET_CODE"),
     assetIssuer: requireEnv("ASSET_ISSUER"),
     startLedger,
-    dbPath: process.env.DB_PATH ?? "./burns.db",
+    awsRegion: process.env.AWS_REGION ?? "us-east-1",
+    burnsTableName: process.env.BURNS_TABLE_NAME ?? "Burns",
+    stateTableName: process.env.STATE_TABLE_NAME ?? "BurnTrackerState",
     sacContractId: requireEnv("SAC_CONTRACT_ID"),
     contractId: requireEnv("CONTRACT_ID"),
     sorobanRpcUrl: requireEnv("SOROBAN_RPC_URL"),

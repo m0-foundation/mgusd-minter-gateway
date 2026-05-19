@@ -1,98 +1,138 @@
-import Database from "better-sqlite3";
+import { ConditionalCheckFailedException, DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  GetCommand,
+  PutCommand,
+  ScanCommand,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
 import { BurnRecord } from "./types";
 
 export class Storage {
-  private readonly db: Database.Database;
+  private readonly client: DynamoDBDocumentClient;
+  private readonly burnsTable: string;
+  private readonly stateTable: string;
 
-  constructor(dbPath: string) {
-    this.db = new Database(dbPath);
-    this.db.pragma("journal_mode = WAL");
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS state (
-        id          INTEGER PRIMARY KEY CHECK (id = 1),
-        sac_ledger  INTEGER NOT NULL DEFAULT 0
+  constructor(region: string, burnsTable: string, stateTable: string) {
+    const dynamo = new DynamoDBClient({ region });
+    this.client = DynamoDBDocumentClient.from(dynamo);
+    this.burnsTable = burnsTable;
+    this.stateTable = stateTable;
+  }
+
+  async hasReconciledBurn(txHash: string, operationIndex: number): Promise<boolean> {
+    const result = await this.client.send(
+      new GetCommand({
+        TableName: this.burnsTable,
+        Key: { tx_hash: txHash, operation_index: operationIndex },
+        ProjectionExpression: "reconciled",
+      }),
+    );
+    return result.Item?.reconciled === 1;
+  }
+
+  async addBurn(record: BurnRecord, reconcileTxHash?: string): Promise<void> {
+    const item: Record<string, unknown> = {
+      tx_hash: record.txHash,
+      operation_id: record.operationId,
+      operation_index: record.operationIndex,
+      ledger: record.ledger,
+      timestamp: record.timestamp,
+      from_address: record.from,
+      amount: record.amount,
+      reconciled: reconcileTxHash ? 1 : 0,
+    };
+    if (reconcileTxHash) item.reconcile_tx_hash = reconcileTxHash;
+
+    try {
+      await this.client.send(
+        new PutCommand({
+          TableName: this.burnsTable,
+          Item: item,
+          ConditionExpression: "attribute_not_exists(tx_hash)",
+        }),
       );
-      INSERT OR IGNORE INTO state (id, sac_ledger) VALUES (1, 0);
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) return;
+      throw err;
+    }
+  }
 
-      CREATE TABLE IF NOT EXISTS burns (
-        tx_hash           TEXT NOT NULL,
-        operation_id      TEXT NOT NULL,
-        operation_index   INTEGER NOT NULL,
-        ledger            INTEGER NOT NULL,
-        timestamp         TEXT NOT NULL,
-        from_address      TEXT NOT NULL,
-        amount            TEXT NOT NULL,
-        reconciled        INTEGER NOT NULL DEFAULT 0,
-        reconcile_tx_hash TEXT,
-        PRIMARY KEY (tx_hash, operation_index)
+  async markReconciled(txHash: string, operationIndex: number, reconcileTxHash: string): Promise<void> {
+    await this.client.send(
+      new UpdateCommand({
+        TableName: this.burnsTable,
+        Key: { tx_hash: txHash, operation_index: operationIndex },
+        UpdateExpression: "SET reconciled = :one, reconcile_tx_hash = :hash",
+        ExpressionAttributeValues: { ":one": 1, ":hash": reconcileTxHash },
+      }),
+    );
+  }
+
+  async getPendingReconciliation(): Promise<BurnRecord[]> {
+    const items = await this.scanAll({
+      TableName: this.burnsTable,
+      FilterExpression: "reconciled = :zero",
+      ExpressionAttributeValues: { ":zero": 0 },
+    });
+    return items.map(toRecord).sort((a, b) => a.ledger - b.ledger);
+  }
+
+  async getSacLedger(): Promise<number> {
+    const result = await this.client.send(
+      new GetCommand({
+        TableName: this.stateTable,
+        Key: { id: "1" },
+        ProjectionExpression: "sac_ledger",
+      }),
+    );
+    return (result.Item?.sac_ledger as number | undefined) ?? 0;
+  }
+
+  async advanceSacLedger(ledger: number): Promise<void> {
+    try {
+      await this.client.send(
+        new UpdateCommand({
+          TableName: this.stateTable,
+          Key: { id: "1" },
+          UpdateExpression: "SET sac_ledger = :new",
+          ConditionExpression: "attribute_not_exists(sac_ledger) OR sac_ledger < :new",
+          ExpressionAttributeValues: { ":new": ledger },
+        }),
       );
-    `);
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) return;
+      throw err;
+    }
   }
 
-  hasReconciledBurn(txHash: string, operationIndex: number): boolean {
-    const row = this.db
-      .prepare("SELECT 1 FROM burns WHERE tx_hash = ? AND operation_index = ? AND reconciled = 1")
-      .get(txHash, operationIndex);
-    return row !== undefined;
+  async getPendingAmount(): Promise<string> {
+    const items = await this.scanAll({
+      TableName: this.burnsTable,
+      FilterExpression: "reconciled = :zero",
+      ExpressionAttributeValues: { ":zero": 0 },
+      ProjectionExpression: "amount",
+    });
+    const total = items.reduce((sum, item) => sum + parseFloat((item as { amount: string }).amount), 0);
+    return total.toFixed(7);
   }
 
-  /** Inserts burn record. If reconcileTxHash provided — stores as reconciled=1, otherwise reconciled=0. */
-  addBurn(record: BurnRecord, reconcileTxHash?: string): void {
-    this.db
-      .prepare(
-        `INSERT OR IGNORE INTO burns
-           (tx_hash, operation_id, operation_index, ledger, timestamp, from_address, amount, reconciled, reconcile_tx_hash)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        record.txHash,
-        record.operationId,
-        record.operationIndex,
-        record.ledger,
-        record.timestamp,
-        record.from,
-        record.amount,
-        reconcileTxHash ? 1 : 0,
-        reconcileTxHash ?? null,
+  async getBurns(): Promise<BurnRecord[]> {
+    const items = await this.scanAll({ TableName: this.burnsTable });
+    return items.map(toRecord).sort((a, b) => a.ledger - b.ledger);
+  }
+
+  private async scanAll(params: Parameters<typeof ScanCommand>[0]): Promise<Record<string, unknown>[]> {
+    const items: Record<string, unknown>[] = [];
+    let lastKey: Record<string, unknown> | undefined;
+    do {
+      const result = await this.client.send(
+        new ScanCommand({ ...params, ExclusiveStartKey: lastKey }),
       );
-  }
-
-  markReconciled(txHash: string, operationIndex: number, reconcileTxHash: string): void {
-    this.db
-      .prepare("UPDATE burns SET reconciled = 1, reconcile_tx_hash = ? WHERE tx_hash = ? AND operation_index = ?")
-      .run(reconcileTxHash, txHash, operationIndex);
-  }
-
-  getPendingReconciliation(): BurnRecord[] {
-    const rows = this.db
-      .prepare("SELECT * FROM burns WHERE reconciled = 0 ORDER BY ledger ASC")
-      .all() as DbRow[];
-    return rows.map(toRecord);
-  }
-
-  getSacLedger(): number {
-    const row = this.db.prepare("SELECT sac_ledger FROM state WHERE id = 1").get() as
-      | { sac_ledger: number }
-      | undefined;
-    return row?.sac_ledger ?? 0;
-  }
-
-  advanceSacLedger(ledger: number): void {
-    this.db.prepare("UPDATE state SET sac_ledger = MAX(sac_ledger, ?) WHERE id = 1").run(ledger);
-  }
-
-  getPendingAmount(): string {
-    const row = this.db
-      .prepare("SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) as total FROM burns WHERE reconciled = 0")
-      .get() as { total: number };
-    return row.total.toFixed(7);
-  }
-
-  getBurns(): BurnRecord[] {
-    const rows = this.db
-      .prepare("SELECT * FROM burns ORDER BY ledger ASC")
-      .all() as DbRow[];
-    return rows.map(toRecord);
+      items.push(...((result.Items ?? []) as Record<string, unknown>[]));
+      lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (lastKey !== undefined);
+    return items;
   }
 }
 
@@ -105,19 +145,20 @@ interface DbRow {
   from_address: string;
   amount: string;
   reconciled: number;
-  reconcile_tx_hash: string | null;
+  reconcile_tx_hash?: string;
 }
 
-function toRecord(row: DbRow): BurnRecord {
+function toRecord(row: Record<string, unknown>): BurnRecord {
+  const r = row as DbRow;
   return {
-    txHash: row.tx_hash,
-    operationId: row.operation_id,
-    operationIndex: row.operation_index,
-    ledger: row.ledger,
-    timestamp: row.timestamp,
-    from: row.from_address,
-    amount: row.amount,
-    reconciled: row.reconciled === 1,
-    reconcileTxHash: row.reconcile_tx_hash ?? undefined,
+    txHash: r.tx_hash,
+    operationId: r.operation_id,
+    operationIndex: r.operation_index,
+    ledger: r.ledger,
+    timestamp: r.timestamp,
+    from: r.from_address,
+    amount: r.amount,
+    reconciled: r.reconciled === 1,
+    reconcileTxHash: r.reconcile_tx_hash,
   };
 }

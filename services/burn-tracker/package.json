@@ -8,13 +8,13 @@
     "start:dist": "node dist/index.js"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
     "@stellar/stellar-sdk": "^14.5.0",
-    "better-sqlite3": "^12.9.0",
     "dotenv": "^16.5.0",
     "soroban-fireblocks-sdk": "file:../../soroban-fireblocks-sdk"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.2.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

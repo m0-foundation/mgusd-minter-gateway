@@ -5,11 +5,17 @@ import { Storage } from "./storage";
 import { BurnTracker } from "./tracker";
 
 function startApiServer(storage: Storage, port: number): void {
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/pending-amount") {
-      const amount = storage.getPendingAmount();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ pending_amount: amount }));
+      try {
+        const amount = await storage.getPendingAmount();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ pending_amount: amount }));
+      } catch (err) {
+        console.error("[burn-tracker] API error:", err);
+        res.writeHead(500);
+        res.end();
+      }
     } else {
       res.writeHead(404);
       res.end();
@@ -23,7 +29,7 @@ function startApiServer(storage: Storage, port: number): void {
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const storage = new Storage(config.dbPath);
+  const storage = new Storage(config.awsRegion, config.burnsTableName, config.stateTableName);
   const reconciler = new Reconciler(config, storage);
   const tracker = new BurnTracker(config, storage, reconciler);
 

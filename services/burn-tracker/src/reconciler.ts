@@ -39,7 +39,7 @@ export class Reconciler {
   }
 
   async retryPending(): Promise<void> {
-    const pending = this.storage.getPendingReconciliation();
+    const pending = await this.storage.getPendingReconciliation();
     if (pending.length === 0) return;
     console.log(`[reconciler] Retrying ${pending.length} pending reconciliation(s)...`);
     for (const burn of pending) {
@@ -48,12 +48,12 @@ export class Reconciler {
   }
 
   async reconcile(burn: BurnRecord): Promise<void> {
-    if (this.storage.hasReconciledBurn(burn.txHash, burn.operationIndex)) {
+    if (await this.storage.hasReconciledBurn(burn.txHash, burn.operationIndex)) {
       return;
     }
 
     if (this.config.dryRun) {
-      this.storage.addBurn(burn);
+      await this.storage.addBurn(burn);
       console.log(`[reconciler] DRY_RUN — stored burn ${burn.txHash} (reconcile_burn skipped)`);
       return;
     }
@@ -73,11 +73,11 @@ export class Reconciler {
         throw new Error(`reconcile_burn tx ${result.txHash} landed with status ${result.status}`);
       }
 
-      this.storage.addBurn(burn, result.txHash);
+      await this.storage.addBurn(burn, result.txHash);
       console.log(`[reconciler] reconcile_burn SUCCESS — tx ${result.txHash}`);
     } catch (err) {
       console.error(`[reconciler] reconcile_burn FAILED for burn ${burn.txHash}:`, err);
-      this.storage.addBurn(burn);
+      await this.storage.addBurn(burn);
     }
   }
 
@@ -97,7 +97,7 @@ export class Reconciler {
         throw new Error(`reconcile_burn tx ${result.txHash} landed with status ${result.status}`);
       }
 
-      this.storage.markReconciled(burn.txHash, burn.operationIndex, result.txHash);
+      await this.storage.markReconciled(burn.txHash, burn.operationIndex, result.txHash);
       console.log(`[reconciler] reconcile_burn SUCCESS — tx ${result.txHash}`);
     } catch (err) {
       console.error(`[reconciler] reconcile_burn FAILED for burn ${burn.txHash}:`, err);

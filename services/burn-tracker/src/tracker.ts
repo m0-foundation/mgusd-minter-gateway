@@ -29,7 +29,7 @@ export class BurnTracker {
   async run(): Promise<void> {
     console.log(`[burn-tracker] Asset: ${this.config.assetCode}:${this.config.assetIssuer}`);
     console.log(`[burn-tracker] SAC:   ${this.config.sacContractId}`);
-    console.log(`[burn-tracker] Known burns so far: ${this.storage.getBurns().length}`);
+    console.log(`[burn-tracker] Known burns so far: ${(await this.storage.getBurns()).length}`);
 
     const { sequence: latestLedger } = await this.rpc.getLatestLedger();
 
@@ -58,7 +58,7 @@ export class BurnTracker {
   private async backfillSacEvents(latestLedger: number): Promise<void> {
     const probe = await this.rpc.getEvents({ filters: this.sacEventFilters(), startLedger: latestLedger, limit: 1 });
     const oldestLedger = probe.oldestLedger;
-    const savedLedger = this.storage.getSacLedger();
+    const savedLedger = await this.storage.getSacLedger();
     const effectiveStart = Math.max(
       savedLedger > 0 ? savedLedger : this.config.startLedger,
       oldestLedger,
@@ -98,7 +98,7 @@ export class BurnTracker {
         eventCursor = response.cursor;
       }
 
-      this.storage.advanceSacLedger(toLedger);
+      await this.storage.advanceSacLedger(toLedger);
       fromLedger = toLedger + 1;
     }
 
@@ -110,7 +110,7 @@ export class BurnTracker {
     while (true) {
       await new Promise((r) => setTimeout(r, SAC_POLL_INTERVAL_MS));
       try {
-        fromLedger = Math.max(this.storage.getSacLedger() + 1, fromLedger);
+        fromLedger = Math.max(await this.storage.getSacLedger() + 1, fromLedger);
         let eventCursor: string | undefined;
 
         while (true) {
@@ -135,7 +135,7 @@ export class BurnTracker {
             }
           }
 
-          this.storage.advanceSacLedger(response.latestLedger);
+          await this.storage.advanceSacLedger(response.latestLedger);
 
           if (response.events.length < 200) break;
           eventCursor = response.cursor;
