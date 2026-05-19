@@ -1,62 +1,194 @@
 name: release-contract
 
-# Builds the MGUSD wrapper contract reproducibly and publishes a GitHub release
-# with build provenance attestation. The resulting WASM embeds:
-#   - source_repo = github:m0-foundation/stellar-minter-gateway#<commit-sha>
-#   - home_domain = mgusd.m0.org
+# Builds the MGUSD wrapper contract reproducibly and publishes a GitHub
+# release with build provenance attestation. The resulting WASM embeds:
 #
-# Block explorers (lab.stellar.org, stellar.expert) read source_repo from the
-# deployed WASM's contractmetav0 section and verify it against the GitHub
-# attestation at:
+#   - source_repo = github:m0-foundation/stellar-minter-gateway
+#   - home_domain = m0.org
+#
+# Block explorers (lab.stellar.org, stellar.expert) and `stellar contract
+# info build` read source_repo from the deployed WASM's contractmetav0
+# section, extract <owner>/<repo>, and fetch the GitHub attestation at:
+#
 #   https://api.github.com/repos/m0-foundation/stellar-minter-gateway/attestations/sha256:<wasm-hash>
 #
-# Spec: SEP-0055 (Contract Source Validation)
+# The git commit that produced the WASM is read from the attestation's
+# predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit field,
+# NOT from the meta. Per SEP-0055 the meta value is strictly the bare repo
+# identifier with no "#<commit>" suffix — verified empirically against
+# Reflector and other production verified contracts.
+#
+# Spec: SEP-0055 (Contract Source Validation).
 #   https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0055.md
 #
-# Determinism inputs pinned for reproducibility:
-#   - Rust toolchain: rust-toolchain.toml (channel = "1.94.0")
-#   - Cargo deps:     Cargo.lock + --locked (handled inside the reusable workflow)
-#   - Build pipeline: stellar-expert/soroban-build-workflow pinned by SHA below
-#   - Runner:         pinned inside the reusable workflow
+# Determinism: every input that affects WASM bytes is pinned.
+#   - Rust toolchain     rust-toolchain.toml  (channel = "1.94.0")
+#   - Cargo deps         Cargo.lock + --locked
+#   - Stellar CLI        stellar/stellar-cli@v25.2.0 with version: '25.2.0'
+#                        (matches .tool-versions and contract.yml; bump in
+#                        lockstep with the soroban-sdk minimum-CLI requirement)
+#   - Runner OS          ubuntu-22.04 (pinned major.minor, not -latest)
+#
+# This workflow mirrors stellar-expert/soroban-build-workflow's release.yml
+# (single-package variant) so reviewers familiar with that workflow recognise
+# the shape; differences are: SHA pinning of non-Stellar actions, --locked
+# for strict dependency reproducibility, and a build-provenance attestation
+# alongside the stellar.expert validation POST.
 
 on:
   # Tag a release with `git tag v1.0.0 && git push --tags` to trigger.
   push:
     tags:
       - 'v*'
-  # Manual run for testing.
+  # Manual run for testing or out-of-band releases. Defaults to dry-run so
+  # accidental clicks don't publish a release / attestation / explorer entry.
+  # Set dry_run=false to publish via manual dispatch.
   workflow_dispatch:
     inputs:
-      release_name:
-        description: 'Release name / tag (e.g. v1.0.0)'
+      tag_name:
+        description: 'Release tag (e.g. v1.0.0)'
         required: true
         type: string
+      dry_run:
+        description: 'Dry run: build + hash + log only; skip attestation, release, and stellar.expert POST'
+        type: boolean
+        default: true
+        required: false
 
 permissions:
-  id-token: write       # OIDC token for attestation signing
-  contents: write       # Create GitHub release + upload WASM asset
+  id-token: write       # OIDC token for build provenance signing
+  contents: write       # Create GitHub release and upload WASM asset
   attestations: write   # Publish build provenance attestation
 
 jobs:
-  release:
-    # Pinned to v25.1.0 by commit SHA. Bump deliberately — any change here
-    # produces a different WASM hash even with identical source.
-    uses: stellar-expert/soroban-build-workflow/.github/workflows/release.yml@e43b241f114bcf02151c30d61088506c6ad3ae0b
-    with:
-      release_name: ${{ inputs.release_name || github.ref_name }}
-      package: mintergateway
-      relative_path: '["contracts/mintergateway"]'
-      home_domain: mgusd.m0.org
-      release_description: |
-        Reproducible build of the MGUSD wrapper contract.
+  build-and-release:
+    name: Build + attest + release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-        Verify the build:
-          stellar contract info build --wasm <downloaded-wasm>
+      - name: Install Rust toolchain
+        # Reads channel from rust-toolchain.toml (currently 1.94.0).
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6  # v1.13.0
+        with:
+          target: wasm32v1-none
 
-        Or against a deployed contract:
-          stellar contract info build \
-            --rpc-url https://mainnet.sorobanrpc.com \
-            --network-passphrase "Public Global Stellar Network ; September 2015" \
-            --contract-id <contract-id>
-    secrets:
-      release_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve release tag
+        id: tag
+        run: |
+          TAG="${{ inputs.tag_name || github.ref_name }}"
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Install Stellar CLI
+        uses: stellar/stellar-cli@v25.2.0
+        with:
+          version: '25.2.0'
+
+      - name: Build contract
+        run: |
+          set -euo pipefail
+
+          PACKAGE_NAME=mintergateway
+          MANIFEST=contracts/mintergateway/Cargo.toml
+
+          CARGO_METADATA=$(cargo metadata --format-version=1 --no-deps --manifest-path "$MANIFEST")
+
+          OUTPUT="$RUNNER_TEMP/release-out"
+          mkdir -p "$OUTPUT"
+
+          # Build the contract
+          stellar contract build \
+            --package "$PACKAGE_NAME" \
+            --locked \
+            --optimize \
+            --out-dir "$OUTPUT" \
+            --meta "source_repo=github:${{ github.repository }}" \
+            --meta "home_domain=m0.org"
+
+          # Get the package version
+          PACKAGE_VERSION=$(echo "$CARGO_METADATA" | jq -r '.packages[] | select(.name == "'"$PACKAGE_NAME"'") | .version')
+          if [ -z "$PACKAGE_VERSION" ] || [ "$PACKAGE_VERSION" = "null" ]; then
+            echo "ERROR: Failed to get the package version"
+            exit 1
+          fi
+
+          # Build the wasm file name
+          WASM_FILE_NAME="${PACKAGE_NAME}_v${PACKAGE_VERSION}.wasm"
+
+          cd "$OUTPUT"
+          find "$OUTPUT" -name "*.wasm" -exec cp {} "$WASM_FILE_NAME" \;
+
+          WASM_HASH=$(sha256sum "$WASM_FILE_NAME" | cut -d ' ' -f 1)
+
+          echo "PACKAGE_NAME=$PACKAGE_NAME"       >> "$GITHUB_ENV"
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> "$GITHUB_ENV"
+          echo "WASM_FILE_NAME=$WASM_FILE_NAME"   >> "$GITHUB_ENV"
+          echo "WASM_HASH=$WASM_HASH"             >> "$GITHUB_ENV"
+          echo "OUTPUT=$OUTPUT"                   >> "$GITHUB_ENV"
+          echo "::notice title=WASM hash::sha256=$WASM_HASH"
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "::notice title=DRY RUN::dry_run=true — skipping attestation, release, and stellar.expert POST. WASM hash: ${{ env.WASM_HASH }}"
+
+      - name: Attest build provenance
+        if: ${{ !inputs.dry_run }}
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
+        with:
+          subject-path: ${{ env.OUTPUT }}/${{ env.WASM_FILE_NAME }}
+          subject-name: ${{ env.WASM_FILE_NAME }}
+
+      - name: Create GitHub release
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name }}
+          files: ${{ env.OUTPUT }}/${{ env.WASM_FILE_NAME }}
+          body: |
+            Reproducible build of the MGUSD wrapper contract.
+
+            **Commit:** `${{ github.sha }}`
+            **WASM sha256:** `${{ env.WASM_HASH }}`
+
+            **Embedded contract metadata:**
+              - `source_repo = github:${{ github.repository }}` (commit binding via attestation)
+              - `home_domain = m0.org`
+
+            **Verify the build attestation:**
+
+                gh attestation verify ${{ env.WASM_FILE_NAME }} --repo ${{ github.repository }}
+
+            **Read embedded metadata from the WASM:**
+
+                stellar contract info build --wasm ${{ env.WASM_FILE_NAME }}
+
+            **Verify the deployed contract (after upload + wrapper deploy):**
+
+                stellar contract info build \
+                  --rpc-url https://mainnet.sorobanrpc.com \
+                  --network-passphrase "Public Global Stellar Network ; September 2015" \
+                  --contract-id <deployed-contract-id>
+
+      - name: Register build with stellar.expert
+        # Notifies stellar.expert's contract-validation index so the explorer
+        # can surface "verified source" against the deployed contract. The
+        # GitHub attestation is the authoritative record; this is just
+        # discovery, so a failure here must not fail the release.
+        if: ${{ !inputs.dry_run }}
+        continue-on-error: true
+        run: |
+          BODY=$(jq -n \
+            --arg repository   "${{ github.server_url }}/${{ github.repository }}" \
+            --arg commitHash   "${{ github.sha }}" \
+            --arg jobId        "${{ github.job }}" \
+            --arg runId        "${{ github.run_id }}" \
+            --arg contractHash "${{ env.WASM_HASH }}" \
+            --arg packageName  "${{ env.PACKAGE_NAME }}" \
+            '{repository: $repository, commitHash: $commitHash, jobId: $jobId, runId: $runId, contractHash: $contractHash, packageName: $packageName}')
+          curl -fsS -X POST "https://api.stellar.expert/explorer/public/contract-validation/match" \
+               -H "Content-Type: application/json" \
+               -d "$BODY" \
+               --max-time 15
