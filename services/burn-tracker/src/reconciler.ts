@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import { SctokenFireblocksClient, readFireblocksSecret } from "soroban-fireblocks-sdk";
 import { Config } from "./config";
+import { notifyBurn } from "./slack";
 import { Storage } from "./storage";
 import { BurnRecord } from "./types";
 
@@ -50,6 +51,10 @@ export class Reconciler {
   async reconcile(burn: BurnRecord): Promise<void> {
     if (await this.storage.hasReconciledBurn(burn.txHash, burn.operationIndex)) {
       return;
+    }
+
+    if (this.config.slackWebhookUrl) {
+      await notifyBurn(this.config.slackWebhookUrl, burn);
     }
 
     if (this.config.dryRun) {

@@ -37,6 +37,8 @@ export interface Config {
   adminPublicKey: string;
   /** If true, detect and store burns but do not submit reconcile_burn transactions */
   dryRun: boolean;
+  /** Slack incoming webhook URL for burn notifications (optional) */
+  slackWebhookUrl?: string;
 }
 
 function requireEnv(name: string): string {
@@ -80,5 +82,6 @@ export function loadConfig(): Config {
     fireblocksBasePath: process.env.FIREBLOCKS_BASE_PATH ?? "sandbox",
     adminPublicKey: dryRun ? "" : requireEnv("ADMIN_PUBLIC_KEY"),
     dryRun,
+    slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || undefined,
   };
 }
