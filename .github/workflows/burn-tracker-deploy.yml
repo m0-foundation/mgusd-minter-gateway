@@ -14,7 +14,7 @@ name: Deploy burn-tracker Lambda
 
 on:
   push:
-    branches: [sdk-integration]
+    branches: [main, sdk-integration, feature/asset-burn-tracker]
     paths:
       - "services/burn-tracker/**"
   workflow_dispatch:
