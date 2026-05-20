@@ -1,5 +1,4 @@
-import * as fs from "fs";
-import { SctokenFireblocksClient, readFireblocksSecret } from "soroban-fireblocks-sdk";
+import { SctokenFireblocksClient } from "soroban-fireblocks-sdk";
 import { Config } from "./config";
 import { notifyBurn } from "./slack";
 import { Storage } from "./storage";
@@ -24,13 +23,12 @@ export class Reconciler {
       this.client = null;
       console.log("[reconciler] DRY_RUN mode — burns will be stored but reconcile_burn will not be submitted");
     } else {
-      const fireblocksSecretKey = readFireblocksSecret(config.fireblocksSecretPath);
       this.client = new SctokenFireblocksClient({
         sorobanRpcUrl: config.sorobanRpcUrl,
         horizonUrl: config.horizonUrl,
         networkPassphrase: config.networkPassphrase,
         fireblocksApiKey: config.fireblocksApiKey,
-        fireblocksSecretKey,
+        fireblocksSecretKey: config.fireblocksSecretKey,
         fireblocksVaultAccountId: config.fireblocksVaultAccountId,
         fireblocksAssetId: config.fireblocksAssetId,
         fireblocksBasePath: config.fireblocksBasePath,

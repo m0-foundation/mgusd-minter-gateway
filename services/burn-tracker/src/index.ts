@@ -5,7 +5,7 @@ import { BurnTracker } from "./tracker";
 
 // only for local testing
 async function main(): Promise<void> {
-  const config = loadConfig();
+  const config = await loadConfig();
   const storage = new Storage(config.awsRegion, config.burnsTableName, config.stateTableName);
   const reconciler = new Reconciler(config, storage);
   const tracker = new BurnTracker(config, storage, reconciler);

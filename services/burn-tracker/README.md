@@ -33,7 +33,7 @@ aws dynamodb create-table \
   --billing-mode PAY_PER_REQUEST
 ```
 
-Table names can be overridden via `BURNS_TABLE_NAME` and `STATE_TABLE_NAME`.
+Table names are injected by Terraform via `DYNAMODB_BURNS_TABLE` and `DYNAMODB_STATE_TABLE`.
 
 ## Configuration
 

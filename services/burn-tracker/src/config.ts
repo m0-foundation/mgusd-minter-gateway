@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as dotenv from "dotenv";
+import { fetchSecretsFromSsm } from "./secrets";
 
 dotenv.config();
 
@@ -9,7 +10,7 @@ export interface Config {
   assetIssuer: string;
   /** Ledger sequence to start scanning from */
   startLedger: number;
-  /** AWS region for DynamoDB */
+  /** AWS region for DynamoDB and SSM */
   awsRegion: string;
   /** DynamoDB table name for burn records */
   burnsTableName: string;
@@ -25,8 +26,8 @@ export interface Config {
   networkPassphrase: string;
   /** Fireblocks API key */
   fireblocksApiKey: string;
-  /** Path to Fireblocks API secret PEM file */
-  fireblocksSecretPath: string;
+  /** Fireblocks API secret PEM content */
+  fireblocksSecretKey: string;
   /** Fireblocks vault account ID for the admin signer */
   fireblocksVaultAccountId: string;
   /** Fireblocks asset ID (e.g. XLM_TEST, XLM) */
@@ -47,19 +48,39 @@ function requireEnv(name: string): string {
   return v;
 }
 
-export function loadConfig(): Config {
+export async function loadConfig(): Promise<Config> {
   const startLedger = parseInt(process.env.START_LEDGER ?? "", 10);
   if (!Number.isInteger(startLedger) || startLedger < 1) {
     throw new Error("START_LEDGER must be a positive integer");
   }
 
   const dryRun = process.env.DRY_RUN === "true";
+  const awsRegion = process.env.AWS_REGION ?? "us-east-1";
 
-  let fireblocksSecretPath = "";
+  let fireblocksSecretKey = "";
+  let fireblocksApiKey = "";
+  let networkPassphrase = "";
+  let fireblocksVaultAccountId = "";
+  let adminPublicKey = "";
+
   if (!dryRun) {
-    fireblocksSecretPath = requireEnv("FIREBLOCKS_SECRET_PATH");
-    if (!fs.existsSync(fireblocksSecretPath)) {
-      throw new Error(`FIREBLOCKS_SECRET_PATH file not found: ${fireblocksSecretPath}`);
+    if (process.env.SSM_FIREBLOCKS_SECRET_PATH) {
+      const secrets = await fetchSecretsFromSsm(awsRegion);
+      fireblocksSecretKey = secrets.fireblocksSecretKey;
+      fireblocksApiKey = secrets.fireblocksApiKey;
+      networkPassphrase = secrets.networkPassphrase;
+      fireblocksVaultAccountId = secrets.fireblocksVaultAccountId;
+      adminPublicKey = secrets.adminPublicKey;
+    } else {
+      const secretPath = requireEnv("FIREBLOCKS_SECRET_PATH");
+      if (!fs.existsSync(secretPath)) {
+        throw new Error(`FIREBLOCKS_SECRET_PATH file not found: ${secretPath}`);
+      }
+      fireblocksSecretKey = fs.readFileSync(secretPath, "utf8");
+      fireblocksApiKey = requireEnv("FIREBLOCKS_API_KEY");
+      networkPassphrase = requireEnv("SOROBAN_NETWORK_PASSPHRASE");
+      fireblocksVaultAccountId = requireEnv("FIREBLOCKS_VAULT_ACCOUNT_ID");
+      adminPublicKey = requireEnv("ADMIN_PUBLIC_KEY");
     }
   }
 
@@ -68,19 +89,19 @@ export function loadConfig(): Config {
     assetCode: requireEnv("ASSET_CODE"),
     assetIssuer: requireEnv("ASSET_ISSUER"),
     startLedger,
-    awsRegion: process.env.AWS_REGION ?? "us-east-1",
-    burnsTableName: process.env.BURNS_TABLE_NAME ?? "Burns",
-    stateTableName: process.env.STATE_TABLE_NAME ?? "BurnTrackerState",
+    awsRegion,
+    burnsTableName: requireEnv("DYNAMODB_BURNS_TABLE"),
+    stateTableName: requireEnv("DYNAMODB_STATE_TABLE"),
     sacContractId: requireEnv("SAC_CONTRACT_ID"),
     contractId: requireEnv("CONTRACT_ID"),
     sorobanRpcUrl: requireEnv("SOROBAN_RPC_URL"),
-    networkPassphrase: dryRun ? "" : requireEnv("SOROBAN_NETWORK_PASSPHRASE"),
-    fireblocksApiKey: dryRun ? "" : requireEnv("FIREBLOCKS_API_KEY"),
-    fireblocksSecretPath,
-    fireblocksVaultAccountId: dryRun ? "" : requireEnv("FIREBLOCKS_VAULT_ACCOUNT_ID"),
+    networkPassphrase,
+    fireblocksApiKey,
+    fireblocksSecretKey,
+    fireblocksVaultAccountId,
     fireblocksAssetId: dryRun ? "" : requireEnv("FIREBLOCKS_ASSET_ID"),
     fireblocksBasePath: process.env.FIREBLOCKS_BASE_PATH ?? "sandbox",
-    adminPublicKey: dryRun ? "" : requireEnv("ADMIN_PUBLIC_KEY"),
+    adminPublicKey,
     dryRun,
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || undefined,
   };
