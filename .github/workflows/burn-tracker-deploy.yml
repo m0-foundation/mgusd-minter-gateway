@@ -17,6 +17,7 @@ on:
     branches: [main, sdk-integration, feature/asset-burn-tracker]
     paths:
       - "services/burn-tracker/**"
+      - "soroban-fireblocks-sdk/**"
   workflow_dispatch:
 
 permissions:
@@ -39,6 +40,10 @@ jobs:
           node-version: 22
           cache: "npm"
           cache-dependency-path: services/burn-tracker/package-lock.json
+
+      - name: Build soroban-fireblocks-sdk
+        working-directory: soroban-fireblocks-sdk
+        run: npm ci && npm run build
 
       - name: Install dependencies
         working-directory: services/burn-tracker
