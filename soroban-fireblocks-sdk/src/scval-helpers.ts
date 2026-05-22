@@ -15,3 +15,10 @@ export function u32ToScVal(value: number): xdr.ScVal {
 export function addressVecToScVal(addresses: string[]): xdr.ScVal {
   return xdr.ScVal.scvVec(addresses.map(addressToScVal));
 }
+
+export function bytesN32ToScVal(hash: Buffer): xdr.ScVal {
+  if (hash.length !== 32) {
+    throw new Error(`bytesN32ToScVal: expected 32-byte buffer, got ${hash.length}`);
+  }
+  return xdr.ScVal.scvBytes(hash);
+}

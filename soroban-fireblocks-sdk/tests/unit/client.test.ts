@@ -44,6 +44,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.buildInvokeTransaction.mockResolvedValue(mockTx as never);
@@ -86,6 +87,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.buildInvokeTransaction.mockResolvedValue(mockTx as never);
@@ -123,6 +125,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.buildChangeTrustTransaction.mockResolvedValue(mockTx as never);
@@ -160,6 +163,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.buildChangeTrustTransaction.mockResolvedValue(mockTx as never);
@@ -196,6 +200,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.buildConfigureIssuerTransaction.mockResolvedValue(mockTx as never);
@@ -230,6 +235,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.buildConfigureIssuerTransaction.mockResolvedValue(mockTx as never);
@@ -262,6 +268,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
@@ -305,6 +312,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.buildDeploySacTransaction.mockResolvedValue(mockTx as never);
@@ -342,6 +350,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       const wasm = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
@@ -381,6 +390,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       const wasm = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
@@ -421,6 +431,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       const wasm = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
@@ -460,6 +471,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.buildUploadWasmTransaction.mockResolvedValue(mockTx as never);
@@ -496,6 +508,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       const contractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
@@ -536,6 +549,7 @@ describe("SorobanFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.buildDeployContractTransaction.mockResolvedValue(mockTx as never);

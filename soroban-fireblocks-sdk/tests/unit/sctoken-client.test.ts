@@ -46,6 +46,7 @@ function setupMocks(returnValue?: xdr.ScVal): void {
     operations: [],
     signatures: [],
     addSignature: jest.fn(),
+    toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
   };
 
   // Mock server with simulateTransaction for view functions
@@ -289,6 +290,248 @@ describe("SctokenFireblocksClient", () => {
     });
   });
 
+  describe("setAdmin", () => {
+    it("calls invokeContract with method 'set_admin' and the new admin Address arg", async () => {
+      setupMocks();
+      const client = new SctokenFireblocksClient(makeConfig());
+      const newAdmin = Keypair.random().publicKey();
+
+      const result = await client.setAdmin({ contractId: CONTRACT_ID, newAdmin });
+
+      expect(result.status).toBe("SUCCESS");
+      const params = mockedTxBuilder.buildInvokeTransaction.mock.calls[0][2];
+      expect(params.method).toBe("set_admin");
+      expect(params.args).toHaveLength(1);
+      expect(Address.fromScVal(params.args![0]).toString()).toBe(newAdmin);
+    });
+  });
+
+  describe("setYieldRecipientManager", () => {
+    it("calls invokeContract with method 'set_yield_recipient_manager' and the new manager Address arg", async () => {
+      setupMocks();
+      const client = new SctokenFireblocksClient(makeConfig());
+      const newYieldRecipientManager = Keypair.random().publicKey();
+
+      const result = await client.setYieldRecipientManager({
+        contractId: CONTRACT_ID,
+        newYieldRecipientManager,
+      });
+
+      expect(result.status).toBe("SUCCESS");
+      const params = mockedTxBuilder.buildInvokeTransaction.mock.calls[0][2];
+      expect(params.method).toBe("set_yield_recipient_manager");
+      expect(params.args).toHaveLength(1);
+      expect(Address.fromScVal(params.args![0]).toString()).toBe(newYieldRecipientManager);
+    });
+  });
+
+  describe("setForcedTransferManager", () => {
+    it("calls invokeContract with method 'set_forced_transfer_manager' and the new manager Address arg", async () => {
+      setupMocks();
+      const client = new SctokenFireblocksClient(makeConfig());
+      const newForcedTransferManager = Keypair.random().publicKey();
+
+      const result = await client.setForcedTransferManager({
+        contractId: CONTRACT_ID,
+        newForcedTransferManager,
+      });
+
+      expect(result.status).toBe("SUCCESS");
+      const params = mockedTxBuilder.buildInvokeTransaction.mock.calls[0][2];
+      expect(params.method).toBe("set_forced_transfer_manager");
+      expect(params.args).toHaveLength(1);
+      expect(Address.fromScVal(params.args![0]).toString()).toBe(newForcedTransferManager);
+    });
+  });
+
+  describe("setPauser", () => {
+    it("calls invokeContract with method 'set_pauser' and the new pauser Address arg", async () => {
+      setupMocks();
+      const client = new SctokenFireblocksClient(makeConfig());
+      const newPauser = Keypair.random().publicKey();
+
+      const result = await client.setPauser({ contractId: CONTRACT_ID, newPauser });
+
+      expect(result.status).toBe("SUCCESS");
+      const params = mockedTxBuilder.buildInvokeTransaction.mock.calls[0][2];
+      expect(params.method).toBe("set_pauser");
+      expect(params.args).toHaveLength(1);
+      expect(Address.fromScVal(params.args![0]).toString()).toBe(newPauser);
+    });
+  });
+
+  describe("setYieldRecipient", () => {
+    it("calls invokeContract with method 'set_yield_recipient' and caller + new recipient Address args", async () => {
+      setupMocks();
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+      const newYieldRecipient = Keypair.random().publicKey();
+
+      const result = await client.setYieldRecipient({
+        contractId: CONTRACT_ID,
+        caller: config.sourcePublicKey,
+        newYieldRecipient,
+      });
+
+      expect(result.status).toBe("SUCCESS");
+      const params = mockedTxBuilder.buildInvokeTransaction.mock.calls[0][2];
+      expect(params.method).toBe("set_yield_recipient");
+      expect(params.args).toHaveLength(2);
+      expect(Address.fromScVal(params.args![0]).toString()).toBe(config.sourcePublicKey);
+      expect(Address.fromScVal(params.args![1]).toString()).toBe(newYieldRecipient);
+    });
+  });
+
+  describe("transferSacAdmin", () => {
+    it("calls invokeContract with method 'transfer_sac_admin' and the new SAC admin Address arg", async () => {
+      setupMocks();
+      const client = new SctokenFireblocksClient(makeConfig());
+      const newSacAdmin = Keypair.random().publicKey();
+
+      const result = await client.transferSacAdmin({ contractId: CONTRACT_ID, newSacAdmin });
+
+      expect(result.status).toBe("SUCCESS");
+      const params = mockedTxBuilder.buildInvokeTransaction.mock.calls[0][2];
+      expect(params.method).toBe("transfer_sac_admin");
+      expect(params.args).toHaveLength(1);
+      expect(Address.fromScVal(params.args![0]).toString()).toBe(newSacAdmin);
+    });
+  });
+
+  describe("upgrade", () => {
+    it("calls invokeContract with method 'upgrade' and a 32-byte scvBytes arg (Buffer input)", async () => {
+      setupMocks();
+      const client = new SctokenFireblocksClient(makeConfig());
+      const newWasmHash = Buffer.alloc(32, 0xcd);
+
+      const result = await client.upgrade({ contractId: CONTRACT_ID, newWasmHash });
+
+      expect(result.status).toBe("SUCCESS");
+      const params = mockedTxBuilder.buildInvokeTransaction.mock.calls[0][2];
+      expect(params.method).toBe("upgrade");
+      expect(params.args).toHaveLength(1);
+      expect(params.args![0].switch().name).toBe("scvBytes");
+      expect(Buffer.from(params.args![0].bytes()).equals(newWasmHash)).toBe(true);
+    });
+
+    it("accepts a 64-char hex string and encodes it as 32-byte scvBytes", async () => {
+      setupMocks();
+      const client = new SctokenFireblocksClient(makeConfig());
+      const hex = "cd".repeat(32);
+
+      await client.upgrade({ contractId: CONTRACT_ID, newWasmHash: hex });
+
+      const params = mockedTxBuilder.buildInvokeTransaction.mock.calls[0][2];
+      expect(params.method).toBe("upgrade");
+      expect(params.args![0].bytes().length).toBe(32);
+      expect(Buffer.from(params.args![0].bytes()).toString("hex")).toBe(hex);
+    });
+
+    it("rejects a buffer that is not 32 bytes (before building tx)", async () => {
+      setupMocks();
+      const client = new SctokenFireblocksClient(makeConfig());
+
+      await expect(
+        client.upgrade({ contractId: CONTRACT_ID, newWasmHash: Buffer.alloc(31, 0xcd) }),
+      ).rejects.toThrow(/32-byte/i);
+
+      // No transaction should have been built or signed
+      expect(mockedTxBuilder.buildInvokeTransaction).not.toHaveBeenCalled();
+      expect(mockedFbSigner.signHash).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("pause", () => {
+    it("calls invokeContract with method 'pause' and the caller Address arg", async () => {
+      setupMocks();
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      const result = await client.pause({ contractId: CONTRACT_ID, caller: config.sourcePublicKey });
+
+      expect(result.status).toBe("SUCCESS");
+      const params = mockedTxBuilder.buildInvokeTransaction.mock.calls[0][2];
+      expect(params.method).toBe("pause");
+      expect(params.args).toHaveLength(1);
+      expect(Address.fromScVal(params.args![0]).toString()).toBe(config.sourcePublicKey);
+    });
+  });
+
+  describe("unpause", () => {
+    it("calls invokeContract with method 'unpause' and the caller Address arg", async () => {
+      setupMocks();
+      const config = makeConfig();
+      const client = new SctokenFireblocksClient(config);
+
+      const result = await client.unpause({ contractId: CONTRACT_ID, caller: config.sourcePublicKey });
+
+      expect(result.status).toBe("SUCCESS");
+      const params = mockedTxBuilder.buildInvokeTransaction.mock.calls[0][2];
+      expect(params.method).toBe("unpause");
+      expect(params.args).toHaveLength(1);
+      expect(Address.fromScVal(params.args![0]).toString()).toBe(config.sourcePublicKey);
+    });
+  });
+
+  describe("queryPaused", () => {
+    it("returns the paused boolean via simulation", async () => {
+      const pausedScVal = xdr.ScVal.scvBool(true);
+      setupMocks(pausedScVal);
+
+      const client = new SctokenFireblocksClient(makeConfig());
+
+      const result = await client.queryPaused({ contractId: CONTRACT_ID });
+
+      expect(result).toBe(true);
+      expect(mockSimulateTransaction).toHaveBeenCalledTimes(1);
+      expect(mockedTxBuilder.submitAndPoll).not.toHaveBeenCalled();
+      expect(mockedFbSigner.signHash).not.toHaveBeenCalled();
+
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      expect(buildCall[2].method).toBe("paused");
+      expect(buildCall[2].args).toBeUndefined();
+    });
+
+    it("throws when simulation returns no value", async () => {
+      setupMocks(undefined);
+      const client = new SctokenFireblocksClient(makeConfig());
+
+      await expect(client.queryPaused({ contractId: CONTRACT_ID })).rejects.toThrow(
+        "paused returned no value",
+      );
+    });
+  });
+
+  describe("queryPauser", () => {
+    it("returns the pauser address via simulation", async () => {
+      const pauserKp = Keypair.random();
+      const pauserScVal = new Address(pauserKp.publicKey()).toScVal();
+      setupMocks(pauserScVal);
+
+      const client = new SctokenFireblocksClient(makeConfig());
+
+      const address = await client.queryPauser({ contractId: CONTRACT_ID });
+
+      expect(address).toBe(pauserKp.publicKey());
+      expect(mockSimulateTransaction).toHaveBeenCalledTimes(1);
+      expect(mockedTxBuilder.submitAndPoll).not.toHaveBeenCalled();
+      expect(mockedFbSigner.signHash).not.toHaveBeenCalled();
+
+      const buildCall = mockedTxBuilder.buildInvokeTransaction.mock.calls[0];
+      expect(buildCall[2].method).toBe("pauser");
+      expect(buildCall[2].args).toBeUndefined();
+    });
+
+    it("throws when simulation returns no value", async () => {
+      setupMocks(undefined);
+      const client = new SctokenFireblocksClient(makeConfig());
+
+      await expect(client.queryPauser({ contractId: CONTRACT_ID })).rejects.toThrow(
+        "pauser returned no value",
+      );
+    });
+  });
+
   describe("deployFull", () => {
     it("orchestrates the full 5-step deploy pipeline", async () => {
       const fakeHash = Buffer.from("a".repeat(64), "hex");
@@ -298,6 +541,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
@@ -463,6 +707,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.createRpcServer.mockReturnValue({} as rpc.Server);
@@ -511,6 +756,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       mockedTxBuilder.createRpcServer.mockReturnValue({} as rpc.Server);
@@ -566,6 +812,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
@@ -643,6 +890,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
@@ -707,6 +955,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
@@ -779,6 +1028,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
       const sacContractId = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";

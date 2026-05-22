@@ -3,7 +3,10 @@ import { Address, Horizon, scValToNative } from "@stellar/stellar-sdk";
 import { SorobanFireblocksClient } from "./client";
 import { WasmHashMismatchError } from "./errors";
 import { assertIssuerNotContaminated } from "./deploy-checks";
-import { addressToScVal, addressVecToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
+import { buildFireblocksNote } from "./fireblocks-note";
+import { addressToScVal, addressVecToScVal, bytesN32ToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
+
+const PROTOCOL = "mintergateway";
 import {
   MAX_BATCH_SIZE,
   BatchBlockUsersParams,
@@ -14,19 +17,42 @@ import {
   DeployFullResult,
   ForceTransferParams,
   MintParams,
+  PauseParams,
   QueryParams,
   ReconcileBurnParams,
+  SetAdminParams,
+  SetForcedTransferManagerParams,
   SetMinterParams,
+  SetPauserParams,
   SetRateParams,
+  SetYieldRecipientManagerParams,
+  SetYieldRecipientParams,
+  TransferSacAdminParams,
+  UpgradeParams,
 } from "./sctoken-types";
 import { InvokeContractResult } from "./types";
 
 export class SctokenFireblocksClient extends SorobanFireblocksClient {
+  private noteFor(
+    method: string,
+    contractId: string,
+    args?: Record<string, string | number | bigint>,
+  ): string {
+    return buildFireblocksNote({
+      protocol: PROTOCOL,
+      method,
+      contract: contractId,
+      caller: this.config.sourcePublicKey,
+      args,
+    });
+  }
+
   async mint(params: MintParams): Promise<InvokeContractResult> {
     return this.invokeContract({
       contractId: params.contractId,
       method: "mint",
       args: [addressToScVal(params.caller), addressToScVal(params.to), i128ToScVal(params.amount)],
+      fireblocksNote: this.noteFor("mint", params.contractId, { to: params.to, amount: params.amount }),
     });
   }
 
@@ -35,6 +61,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "burn",
       args: [addressToScVal(params.caller), addressToScVal(params.from), i128ToScVal(params.amount)],
+      fireblocksNote: this.noteFor("burn", params.contractId, { from: params.from, amount: params.amount }),
     });
   }
 
@@ -43,6 +70,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "set_rate",
       args: [addressToScVal(params.caller), u32ToScVal(params.rateBps)],
+      fireblocksNote: this.noteFor("set_rate", params.contractId, { rate_bps: params.rateBps }),
     });
   }
 
@@ -51,6 +79,102 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "set_minter",
       args: [addressToScVal(params.newMinter)],
+      fireblocksNote: this.noteFor("set_minter", params.contractId, { new_minter: params.newMinter }),
+    });
+  }
+
+  async setAdmin(params: SetAdminParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "set_admin",
+      args: [addressToScVal(params.newAdmin)],
+      fireblocksNote: this.noteFor("set_admin", params.contractId, { new_admin: params.newAdmin }),
+    });
+  }
+
+  async setYieldRecipientManager(params: SetYieldRecipientManagerParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "set_yield_recipient_manager",
+      args: [addressToScVal(params.newYieldRecipientManager)],
+      fireblocksNote: this.noteFor("set_yield_recipient_manager", params.contractId, {
+        new_yrm: params.newYieldRecipientManager,
+      }),
+    });
+  }
+
+  async setForcedTransferManager(params: SetForcedTransferManagerParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "set_forced_transfer_manager",
+      args: [addressToScVal(params.newForcedTransferManager)],
+      fireblocksNote: this.noteFor("set_forced_transfer_manager", params.contractId, {
+        new_ftm: params.newForcedTransferManager,
+      }),
+    });
+  }
+
+  async setPauser(params: SetPauserParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "set_pauser",
+      args: [addressToScVal(params.newPauser)],
+      fireblocksNote: this.noteFor("set_pauser", params.contractId, { new_pauser: params.newPauser }),
+    });
+  }
+
+  async setYieldRecipient(params: SetYieldRecipientParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "set_yield_recipient",
+      args: [addressToScVal(params.caller), addressToScVal(params.newYieldRecipient)],
+      fireblocksNote: this.noteFor("set_yield_recipient", params.contractId, {
+        new_yield_recipient: params.newYieldRecipient,
+      }),
+    });
+  }
+
+  /**
+   * WARNING: irreversible. After this call the wrapper contract is no longer
+   * SAC admin and can no longer mint, burn, clawback, or authorize accounts.
+   */
+  async transferSacAdmin(params: TransferSacAdminParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "transfer_sac_admin",
+      args: [addressToScVal(params.newSacAdmin)],
+      fireblocksNote: this.noteFor("transfer_sac_admin", params.contractId, {
+        new_sac_admin: params.newSacAdmin,
+      }),
+    });
+  }
+
+  async upgrade(params: UpgradeParams): Promise<InvokeContractResult> {
+    const hash =
+      typeof params.newWasmHash === "string" ? Buffer.from(params.newWasmHash, "hex") : params.newWasmHash;
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "upgrade",
+      args: [bytesN32ToScVal(hash)],
+      fireblocksNote: this.noteFor("upgrade", params.contractId, { new_wasm_hash: hash.toString("hex") }),
+    });
+  }
+
+  async pause(params: PauseParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "pause",
+      args: [addressToScVal(params.caller)],
+      fireblocksNote: this.noteFor("pause", params.contractId),
+    });
+  }
+
+  async unpause(params: PauseParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "unpause",
+      args: [addressToScVal(params.caller)],
+      fireblocksNote: this.noteFor("unpause", params.contractId),
     });
   }
 
@@ -59,6 +183,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "block_user",
       args: [addressToScVal(params.user), addressToScVal(params.operator)],
+      fireblocksNote: this.noteFor("block_user", params.contractId, { user: params.user }),
     });
   }
 
@@ -67,6 +192,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "unblock_user",
       args: [addressToScVal(params.user), addressToScVal(params.operator)],
+      fireblocksNote: this.noteFor("unblock_user", params.contractId, { user: params.user }),
     });
   }
 
@@ -81,6 +207,13 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "batch_block_users",
       args: [addressVecToScVal(params.users), addressToScVal(params.operator)],
+      // The full address list won't fit in a Fireblocks note. Summarize as
+      // count + the first/last address so approvers can sanity-check the batch.
+      fireblocksNote: this.noteFor("batch_block_users", params.contractId, {
+        users_count: params.users.length,
+        first: params.users[0],
+        last: params.users[params.users.length - 1],
+      }),
     });
   }
 
@@ -95,6 +228,11 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "batch_unblock_users",
       args: [addressVecToScVal(params.users), addressToScVal(params.operator)],
+      fireblocksNote: this.noteFor("batch_unblock_users", params.contractId, {
+        users_count: params.users.length,
+        first: params.users[0],
+        last: params.users[params.users.length - 1],
+      }),
     });
   }
 
@@ -108,6 +246,11 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
         addressToScVal(params.to),
         i128ToScVal(params.amount),
       ],
+      fireblocksNote: this.noteFor("force_transfer", params.contractId, {
+        from: params.from,
+        to: params.to,
+        amount: params.amount,
+      }),
     });
   }
 
@@ -116,6 +259,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "reconcile_burn",
       args: [i128ToScVal(params.amount)],
+      fireblocksNote: this.noteFor("reconcile_burn", params.contractId, { amount: params.amount }),
     });
   }
 
@@ -124,6 +268,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "claim_yield",
       args: [addressToScVal(params.caller)],
+      fireblocksNote: this.noteFor("claim_yield", params.contractId),
     });
   }
 
@@ -190,6 +335,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "add_block_operator",
       args: [addressToScVal(params.addr)],
+      fireblocksNote: this.noteFor("add_block_operator", params.contractId, { addr: params.addr }),
     });
   }
 
@@ -198,6 +344,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "remove_block_operator",
       args: [addressToScVal(params.addr)],
+      fireblocksNote: this.noteFor("remove_block_operator", params.contractId, { addr: params.addr }),
     });
   }
 
@@ -206,6 +353,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "add_unblock_operator",
       args: [addressToScVal(params.addr)],
+      fireblocksNote: this.noteFor("add_unblock_operator", params.contractId, { addr: params.addr }),
     });
   }
 
@@ -214,6 +362,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: params.contractId,
       method: "remove_unblock_operator",
       args: [addressToScVal(params.addr)],
+      fireblocksNote: this.noteFor("remove_unblock_operator", params.contractId, { addr: params.addr }),
     });
   }
 
@@ -271,6 +420,18 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     const retval = await this.simulateView({ contractId: params.contractId, method: "interest_rate" });
     if (!retval) throw new Error("interest_rate returned no value");
     return scValToNative(retval) as number;
+  }
+
+  async queryPaused(params: QueryParams): Promise<boolean> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "paused" });
+    if (!retval) throw new Error("paused returned no value");
+    return scValToNative(retval) as boolean;
+  }
+
+  async queryPauser(params: QueryParams): Promise<string> {
+    const retval = await this.simulateView({ contractId: params.contractId, method: "pauser" });
+    if (!retval) throw new Error("pauser returned no value");
+    return Address.fromScVal(retval).toString();
   }
 
   async deployFull(params: DeployFullParams): Promise<DeployFullResult> {
@@ -356,6 +517,13 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       contractId: sacResult.sacContractId,
       method: "set_admin",
       args: [addressToScVal(deployResult.contractId)],
+      fireblocksNote: buildFireblocksNote({
+        protocol: "sac",
+        method: "set_admin",
+        contract: sacResult.sacContractId,
+        caller: this.config.sourcePublicKey,
+        args: { new_admin: deployResult.contractId },
+      }),
     });
     if (setAdminResult.status !== "SUCCESS") {
       throw new Error(`set_admin failed (tx: ${setAdminResult.txHash})`);

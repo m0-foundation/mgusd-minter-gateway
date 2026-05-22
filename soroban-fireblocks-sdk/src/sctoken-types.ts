@@ -38,6 +38,68 @@ export interface SetMinterParams {
   newMinter: string;
 }
 
+export interface SetAdminParams {
+  /** Contract ID (C...) */
+  contractId: string;
+  /** New admin address (G... or C...) */
+  newAdmin: string;
+}
+
+export interface SetYieldRecipientManagerParams {
+  /** Contract ID (C...) */
+  contractId: string;
+  /** New yield recipient manager address (G... or C...) */
+  newYieldRecipientManager: string;
+}
+
+export interface SetForcedTransferManagerParams {
+  /** Contract ID (C...) */
+  contractId: string;
+  /** New forced transfer manager address (G... or C...) */
+  newForcedTransferManager: string;
+}
+
+export interface SetPauserParams {
+  /** Contract ID (C...) */
+  contractId: string;
+  /** New pauser address (G... or C...) */
+  newPauser: string;
+}
+
+export interface SetYieldRecipientParams {
+  /** Contract ID (C...) */
+  contractId: string;
+  /** Caller address — must be the configured yield_recipient_manager */
+  caller: string;
+  /** New yield recipient address (G... or C...) */
+  newYieldRecipient: string;
+}
+
+export interface TransferSacAdminParams {
+  /** Contract ID (C...) */
+  contractId: string;
+  /**
+   * New SAC admin (G... or C...).
+   * WARNING: irreversible. After this call the wrapper contract no longer
+   * holds SAC admin and can no longer mint, burn, clawback, or authorize.
+   */
+  newSacAdmin: string;
+}
+
+export interface UpgradeParams {
+  /** Contract ID (C...) */
+  contractId: string;
+  /** SHA-256 hash of the new WASM (32 bytes). Accepts a Buffer or a 64-char hex string. */
+  newWasmHash: Buffer | string;
+}
+
+export interface PauseParams {
+  /** Contract ID (C...) */
+  contractId: string;
+  /** Caller address — must hold the pauser role */
+  caller: string;
+}
+
 export interface QueryParams {
   /** Contract ID (C...) */
   contractId: string;

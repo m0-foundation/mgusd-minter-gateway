@@ -24,7 +24,10 @@ import {
   UploadWasmParams,
 } from "./types";
 
-const DEFAULT_TIMEOUT_SECONDS = 30;
+// 5 minutes — long enough to cover Fireblocks mobile-approval latency.
+// Local-signing paths complete well under this; this only sets the tx
+// envelope's maxTime upper bound.
+const DEFAULT_TIMEOUT_SECONDS = 300;
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 60;
 
