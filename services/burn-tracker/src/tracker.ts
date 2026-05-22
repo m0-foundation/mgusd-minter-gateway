@@ -126,7 +126,7 @@ export class BurnTracker {
       return {
         operationId: event.id,
         txHash: event.txHash,
-        operationIndex: event.operationIndex,
+        operationIndex: Number(event.operationIndex),
         ledger: event.ledger,
         timestamp: event.ledgerClosedAt,
         from,
