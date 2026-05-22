@@ -28,7 +28,7 @@ export class Storage {
         ProjectionExpression: "reconciled",
       }),
     );
-    return result.Item?.reconciled === 1;
+    return result.Item?.reconciled === "1";
   }
 
   async addBurn(record: BurnRecord, reconcileTxHash?: string): Promise<void> {
@@ -40,7 +40,7 @@ export class Storage {
       timestamp: record.timestamp,
       from_address: record.from,
       amount: record.amount,
-      reconciled: reconcileTxHash ? 1 : 0,
+      reconciled: reconcileTxHash ? "1" : "0",
     };
     if (reconcileTxHash) item.reconcile_tx_hash = reconcileTxHash;
 
@@ -64,7 +64,7 @@ export class Storage {
         TableName: this.burnsTable,
         Key: { txHash, operationIndex },
         UpdateExpression: "SET reconciled = :one, reconcile_tx_hash = :hash",
-        ExpressionAttributeValues: { ":one": 1, ":hash": reconcileTxHash },
+        ExpressionAttributeValues: { ":one": "1", ":hash": reconcileTxHash },
       }),
     );
   }
@@ -73,7 +73,7 @@ export class Storage {
     const items = await this.scanAll({
       TableName: this.burnsTable,
       FilterExpression: "reconciled = :zero",
-      ExpressionAttributeValues: { ":zero": 0 },
+      ExpressionAttributeValues: { ":zero": "0" },
     });
     return items.map(toRecord).sort((a, b) => a.ledger - b.ledger);
   }
@@ -110,7 +110,7 @@ export class Storage {
     const items = await this.scanAll({
       TableName: this.burnsTable,
       FilterExpression: "reconciled = :zero",
-      ExpressionAttributeValues: { ":zero": 0 },
+      ExpressionAttributeValues: { ":zero": "0" },
       ProjectionExpression: "amount",
     });
     const total = items.reduce((sum, item) => sum + parseFloat((item as { amount: string }).amount), 0);
@@ -144,7 +144,7 @@ interface DbRow {
   timestamp: string;
   from_address: string;
   amount: string;
-  reconciled: number;
+  reconciled: string;
   reconcile_tx_hash?: string;
 }
 
@@ -158,7 +158,7 @@ function toRecord(row: Record<string, unknown>): BurnRecord {
     timestamp: r.timestamp,
     from: r.from_address,
     amount: r.amount,
-    reconciled: r.reconciled === 1,
+    reconciled: r.reconciled === "1",
     reconcileTxHash: r.reconcile_tx_hash,
   };
 }
