@@ -2,31 +2,37 @@
  * Offline decoder for Stellar transaction envelope XDR.
  *
  * Approver workflow: the submitter shares the base64 envelope (printed to
- * stderr by every signing path in this SDK). The approver runs
- * `npm run cli -- verify-envelope --xdr "..."` on their own machine to
- * see (a) what the tx actually does and (b) the hash Fireblocks should
- * present to them. If the printed hash matches what their phone shows,
- * they know they're approving the same thing the submitter built.
+ * stderr by every signing path in this SDK). The approver runs this script
+ * on their own machine to see (a) what the tx actually does and (b) the hash
+ * Fireblocks should present to them. If the printed hash matches what their
+ * phone shows, they know they're approving the same thing the submitter built.
  *
- * Fully offline — no RPC, no Horizon, no Fireblocks. Network passphrase
- * is required to re-derive the hash (Stellar hashes are network-scoped);
- * we read it from SOROBAN_NETWORK_PASSPHRASE or the --network flag.
+ * Fully offline — no RPC, no Horizon, no Fireblocks. Network passphrase is
+ * required to re-derive the hash (Stellar hashes are network-scoped); we read
+ * it from SOROBAN_NETWORK_PASSPHRASE or the --network flag.
+ *
+ * Usage:
+ *   npm run verify-envelope -- --xdr <base64> [--network mainnet|testnet|<passphrase>]
  */
 
+import * as dotenv from "dotenv";
 import { Address, Networks, Operation, TransactionBuilder, scValToNative, xdr } from "@stellar/stellar-sdk";
 
-interface VerifyArgs {
-  xdr: string;
-  network?: string;
-}
+dotenv.config();
 
-export function runVerifyEnvelopeCommand(flags: Record<string, string | boolean>): void {
-  const args = parseFlags(flags);
-  const passphrase = resolveNetwork(args.network);
+function main(): void {
+  const argv = process.argv.slice(2);
+  const xdrB64 = argFlag(argv, "xdr");
+  if (!xdrB64) {
+    console.error("Usage: npm run verify-envelope -- --xdr <base64> [--network mainnet|testnet|<passphrase>]");
+    process.exit(1);
+  }
+
+  const passphrase = resolveNetwork(argFlag(argv, "network"));
 
   let tx;
   try {
-    tx = TransactionBuilder.fromXDR(args.xdr, passphrase);
+    tx = TransactionBuilder.fromXDR(xdrB64, passphrase);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`Failed to parse envelope XDR: ${msg}`);
@@ -34,7 +40,6 @@ export function runVerifyEnvelopeCommand(flags: Record<string, string | boolean>
   }
 
   if ("innerTransaction" in tx) {
-    // Fee-bump wrappers are uncommon for our SDK; surface and unwrap.
     console.log("(fee-bump wrapper — decoding inner transaction)");
     tx = tx.innerTransaction;
   }
@@ -60,9 +65,6 @@ export function runVerifyEnvelopeCommand(flags: Record<string, string | boolean>
   });
 }
 
-// Operation is a discriminated union in stellar-sdk; we widen to a record so
-// we can fish out fields by name from variants we don't have a dedicated
-// printer for. Approver still gets the truthful op type from `op.type`.
 type AnyOp = Operation & Record<string, unknown>;
 
 function describeOperation(opIn: Operation): void {
@@ -134,17 +136,12 @@ function describeInvokeHostFunction(op: InvokeHostFunctionOp): void {
   console.log(`    (unknown host function type: ${switchValue.name})`);
 }
 
-/** Best-effort ScVal pretty-printer. Falls back to type tag for exotic cases. */
 function formatScVal(scval: xdr.ScVal): string {
   try {
     const switchValue = scval.switch();
-    // Address values are easiest to read as G.../C... strings.
-    if (
-      switchValue === xdr.ScValType.scvAddress()
-    ) {
+    if (switchValue === xdr.ScValType.scvAddress()) {
       return `address(${Address.fromScVal(scval).toString()})`;
     }
-    // Bytes — show as hex with length.
     if (switchValue === xdr.ScValType.scvBytes()) {
       const b = scval.bytes();
       return `bytes(${b.length}B, 0x${b.toString("hex")})`;
@@ -172,30 +169,26 @@ function describeNetwork(passphrase: string): string {
   return passphrase;
 }
 
-function parseFlags(flags: Record<string, string | boolean>): VerifyArgs {
-  const xdrFlag = flags.xdr;
-  if (typeof xdrFlag !== "string" || xdrFlag.length === 0) {
-    console.error("verify-envelope: --xdr <base64> is required");
-    process.exit(1);
-  }
-  const network = typeof flags.network === "string" ? flags.network : undefined;
-  return { xdr: xdrFlag, network };
+function argFlag(argv: string[], name: string): string | undefined {
+  const idx = argv.indexOf(`--${name}`);
+  if (idx !== -1 && idx + 1 < argv.length) return argv[idx + 1];
+  return undefined;
 }
 
 function resolveNetwork(flagValue?: string): string {
   if (flagValue === "mainnet" || flagValue === "public") return Networks.PUBLIC;
   if (flagValue === "testnet") return Networks.TESTNET;
   if (flagValue === "futurenet") return Networks.FUTURENET;
-  if (flagValue) return flagValue; // assume raw passphrase
+  if (flagValue) return flagValue;
 
   const fromEnv = process.env.SOROBAN_NETWORK_PASSPHRASE;
   if (fromEnv) return fromEnv;
-  console.error(
-    "verify-envelope: pass --network (mainnet|testnet|<passphrase>) or set SOROBAN_NETWORK_PASSPHRASE",
-  );
+  console.error("verify-envelope: pass --network (mainnet|testnet|<passphrase>) or set SOROBAN_NETWORK_PASSPHRASE");
   process.exit(1);
 }
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 3) + "..." : s;
 }
+
+main();

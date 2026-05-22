@@ -1,72 +1,63 @@
 # SDK scripts
 
-Operator entry points for the soroban-fireblocks-sdk.
+Operator entry points for the soroban-fireblocks-sdk. Each script is a thin, self-contained driver around an SDK method — read it top-to-bottom to see exactly what it does.
 
-## Unified CLI — `npm run cli`
+## Action scripts
 
-Single subcommand-style entry point covering every contract method. The CLI auto-resolves the signing role per method and only validates env vars the invoked command needs — missing vars for roles you don't own never block other commands.
+| Script                       | Role               | Action                                                                 |
+|------------------------------|--------------------|------------------------------------------------------------------------|
+| `npm run block-user`         | `BLOCK_OPERATOR`   | Block a single user                                                    |
+| `npm run unblock-user`       | `UNBLOCK_OPERATOR` | Unblock a single user                                                  |
+| `npm run pause`              | `PAUSER`           | Pause the contract (blocks mint / burn / force_transfer / claim_yield) |
+| `npm run unpause`            | `PAUSER`           | Unpause the contract                                                   |
 
+Each accepts the same convention:
 ```bash
-npm run cli -- --help                                       # list commands
-npm run cli -- roles                                        # what roles are configured locally
-npm run cli -- <command> --help                             # per-command flags
-npm run cli -- pause --contract C... --dry-run              # preview, no signing
-npm run cli -- pause                                        # PAUSER signs
-npm run cli -- mint --to G... --amount 1000000000           # MINTER signs
-npm run cli -- transfer-sac-admin --new-sac-admin G...      # ADMIN signs (prompts before submit)
-npm run cli -- transfer-sac-admin --new-sac-admin G... --yes
-npm run cli -- query-paused --contract C...                 # view, no signing
+npm run block-user -- --contract C... --user G...
+# or via env:
+CONTRACT_ID=C... BLOCK_USER=G... npm run block-user
 ```
 
-### Global flags
+Destructive scripts prompt before submission; pass `--yes` to skip.
 
-| Flag        | Purpose                                                                 |
-|-------------|-------------------------------------------------------------------------|
-| `--dry-run` | Run preflight, print the call preview, exit. No signing, no submission. |
-| `--yes`     | Skip the interactive y/N for destructive ops.                           |
-| `--json`    | Emit machine-readable JSON on success.                                  |
-| `--help`    | Show top-level help or per-command help.                                |
+## Utilities
 
-### Argument sources
+| Script                    | Purpose                                                                     |
+|---------------------------|-----------------------------------------------------------------------------|
+| `npm run verify-envelope` | Offline decoder for tx envelope XDR (approver-side verification)           |
+| `npm run roles`           | Print which roles are configured in your current `.env`                     |
+| `npm run query`           | Read-only views (admin, paused, balance, etc.)                              |
+| `npm run trustline`       | Configure a wrapper-issued trustline (Fireblocks-signed)                    |
+| `npm run trustline-self`  | Configure a trustline using a locally-held Ed25519 secret (testing only)    |
+| `npm run deploy`          | Multi-tx deployment orchestration                                           |
 
-For each command's flags: CLI flag → env var fallback → error if required and missing. CLI flags always win.
-
-### Role / env layout
+## Role / env layout
 
 Every role has two env vars:
 - `<ROLE>_FIREBLOCKS_VAULT_ACCOUNT_ID` — the Fireblocks vault holding the signer key
 - `<ROLE>_PUBLIC_KEY` — the Stellar pubkey of that vault
 
-You only need to set the roles you actually control. Run `npm run cli -- roles` to see your current configuration.
+Each script reads only the env vars for its declared role, so a missing `MINTER_PUBLIC_KEY` won't block `block-user`. Run `npm run roles` to inventory what's currently configured.
 
-| Role                       | Covers                                                                       |
-|----------------------------|------------------------------------------------------------------------------|
-| `ADMIN`                    | All admin setters, `upgrade`, `transfer-sac-admin`, `reconcile-burn`, role-op grant/revoke |
-| `MINTER`                   | `mint`, `burn`, `set-rate`                                                   |
-| `PAUSER`                   | `pause`, `unpause`                                                           |
-| `BLOCK_OPERATOR`           | `block-user`, `batch-block-users`                                            |
-| `UNBLOCK_OPERATOR`         | `unblock-user`, `batch-unblock-users`                                        |
-| `FORCED_TRANSFER_MANAGER`  | `force-transfer`                                                             |
-| `YIELD_RECIPIENT_MANAGER`  | `set-yield-recipient`, `claim-yield`                                         |
-| `VIEW` (no env)            | All `query-*` commands — only requires `SOROBAN_RPC_URL`, `HORIZON_URL`, `SOROBAN_NETWORK_PASSPHRASE` |
+| Role                       | Used by                                                                       |
+|----------------------------|-------------------------------------------------------------------------------|
+| `ADMIN`                    | (no script yet — invoke via SDK directly for admin rotations / upgrades)      |
+| `MINTER`                   | `mint`, `burn`                                                                |
+| `PAUSER`                   | `pause`, `unpause`                                                            |
+| `BLOCK_OPERATOR`           | `block-user`                                                                  |
+| `UNBLOCK_OPERATOR`         | `unblock-user`                                                                |
+| `VIEW` (no Fireblocks env) | `query`, `verify-envelope` — only `SOROBAN_RPC_URL` etc.                       |
 
-## Legacy scripts (still supported)
+## Adding a new action script
 
-These predate the CLI and remain for muscle memory / direct script invocations:
+The SDK already covers every contract method (`parity.test.ts` enforces this). To expose one as a script:
 
-| Script               | Equivalent CLI command           |
-|----------------------|----------------------------------|
-| `npm run mint`       | `npm run cli -- mint`            |
-| `npm run burn`       | `npm run cli -- burn`            |
-| `npm run query`      | `npm run cli -- query-admin`     |
-| `npm run trustline`  | (no CLI equivalent yet)          |
-| `npm run deploy`     | (no CLI equivalent — orchestrates 5 sub-txs) |
+1. Copy [`block-user.ts`](block-user.ts) as a template.
+2. Update the role, the SDK method call, and the prompt message.
+3. Add a `package.json` script alias.
 
-## Adding a new contract method
+Scripts are deliberately *not* generated from a registry — each one is reviewed and run on its own merits, and operation-specific safety checks (like `pause`'s preflight verifying the on-chain pauser matches the configured key) belong inline in the script.
 
-1. Add the wrapper in [`src/sctoken-client.ts`](../src/sctoken-client.ts) + matching type in [`sctoken-types.ts`](../src/sctoken-types.ts).
-2. Add a unit test in [`tests/unit/sctoken-client.test.ts`](../tests/unit/sctoken-client.test.ts).
-3. Add an entry in [`scripts/cli/registry.ts`](cli/registry.ts).
-4. Add the method name to **both** [`tests/unit/parity.test.ts`](../tests/unit/parity.test.ts) and [`tests/unit/cli-registry.test.ts`](../tests/unit/cli-registry.test.ts) `EXPECTED_CONTRACT_METHODS` arrays.
+## Approver verification
 
-Both parity tests must list it; that's the forcing function that prevents surface drift.
+Every signing script prints the envelope XDR + the 32-byte hash to stderr before submission. Approvers should run `verify-envelope` on their own machine and confirm the decoded contract / method / args + the hash match what Fireblocks shows them. See [`verify-envelope.ts`](verify-envelope.ts) for the protocol.
