@@ -112,7 +112,7 @@ fn test_sac_transfer_does_not_affect_yield() {
     s.contract.mint(&s.minter, &treasury, &amount);
 
     // Set 5% rate and advance 1 year to accrue yield
-    s.contract.set_rate(&s.minter, &500);
+    s.contract.set_interest_rate(&s.minter, &500);
     advance_time(&s.env, SECONDS_PER_YEAR as u64);
 
     // Record yield state before transfer

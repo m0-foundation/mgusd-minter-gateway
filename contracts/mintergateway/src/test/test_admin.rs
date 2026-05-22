@@ -246,10 +246,10 @@ fn test_admin_cannot_burn() {
 }
 
 #[test]
-fn test_admin_cannot_set_rate() {
+fn test_admin_cannot_set_interest_rate() {
     let s = setup();
 
-    let result = s.contract.try_set_rate(&s.admin, &500);
+    let result = s.contract.try_set_interest_rate(&s.admin, &500);
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))
@@ -364,6 +364,25 @@ fn test_remove_unblock_operator_reverts_without_auth() {
     let err = s
         .contract
         .try_remove_unblock_operator(&s.unblock_operator)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, auth_error());
+}
+
+#[test]
+fn test_add_pauser_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let new_addr = Address::generate(&s.env);
+    let err = s.contract.try_add_pauser(&new_addr).unwrap_err().unwrap();
+    assert_eq!(err, auth_error());
+}
+
+#[test]
+fn test_remove_pauser_reverts_without_auth() {
+    let s = setup_no_mock_auth();
+    let err = s
+        .contract
+        .try_remove_pauser(&s.pauser)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, auth_error());
