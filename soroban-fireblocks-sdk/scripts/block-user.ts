@@ -1,8 +1,8 @@
 /**
- * Mint tokens via the SCToken contract.
+ * Block a single user on a wrapper contract.
  *
  * Edit the VARS block below for this specific execution, then run:
- *   npm run mint
+ *   npm run block-user
  *
  * Requires in .env: SOROBAN_RPC_URL, SOROBAN_NETWORK_PASSPHRASE, HORIZON_URL,
  * FIREBLOCKS_API_KEY, FIREBLOCKS_SECRET_PATH, FIREBLOCKS_ASSET_ID,
@@ -18,32 +18,26 @@ import { printResult } from "./lib/result";
 dotenv.config();
 
 // ─── VARS — edit before running ─────────────────────────────────────────
-const MINT_TO = "";
-const MINT_AMOUNT = 0n;
+const USER_TO_BLOCK = "";
 const VAULT_ACCOUNT_ID = "";
 const VAULT_PUBLIC_KEY = "";
 // ────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   const contractId = assertStellarAddress(requireEnv("CONTRACT_ID"), "CONTRACT_ID");
-  const to = assertStellarAddress(MINT_TO, "MINT_TO");
+  const user = assertStellarAddress(USER_TO_BLOCK, "USER_TO_BLOCK");
   const vaultPubkey = assertStellarAddress(VAULT_PUBLIC_KEY, "VAULT_PUBLIC_KEY");
   if (!VAULT_ACCOUNT_ID) {
     console.error("VAULT_ACCOUNT_ID is required — set it in the VARS block");
     process.exit(1);
   }
-  if (MINT_AMOUNT <= 0n) {
-    console.error("MINT_AMOUNT must be a positive bigint — set it in the VARS block (e.g., 1000000000n)");
-    process.exit(1);
-  }
 
   const config = buildSigningConfig(VAULT_ACCOUNT_ID, vaultPubkey);
 
-  console.log("=== Mint ===");
-  console.log(`  Contract:  ${contractId}`);
-  console.log(`  To:        ${to}`);
-  console.log(`  Amount:    ${MINT_AMOUNT}`);
-  console.log(`  Minter:    ${vaultPubkey} (vault ${VAULT_ACCOUNT_ID})`);
+  console.log("=== Block user ===");
+  console.log(`  Contract:   ${contractId}`);
+  console.log(`  Blocking:   ${user}`);
+  console.log(`  Operator:   ${vaultPubkey} (vault ${VAULT_ACCOUNT_ID})`);
   console.log();
 
   if (!(await confirm(`Proceed?`))) {
@@ -52,7 +46,7 @@ async function main(): Promise<void> {
   }
 
   const client = new SctokenFireblocksClient(config);
-  const result = await client.mint({ contractId, caller: vaultPubkey, to, amount: MINT_AMOUNT });
+  const result = await client.blockUser({ contractId, user, operator: vaultPubkey });
   printResult(result);
 }
 

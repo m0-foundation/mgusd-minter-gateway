@@ -1,6 +1,12 @@
 // Base SDK
 export { SorobanFireblocksClient } from "./client";
-export { loadConfigFromEnv, loadIssuerConfigFromEnv, loadMinterConfigFromEnv, validateConfig, readFireblocksSecret } from "./config";
+export {
+  loadConfigFromEnv,
+  loadIssuerConfigFromEnv,
+  loadMinterConfigFromEnv,
+  validateConfig,
+  readFireblocksSecret,
+} from "./config";
 export { ConfigError, SimulationError, FireblocksSigningError, SubmissionError, IssuerContaminatedError, IssuerContaminationCounts, WasmHashMismatchError } from "./errors";
 export { assertIssuerNotContaminated } from "./deploy-checks";
 export { createFireblocksClient, signHash } from "./fireblocks-signer";
@@ -35,13 +41,21 @@ export type {
 
 // SCToken extensions
 export { SctokenFireblocksClient } from "./sctoken-client";
-export { addressToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
+export { addressToScVal, addressVecToScVal, bytesN32ToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
 export { MAX_BATCH_SIZE } from "./sctoken-types";
 export type {
   MintParams,
   BurnParams,
   SetRateParams,
   SetMinterParams,
+  SetAdminParams,
+  SetYieldRecipientManagerParams,
+  SetForcedTransferManagerParams,
+  SetPauserParams,
+  SetYieldRecipientParams,
+  TransferSacAdminParams,
+  UpgradeParams,
+  PauseParams,
   BlockUserParams,
   BatchBlockUsersParams,
   ForceTransferParams,
@@ -51,4 +65,3 @@ export type {
   DeployFullParams,
   DeployFullResult,
 } from "./sctoken-types";
-export { addressVecToScVal } from "./scval-helpers";

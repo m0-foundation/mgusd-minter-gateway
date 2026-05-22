@@ -73,8 +73,15 @@ export class SorobanFireblocksClient {
     const txHash = preparedTx.hash();
     const hashHex = txHash.toString("hex");
 
-    // 4. Sign hash via Fireblocks RAW (MPC_EDDSA_ED25519)
-    const sigResult = await signHash(this.fireblocks, this.config, hashHex);
+    // Emit a copy-pasteable share-block so the submitter can hand off the
+    // hash + envelope to approvers for independent verification. stderr so
+    // --json stdout stays parseable.
+    const envelopeB64 = preparedTx.toEnvelope().toXDR("base64");
+    printShareBlock(hashHex, envelopeB64);
+
+    // 4. Sign hash via Fireblocks RAW (MPC_EDDSA_ED25519). The envelope XDR
+    // is stashed in extraParameters so approvers can fb-tx-inspect by ID alone.
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, params.fireblocksNote, envelopeB64);
 
     // 5. Attach signature to transaction envelope
     const signedTx = addSignatureToTransaction(
@@ -113,8 +120,12 @@ export class SorobanFireblocksClient {
     // 2. Hash the transaction (32-byte SHA-256)
     const hashHex = tx.hash().toString("hex");
 
+    const envelopeB64 = tx.toEnvelope().toXDR("base64");
+    printShareBlock(hashHex, envelopeB64);
+
     // 3. Sign hash via Fireblocks RAW (MPC_EDDSA_ED25519)
-    const sigResult = await signHash(this.fireblocks, this.config, hashHex);
+    const note = `setupTrustline asset=${params.assetCode}:${params.assetIssuer} trustor=${this.config.sourcePublicKey}`;
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note, envelopeB64);
 
     // 4. Attach signature to transaction envelope
     const signedTx = addSignatureToTransaction(
@@ -149,7 +160,10 @@ export class SorobanFireblocksClient {
     const tx = await buildConfigureIssuerTransaction(this.server, this.config, params);
 
     const hashHex = tx.hash().toString("hex");
-    const sigResult = await signHash(this.fireblocks, this.config, hashHex);
+    const envelopeB64 = tx.toEnvelope().toXDR("base64");
+    printShareBlock(hashHex, envelopeB64);
+    const note = `configureIssuer (set flags AUTH_REQUIRED + AUTH_REVOCABLE) on ${this.config.sourcePublicKey}`;
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note, envelopeB64);
 
     const signedTx = addSignatureToTransaction(
       tx,
@@ -174,7 +188,10 @@ export class SorobanFireblocksClient {
     const preparedTx = await simulateAndPrepare(this.server, rawTx, this.config.networkPassphrase);
 
     const hashHex = preparedTx.hash().toString("hex");
-    const sigResult = await signHash(this.fireblocks, this.config, hashHex);
+    const envelopeB64 = preparedTx.toEnvelope().toXDR("base64");
+    printShareBlock(hashHex, envelopeB64);
+    const note = `deploySac asset=${params.assetCode}:${params.assetIssuer ?? this.config.sourcePublicKey}`;
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note, envelopeB64);
 
     const signedTx = addSignatureToTransaction(
       preparedTx,
@@ -210,7 +227,10 @@ export class SorobanFireblocksClient {
     const preparedTx = await simulateAndPrepare(this.server, rawTx, this.config.networkPassphrase);
 
     const hashHex = preparedTx.hash().toString("hex");
-    const sigResult = await signHash(this.fireblocks, this.config, hashHex);
+    const envelopeB64 = preparedTx.toEnvelope().toXDR("base64");
+    printShareBlock(hashHex, envelopeB64);
+    const note = `uploadWasm sha256=${expectedWasmHash}`;
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note, envelopeB64);
 
     const signedTx = addSignatureToTransaction(
       preparedTx,
@@ -249,7 +269,10 @@ export class SorobanFireblocksClient {
     const preparedTx = await simulateAndPrepare(this.server, rawTx, this.config.networkPassphrase);
 
     const hashHex = preparedTx.hash().toString("hex");
-    const sigResult = await signHash(this.fireblocks, this.config, hashHex);
+    const envelopeB64 = preparedTx.toEnvelope().toXDR("base64");
+    printShareBlock(hashHex, envelopeB64);
+    const note = `deployContract wasmHash=${params.wasmHash}`;
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note, envelopeB64);
 
     const signedTx = addSignatureToTransaction(
       preparedTx,
@@ -272,4 +295,16 @@ export class SorobanFireblocksClient {
 
     return { txHash, status: "FAILED", ledger: result.ledger };
   }
+}
+
+/**
+ * Emits a copy-pasteable share-block to stderr so the submitter can hand the
+ * hash + envelope XDR to approvers for independent verification (via
+ * `npm run verify-envelope`). stderr keeps stdout (incl. --json) clean.
+ */
+function printShareBlock(hashHex: string, envelopeB64: string): void {
+  console.error("[Verify] Share with approvers before they approve in Fireblocks:");
+  console.error(`  hash:     ${hashHex}`);
+  console.error(`  envelope: ${envelopeB64}`);
+  console.error(`  decode:   npm run verify-envelope -- --xdr "${envelopeB64}"`);
 }

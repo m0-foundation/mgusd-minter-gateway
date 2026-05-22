@@ -31,6 +31,12 @@ export interface InvokeContractParams {
   args?: xdr.ScVal[];
   /** Transaction timeout in seconds (default: 30) */
   timeoutSeconds?: number;
+  /**
+   * Optional human-readable note attached to the Fireblocks RAW signing
+   * request. Shown to approvers in the Fireblocks console + mobile app
+   * alongside the (otherwise opaque) 32-byte hash. Keep ≤ 250 chars.
+   */
+  fireblocksNote?: string;
 }
 
 export interface InvokeContractResult {

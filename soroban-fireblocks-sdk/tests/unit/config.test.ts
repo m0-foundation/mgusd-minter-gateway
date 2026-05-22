@@ -1,5 +1,11 @@
 import * as fs from "fs";
-import { loadConfigFromEnv, loadIssuerConfigFromEnv, loadMinterConfigFromEnv, validateConfig, readFireblocksSecret } from "../../src/config";
+import {
+  loadConfigFromEnv,
+  loadIssuerConfigFromEnv,
+  loadMinterConfigFromEnv,
+  validateConfig,
+  readFireblocksSecret,
+} from "../../src/config";
 import { ConfigError } from "../../src/errors";
 import { SorobanFireblocksConfig } from "../../src/types";
 

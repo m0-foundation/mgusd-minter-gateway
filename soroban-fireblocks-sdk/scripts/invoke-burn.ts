@@ -1,51 +1,63 @@
 /**
  * Burn tokens via the SCToken contract.
  *
- * Uses the MINTER Fireblocks account.
- * Burns from the minter's key (MINTER_PUBLIC_KEY),
- * since burn requires from.require_auth().
+ * Burns from the configured signer's key — VAULT_PUBLIC_KEY is both `caller`
+ * and `from`, since burn requires `from.require_auth()`.
  *
- * All parameters are read from .env — review before running:
- *   CONTRACT_ID, BURN_AMOUNT
+ * Edit the VARS block below for this specific execution, then run:
+ *   npm run burn
  *
- * Usage: npm run burn
+ * Requires in .env: SOROBAN_RPC_URL, SOROBAN_NETWORK_PASSPHRASE, HORIZON_URL,
+ * FIREBLOCKS_API_KEY, FIREBLOCKS_SECRET_PATH, FIREBLOCKS_ASSET_ID,
+ * FIREBLOCKS_BASE_PATH (optional), CONTRACT_ID.
  */
 
 import * as dotenv from "dotenv";
-import { SctokenFireblocksClient, loadMinterConfigFromEnv } from "../src";
+import { SctokenFireblocksClient } from "../src/sctoken-client";
+import { assertStellarAddress, buildSigningConfig, requireEnv } from "./lib/config";
+import { confirm } from "./lib/confirm";
+import { printResult } from "./lib/result";
 
 dotenv.config();
 
+// ─── VARS — edit before running ─────────────────────────────────────────
+const BURN_AMOUNT = 0n;
+const VAULT_ACCOUNT_ID = "";
+const VAULT_PUBLIC_KEY = "";
+// ────────────────────────────────────────────────────────────────────────
+
 async function main(): Promise<void> {
-  const config = loadMinterConfigFromEnv();
-  const client = new SctokenFireblocksClient(config);
+  const contractId = assertStellarAddress(requireEnv("CONTRACT_ID"), "CONTRACT_ID");
+  const vaultPubkey = assertStellarAddress(VAULT_PUBLIC_KEY, "VAULT_PUBLIC_KEY");
+  if (!VAULT_ACCOUNT_ID) {
+    console.error("VAULT_ACCOUNT_ID is required — set it in the VARS block");
+    process.exit(1);
+  }
+  if (BURN_AMOUNT <= 0n) {
+    console.error("BURN_AMOUNT must be a positive bigint — set it in the VARS block (e.g., 500000000n)");
+    process.exit(1);
+  }
 
-  const contractId = process.env.CONTRACT_ID;
-  const amountStr = process.env.BURN_AMOUNT;
+  const config = buildSigningConfig(VAULT_ACCOUNT_ID, vaultPubkey);
 
-  if (!contractId) throw new Error("Missing CONTRACT_ID in .env");
-  if (!amountStr) throw new Error("Missing BURN_AMOUNT in .env");
-
-  const amount = BigInt(amountStr);
-  const caller = config.sourcePublicKey;
-  const from = config.sourcePublicKey;
-
-  console.log("=== Burn Parameters ===");
-  console.log(`  Contract: ${contractId}`);
-  console.log(`  Caller:   ${caller}`);
-  console.log(`  From:     ${from}`);
-  console.log(`  Amount:   ${amount}`);
-  console.log(`  RPC:      ${config.sorobanRpcUrl}`);
+  console.log("=== Burn ===");
+  console.log(`  Contract:  ${contractId}`);
+  console.log(`  From:      ${vaultPubkey}`);
+  console.log(`  Amount:    ${BURN_AMOUNT}`);
+  console.log(`  Minter:    ${vaultPubkey} (vault ${VAULT_ACCOUNT_ID})`);
   console.log();
 
-  const result = await client.burn({ contractId, caller, from, amount });
+  if (!(await confirm(`Proceed?`))) {
+    console.log("Aborted.");
+    return;
+  }
 
-  console.log(`Transaction ${result.status}:`);
-  console.log(`  Hash:   ${result.txHash}`);
-  console.log(`  Ledger: ${result.ledger}`);
+  const client = new SctokenFireblocksClient(config);
+  const result = await client.burn({ contractId, caller: vaultPubkey, from: vaultPubkey, amount: BURN_AMOUNT });
+  printResult(result);
 }
 
 main().catch((err) => {
-  console.error("Error:", err);
+  console.error("Error:", err instanceof Error ? err.message : err);
   process.exit(1);
 });

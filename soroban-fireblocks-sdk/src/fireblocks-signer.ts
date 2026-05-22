@@ -11,7 +11,11 @@ import { FireblocksSigningError } from "./errors";
 import { FireblocksSignatureResult, SorobanFireblocksConfig } from "./types";
 
 const POLL_INTERVAL_MS = 1000;
-const MAX_POLL_ATTEMPTS = 120;
+// 10 minutes — covers the tx envelope's 5-min maxTime plus mobile-approval
+// latency. Keeping the poll window strictly longer than the tx envelope's
+// validity guarantees the SDK fails first (clear error) instead of returning
+// a signature that's already useless to submit.
+const MAX_POLL_ATTEMPTS = 600;
 
 const TERMINAL_STATES: Set<string> = new Set([
   TransactionStateEnum.Completed,
@@ -41,11 +45,27 @@ export async function signHash(
   fireblocks: Fireblocks,
   config: SorobanFireblocksConfig,
   hashHex: string,
+  note?: string,
+  envelopeXdr?: string,
 ): Promise<FireblocksSignatureResult> {
   if (hashHex.length !== 64) {
     throw new FireblocksSigningError(
       `Expected 32-byte hash as 64-char hex string, got ${hashHex.length} chars`,
     );
+  }
+
+  // Stash the full envelope XDR alongside rawMessageData so approvers can
+  // pull the tx by Fireblocks ID, decode the call, and verify the decoded
+  // hash matches rawMessageData.content (see scripts/fb-tx-inspect.ts).
+  // Fireblocks treats extraParameters as a free-form object and returns it
+  // verbatim from getTransaction — the extra key round-trips.
+  const extraParameters: Record<string, unknown> = {
+    rawMessageData: {
+      messages: [{ content: hashHex }],
+    },
+  };
+  if (envelopeXdr) {
+    extraParameters.sorobanEnvelopeXdr = envelopeXdr;
   }
 
   const txRequest: TransactionRequest = {
@@ -55,15 +75,12 @@ export async function signHash(
       type: TransferPeerPathType.VaultAccount,
       id: config.fireblocksVaultAccountId,
     },
-    extraParameters: {
-      rawMessageData: {
-        messages: [
-          {
-            content: hashHex,
-          },
-        ],
-      },
-    },
+    // Fireblocks shows `note` to approvers on mobile + console next to the
+    // (otherwise opaque) raw hash. Useful as a human-readable label, but the
+    // approver should NOT rely on it for verification — it's submitter-set
+    // metadata. The cryptographic anchor is rawMessageData.content.
+    ...(note ? { note } : {}),
+    extraParameters,
   };
 
   const createResponse = await fireblocks.transactions.createTransaction({
@@ -75,7 +92,16 @@ export async function signHash(
     throw new FireblocksSigningError("Fireblocks createTransaction returned no transaction ID");
   }
 
+  // stderr so --json stdout stays clean for downstream parsers.
+  console.error(
+    `[Fireblocks] tx ${fbTxId} submitted for RAW signing. ` +
+      `Awaiting approval from designated signers (poll budget ${MAX_POLL_ATTEMPTS}s)...`,
+  );
+  console.error(`[Verify] Approvers: npm run fb-tx-inspect -- ${fbTxId}`);
+
   const completedTx = await pollFireblocksTransaction(fireblocks, fbTxId);
+
+  console.error(`[Fireblocks] tx ${fbTxId} approved + signed. Submitting to Stellar...`);
 
   return extractSignature(completedTx, fbTxId);
 }

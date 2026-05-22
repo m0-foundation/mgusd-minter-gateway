@@ -1,8 +1,11 @@
 /**
- * Mint tokens via the SCToken contract.
+ * Unpause a wrapper contract.
  *
  * Edit the VARS block below for this specific execution, then run:
- *   npm run mint
+ *   npm run unpause
+ *
+ * Preflight asserts that the on-chain pauser matches VAULT_PUBLIC_KEY, so a
+ * misconfigured pubkey fails before we sign anything.
  *
  * Requires in .env: SOROBAN_RPC_URL, SOROBAN_NETWORK_PASSPHRASE, HORIZON_URL,
  * FIREBLOCKS_API_KEY, FIREBLOCKS_SECRET_PATH, FIREBLOCKS_ASSET_ID,
@@ -18,42 +21,46 @@ import { printResult } from "./lib/result";
 dotenv.config();
 
 // ─── VARS — edit before running ─────────────────────────────────────────
-const MINT_TO = "";
-const MINT_AMOUNT = 0n;
 const VAULT_ACCOUNT_ID = "";
 const VAULT_PUBLIC_KEY = "";
 // ────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   const contractId = assertStellarAddress(requireEnv("CONTRACT_ID"), "CONTRACT_ID");
-  const to = assertStellarAddress(MINT_TO, "MINT_TO");
   const vaultPubkey = assertStellarAddress(VAULT_PUBLIC_KEY, "VAULT_PUBLIC_KEY");
   if (!VAULT_ACCOUNT_ID) {
     console.error("VAULT_ACCOUNT_ID is required — set it in the VARS block");
     process.exit(1);
   }
-  if (MINT_AMOUNT <= 0n) {
-    console.error("MINT_AMOUNT must be a positive bigint — set it in the VARS block (e.g., 1000000000n)");
-    process.exit(1);
-  }
 
   const config = buildSigningConfig(VAULT_ACCOUNT_ID, vaultPubkey);
+  const client = new SctokenFireblocksClient(config);
 
-  console.log("=== Mint ===");
+  const onChainPauser = await client.queryPauser({ contractId });
+  if (onChainPauser !== vaultPubkey) {
+    throw new Error(
+      `Pauser mismatch: on-chain pauser is ${onChainPauser}, but VAULT_PUBLIC_KEY is ${vaultPubkey}. ` +
+        `Rotate the contract pauser or fix the VARS block in this script.`,
+    );
+  }
+
+  console.log("=== Unpause contract ===");
   console.log(`  Contract:  ${contractId}`);
-  console.log(`  To:        ${to}`);
-  console.log(`  Amount:    ${MINT_AMOUNT}`);
-  console.log(`  Minter:    ${vaultPubkey} (vault ${VAULT_ACCOUNT_ID})`);
+  console.log(`  Pauser:    ${vaultPubkey} (vault ${VAULT_ACCOUNT_ID})`);
   console.log();
 
-  if (!(await confirm(`Proceed?`))) {
+  if (!(await confirm(`UNPAUSE ${contractId}?`))) {
     console.log("Aborted.");
     return;
   }
 
-  const client = new SctokenFireblocksClient(config);
-  const result = await client.mint({ contractId, caller: vaultPubkey, to, amount: MINT_AMOUNT });
+  const result = await client.unpause({ contractId, caller: vaultPubkey });
   printResult(result);
+
+  const paused = await client.queryPaused({ contractId });
+  if (paused) {
+    throw new Error("unpause() returned SUCCESS but `paused()` is still true — investigate on-chain");
+  }
 }
 
 main().catch((err) => {
