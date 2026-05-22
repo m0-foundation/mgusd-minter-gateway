@@ -4,12 +4,6 @@ export {
   loadConfigFromEnv,
   loadIssuerConfigFromEnv,
   loadMinterConfigFromEnv,
-  loadPauserConfigFromEnv,
-  loadAdminConfigFromEnv,
-  loadBlockOperatorConfigFromEnv,
-  loadUnblockOperatorConfigFromEnv,
-  loadForcedTransferManagerConfigFromEnv,
-  loadYieldRecipientManagerConfigFromEnv,
   validateConfig,
   readFireblocksSecret,
 } from "./config";

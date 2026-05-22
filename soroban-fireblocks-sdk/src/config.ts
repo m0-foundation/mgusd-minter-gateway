@@ -58,17 +58,7 @@ export function loadConfigFromEnv(): SorobanFireblocksConfig {
   return config;
 }
 
-function loadRoleConfigFromEnv(
-  role:
-    | "ISSUER"
-    | "MINTER"
-    | "PAUSER"
-    | "ADMIN"
-    | "BLOCK_OPERATOR"
-    | "UNBLOCK_OPERATOR"
-    | "FORCED_TRANSFER_MANAGER"
-    | "YIELD_RECIPIENT_MANAGER",
-): SorobanFireblocksConfig {
+function loadRoleConfigFromEnv(role: "ISSUER" | "MINTER"): SorobanFireblocksConfig {
   const secretPath = process.env.FIREBLOCKS_SECRET_PATH;
   if (!secretPath) {
     throw new ConfigError("Missing required env var: FIREBLOCKS_SECRET_PATH");
@@ -101,28 +91,4 @@ export function loadIssuerConfigFromEnv(): SorobanFireblocksConfig {
 
 export function loadMinterConfigFromEnv(): SorobanFireblocksConfig {
   return loadRoleConfigFromEnv("MINTER");
-}
-
-export function loadPauserConfigFromEnv(): SorobanFireblocksConfig {
-  return loadRoleConfigFromEnv("PAUSER");
-}
-
-export function loadAdminConfigFromEnv(): SorobanFireblocksConfig {
-  return loadRoleConfigFromEnv("ADMIN");
-}
-
-export function loadBlockOperatorConfigFromEnv(): SorobanFireblocksConfig {
-  return loadRoleConfigFromEnv("BLOCK_OPERATOR");
-}
-
-export function loadUnblockOperatorConfigFromEnv(): SorobanFireblocksConfig {
-  return loadRoleConfigFromEnv("UNBLOCK_OPERATOR");
-}
-
-export function loadForcedTransferManagerConfigFromEnv(): SorobanFireblocksConfig {
-  return loadRoleConfigFromEnv("FORCED_TRANSFER_MANAGER");
-}
-
-export function loadYieldRecipientManagerConfigFromEnv(): SorobanFireblocksConfig {
-  return loadRoleConfigFromEnv("YIELD_RECIPIENT_MANAGER");
 }

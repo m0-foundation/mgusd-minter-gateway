@@ -1,44 +1,36 @@
 /**
- * Role-scoped config loading for operator scripts.
+ * Helpers for action scripts.
  *
- * Each script declares which role it needs (e.g., "BLOCK_OPERATOR") and only
- * that role's env vars are inspected. A missing `MINTER_PUBLIC_KEY` won't
- * block a `block-user` script from running.
+ * Each script declares its vault + pubkey + per-action args at the top of
+ * the file (the VARS block). `buildSigningConfig` reads the environment-level
+ * basics (RPC, Fireblocks API, etc.) from `.env` and combines them with the
+ * script-supplied vault + pubkey into a complete SorobanFireblocksConfig.
  */
 
-import {
-  loadAdminConfigFromEnv,
-  loadBlockOperatorConfigFromEnv,
-  loadForcedTransferManagerConfigFromEnv,
-  loadIssuerConfigFromEnv,
-  loadMinterConfigFromEnv,
-  loadPauserConfigFromEnv,
-  loadUnblockOperatorConfigFromEnv,
-  loadYieldRecipientManagerConfigFromEnv,
-} from "../../src";
+import * as fs from "fs";
 import type { SorobanFireblocksConfig } from "../../src/types";
 
-export type Role =
-  | "ADMIN"
-  | "MINTER"
-  | "PAUSER"
-  | "BLOCK_OPERATOR"
-  | "UNBLOCK_OPERATOR"
-  | "FORCED_TRANSFER_MANAGER"
-  | "YIELD_RECIPIENT_MANAGER"
-  | "ISSUER";
-
-export function loadConfigForRole(role: Role): SorobanFireblocksConfig {
-  switch (role) {
-    case "ADMIN": return loadAdminConfigFromEnv();
-    case "MINTER": return loadMinterConfigFromEnv();
-    case "PAUSER": return loadPauserConfigFromEnv();
-    case "BLOCK_OPERATOR": return loadBlockOperatorConfigFromEnv();
-    case "UNBLOCK_OPERATOR": return loadUnblockOperatorConfigFromEnv();
-    case "FORCED_TRANSFER_MANAGER": return loadForcedTransferManagerConfigFromEnv();
-    case "YIELD_RECIPIENT_MANAGER": return loadYieldRecipientManagerConfigFromEnv();
-    case "ISSUER": return loadIssuerConfigFromEnv();
-  }
+/**
+ * Builds a SorobanFireblocksConfig from script-supplied vault + pubkey plus
+ * `.env`-supplied environment basics. Exits with a clear error if any required
+ * env var is missing.
+ */
+export function buildSigningConfig(
+  fireblocksVaultAccountId: string,
+  sourcePublicKey: string,
+): SorobanFireblocksConfig {
+  const secretPath = requireEnv("FIREBLOCKS_SECRET_PATH");
+  return {
+    sorobanRpcUrl: requireEnv("SOROBAN_RPC_URL"),
+    networkPassphrase: requireEnv("SOROBAN_NETWORK_PASSPHRASE"),
+    horizonUrl: requireEnv("HORIZON_URL"),
+    fireblocksApiKey: requireEnv("FIREBLOCKS_API_KEY"),
+    fireblocksSecretKey: fs.readFileSync(secretPath, "utf8"),
+    fireblocksAssetId: requireEnv("FIREBLOCKS_ASSET_ID"),
+    fireblocksBasePath: process.env.FIREBLOCKS_BASE_PATH ?? "sandbox",
+    fireblocksVaultAccountId,
+    sourcePublicKey,
+  };
 }
 
 export function requireEnv(name: string): string {
@@ -48,19 +40,6 @@ export function requireEnv(name: string): string {
     process.exit(1);
   }
   return v;
-}
-
-/**
- * Resolves a value from `--<flag> <value>` on argv, then `process.env[envVar]`,
- * else exits with a clear error. Used by scripts that accept either form.
- */
-export function requireArg(flag: string, envVar: string, argv: string[]): string {
-  const idx = argv.indexOf(`--${flag}`);
-  if (idx !== -1 && idx + 1 < argv.length) return argv[idx + 1];
-  const fromEnv = process.env[envVar];
-  if (fromEnv) return fromEnv;
-  console.error(`Missing --${flag} <value> (or env ${envVar})`);
-  process.exit(1);
 }
 
 export function assertStellarAddress(value: string, label: string): string {
