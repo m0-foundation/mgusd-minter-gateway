@@ -52,7 +52,7 @@ impl YieldToken {
     /// * `admin` - Top-level authority address
     /// * `minter` - Address that can mint/burn tokens and set rate
     /// * `yield_recipient_manager` - Address that can set the yield recipient
-    /// * `yield_recipient` - Address that receives claimed yield (passive — `claim_yield` is gated by `yield_recipient_manager`)
+    /// * `yield_recipient` - Address that can claim yield
     /// * `forced_transfer_manager` - Address that can authorize accounts and transfer tokens
     /// * `block_operator` - Initial address with block permission; added to the block-operator set.
     ///   More addresses can be granted via `add_block_operator`.
@@ -664,7 +664,7 @@ impl YieldToken {
 }
 
 // =============================================================================
-// Pausable (Pauser only)
+// Pausable (Pauser or Admin)
 // =============================================================================
 
 #[contractimpl]
