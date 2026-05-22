@@ -24,7 +24,7 @@ export class Storage {
     const result = await this.client.send(
       new GetCommand({
         TableName: this.burnsTable,
-        Key: { tx_hash: txHash, operation_index: operationIndex },
+        Key: { txHash, operationIndex },
         ProjectionExpression: "reconciled",
       }),
     );
@@ -33,9 +33,9 @@ export class Storage {
 
   async addBurn(record: BurnRecord, reconcileTxHash?: string): Promise<void> {
     const item: Record<string, unknown> = {
-      tx_hash: record.txHash,
+      txHash: record.txHash,
+      operationIndex: record.operationIndex,
       operation_id: record.operationId,
-      operation_index: record.operationIndex,
       ledger: record.ledger,
       timestamp: record.timestamp,
       from_address: record.from,
@@ -49,7 +49,7 @@ export class Storage {
         new PutCommand({
           TableName: this.burnsTable,
           Item: item,
-          ConditionExpression: "attribute_not_exists(tx_hash)",
+          ConditionExpression: "attribute_not_exists(txHash)",
         }),
       );
     } catch (err) {
@@ -62,7 +62,7 @@ export class Storage {
     await this.client.send(
       new UpdateCommand({
         TableName: this.burnsTable,
-        Key: { tx_hash: txHash, operation_index: operationIndex },
+        Key: { txHash, operationIndex },
         UpdateExpression: "SET reconciled = :one, reconcile_tx_hash = :hash",
         ExpressionAttributeValues: { ":one": 1, ":hash": reconcileTxHash },
       }),
@@ -137,9 +137,9 @@ export class Storage {
 }
 
 interface DbRow {
-  tx_hash: string;
+  txHash: string;
+  operationIndex: number;
   operation_id: string;
-  operation_index: number;
   ledger: number;
   timestamp: string;
   from_address: string;
@@ -151,9 +151,9 @@ interface DbRow {
 function toRecord(row: Record<string, unknown>): BurnRecord {
   const r = row as DbRow;
   return {
-    txHash: r.tx_hash,
+    txHash: r.txHash,
     operationId: r.operation_id,
-    operationIndex: r.operation_index,
+    operationIndex: r.operationIndex,
     ledger: r.ledger,
     timestamp: r.timestamp,
     from: r.from_address,

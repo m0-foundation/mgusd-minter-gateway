@@ -19,11 +19,11 @@ Two tables must be created before first run.
 aws dynamodb create-table \
   --table-name Burns \
   --attribute-definitions \
-    AttributeName=tx_hash,AttributeType=S \
-    AttributeName=operation_index,AttributeType=N \
+    AttributeName=txHash,AttributeType=S \
+    AttributeName=operationIndex,AttributeType=N \
   --key-schema \
-    AttributeName=tx_hash,KeyType=HASH \
-    AttributeName=operation_index,KeyType=RANGE \
+    AttributeName=txHash,KeyType=HASH \
+    AttributeName=operationIndex,KeyType=RANGE \
   --billing-mode PAY_PER_REQUEST
 
 aws dynamodb create-table \
