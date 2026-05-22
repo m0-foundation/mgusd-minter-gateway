@@ -299,11 +299,11 @@ export class SorobanFireblocksClient {
 /**
  * Emits a copy-pasteable share-block to stderr so the submitter can hand the
  * hash + envelope XDR to approvers for independent verification (via
- * `npm run cli -- verify-envelope`). stderr keeps stdout (incl. --json) clean.
+ * `npm run verify-envelope`). stderr keeps stdout (incl. --json) clean.
  */
 function printShareBlock(hashHex: string, envelopeB64: string): void {
   console.error("[Verify] Share with approvers before they approve in Fireblocks:");
   console.error(`  hash:     ${hashHex}`);
   console.error(`  envelope: ${envelopeB64}`);
-  console.error(`  decode:   npm run cli -- verify-envelope --xdr "${envelopeB64}"`);
+  console.error(`  decode:   npm run verify-envelope -- --xdr "${envelopeB64}"`);
 }
