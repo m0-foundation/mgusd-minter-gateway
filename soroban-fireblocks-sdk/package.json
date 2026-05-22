@@ -19,6 +19,7 @@
     "unblock-user": "ts-node scripts/unblock-user.ts",
     "pause": "ts-node scripts/pause.ts",
     "unpause": "ts-node scripts/unpause.ts",
+    "set-admin": "ts-node scripts/set-admin.ts",
     "test": "jest --selectProjects unit",
     "test:integration": "jest --selectProjects integration",
     "test:all": "jest"

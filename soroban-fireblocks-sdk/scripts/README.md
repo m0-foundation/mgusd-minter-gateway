@@ -14,6 +14,7 @@ Every action script has a `VARS` block near the top that the operator **edits be
 | `npm run unblock-user`       | Unblock a single user                                                  |
 | `npm run pause`              | Pause the contract (blocks mint / burn / force_transfer / claim_yield) |
 | `npm run unpause`            | Unpause the contract                                                   |
+| `npm run set-admin`          | Rotate the wrapper contract admin to a new address                     |
 
 Each script's VARS block looks like:
 ```ts
