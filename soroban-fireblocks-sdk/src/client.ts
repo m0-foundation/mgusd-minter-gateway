@@ -33,19 +33,13 @@ import {
 
 export class SorobanFireblocksClient {
   protected readonly server: rpc.Server;
-  // Undefined when constructed from a view-only config (no API creds). Signing
-  // paths assert non-null at the callsite — the CLI never routes a view config
-  // into a signing method.
-  protected readonly fireblocks: Fireblocks | undefined;
+  protected readonly fireblocks: Fireblocks;
   protected readonly config: SorobanFireblocksConfig;
 
   constructor(config: SorobanFireblocksConfig) {
     this.config = config;
     this.server = createRpcServer(config.sorobanRpcUrl);
-    this.fireblocks =
-      config.fireblocksApiKey && config.fireblocksSecretKey
-        ? createFireblocksClient(config)
-        : undefined;
+    this.fireblocks = createFireblocksClient(config);
   }
 
   protected async simulateView(params: InvokeContractParams): Promise<xdr.ScVal | undefined> {
@@ -85,7 +79,7 @@ export class SorobanFireblocksClient {
     printShareBlock(hashHex, preparedTx.toEnvelope().toXDR("base64"));
 
     // 4. Sign hash via Fireblocks RAW (MPC_EDDSA_ED25519)
-    const sigResult = await signHash(this.fireblocks!, this.config, hashHex, params.fireblocksNote);
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, params.fireblocksNote);
 
     // 5. Attach signature to transaction envelope
     const signedTx = addSignatureToTransaction(
@@ -128,7 +122,7 @@ export class SorobanFireblocksClient {
 
     // 3. Sign hash via Fireblocks RAW (MPC_EDDSA_ED25519)
     const note = `setupTrustline asset=${params.assetCode}:${params.assetIssuer} trustor=${this.config.sourcePublicKey}`;
-    const sigResult = await signHash(this.fireblocks!, this.config, hashHex, note);
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note);
 
     // 4. Attach signature to transaction envelope
     const signedTx = addSignatureToTransaction(
@@ -165,7 +159,7 @@ export class SorobanFireblocksClient {
     const hashHex = tx.hash().toString("hex");
     printShareBlock(hashHex, tx.toEnvelope().toXDR("base64"));
     const note = `configureIssuer (set flags AUTH_REQUIRED + AUTH_REVOCABLE) on ${this.config.sourcePublicKey}`;
-    const sigResult = await signHash(this.fireblocks!, this.config, hashHex, note);
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note);
 
     const signedTx = addSignatureToTransaction(
       tx,
@@ -192,7 +186,7 @@ export class SorobanFireblocksClient {
     const hashHex = preparedTx.hash().toString("hex");
     printShareBlock(hashHex, preparedTx.toEnvelope().toXDR("base64"));
     const note = `deploySac asset=${params.assetCode}:${params.assetIssuer ?? this.config.sourcePublicKey}`;
-    const sigResult = await signHash(this.fireblocks!, this.config, hashHex, note);
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note);
 
     const signedTx = addSignatureToTransaction(
       preparedTx,
@@ -230,7 +224,7 @@ export class SorobanFireblocksClient {
     const hashHex = preparedTx.hash().toString("hex");
     printShareBlock(hashHex, preparedTx.toEnvelope().toXDR("base64"));
     const note = `uploadWasm sha256=${expectedWasmHash}`;
-    const sigResult = await signHash(this.fireblocks!, this.config, hashHex, note);
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note);
 
     const signedTx = addSignatureToTransaction(
       preparedTx,
@@ -271,7 +265,7 @@ export class SorobanFireblocksClient {
     const hashHex = preparedTx.hash().toString("hex");
     printShareBlock(hashHex, preparedTx.toEnvelope().toXDR("base64"));
     const note = `deployContract wasmHash=${params.wasmHash}`;
-    const sigResult = await signHash(this.fireblocks!, this.config, hashHex, note);
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note);
 
     const signedTx = addSignatureToTransaction(
       preparedTx,

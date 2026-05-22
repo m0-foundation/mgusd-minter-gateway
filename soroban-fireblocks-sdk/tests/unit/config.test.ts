@@ -9,9 +9,7 @@ import {
   loadUnblockOperatorConfigFromEnv,
   loadForcedTransferManagerConfigFromEnv,
   loadYieldRecipientManagerConfigFromEnv,
-  loadReadOnlyConfigFromEnv,
   validateConfig,
-  validateReadOnlyConfig,
   readFireblocksSecret,
 } from "../../src/config";
 import { ConfigError } from "../../src/errors";
@@ -441,116 +439,5 @@ describe("loadYieldRecipientManagerConfigFromEnv", () => {
   it("throws ConfigError when YIELD_RECIPIENT_MANAGER_FIREBLOCKS_VAULT_ACCOUNT_ID is missing", () => {
     delete process.env.YIELD_RECIPIENT_MANAGER_FIREBLOCKS_VAULT_ACCOUNT_ID;
     expect(() => loadYieldRecipientManagerConfigFromEnv()).toThrow(ConfigError);
-  });
-});
-
-describe("validateReadOnlyConfig", () => {
-  it("passes when read-only fields are set, even with empty Fireblocks fields", () => {
-    expect(() =>
-      validateReadOnlyConfig({
-        sorobanRpcUrl: "https://soroban-testnet.stellar.org",
-        horizonUrl: "https://horizon-testnet.stellar.org",
-        networkPassphrase: "Test SDF Network ; September 2015",
-        fireblocksApiKey: "",
-        fireblocksSecretKey: "",
-        fireblocksVaultAccountId: "",
-        fireblocksAssetId: "",
-        sourcePublicKey: "",
-      }),
-    ).not.toThrow();
-  });
-
-  it("throws when SOROBAN_RPC_URL is missing", () => {
-    expect(() =>
-      validateReadOnlyConfig({
-        sorobanRpcUrl: "",
-        horizonUrl: "https://horizon-testnet.stellar.org",
-        networkPassphrase: "Test SDF Network ; September 2015",
-        fireblocksApiKey: "",
-        fireblocksSecretKey: "",
-        fireblocksVaultAccountId: "",
-        fireblocksAssetId: "",
-        sourcePublicKey: "",
-      }),
-    ).toThrow(/SOROBAN_RPC_URL/);
-  });
-
-  it("throws when SOROBAN_NETWORK_PASSPHRASE is missing", () => {
-    expect(() =>
-      validateReadOnlyConfig({
-        sorobanRpcUrl: "https://soroban-testnet.stellar.org",
-        horizonUrl: "https://horizon-testnet.stellar.org",
-        networkPassphrase: "",
-        fireblocksApiKey: "",
-        fireblocksSecretKey: "",
-        fireblocksVaultAccountId: "",
-        fireblocksAssetId: "",
-        sourcePublicKey: "",
-      }),
-    ).toThrow(/NETWORK_PASSPHRASE/);
-  });
-});
-
-describe("loadReadOnlyConfigFromEnv", () => {
-  const originalEnv = process.env;
-
-  beforeEach(() => {
-    process.env = {
-      ...originalEnv,
-      SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org",
-      HORIZON_URL: "https://horizon-testnet.stellar.org",
-      SOROBAN_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
-    };
-  });
-
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  it("loads only the read-side shared env vars, ignoring missing Fireblocks creds", () => {
-    delete process.env.FIREBLOCKS_API_KEY;
-    delete process.env.FIREBLOCKS_SECRET_PATH;
-    delete process.env.FIREBLOCKS_VAULT_ACCOUNT_ID;
-    delete process.env.FIREBLOCKS_ASSET_ID;
-    process.env.VIEW_SOURCE_PUBLIC_KEY = "GADV2Q7MVEVOJ7C5QK4P6IN6H5MPMTSM3YPG5IDAJ7ZMXQTNCLUIUJRE";
-
-    const config = loadReadOnlyConfigFromEnv();
-    expect(config.sorobanRpcUrl).toBe("https://soroban-testnet.stellar.org");
-    expect(config.horizonUrl).toBe("https://horizon-testnet.stellar.org");
-    expect(config.networkPassphrase).toBe("Test SDF Network ; September 2015");
-    // Fireblocks fields are present (empty) but not required for view-only ops
-    expect(config.fireblocksApiKey).toBe("");
-    // sourcePublicKey is required for Soroban view simulation (needs a funded
-    // source account for fee/seq) and falls back to VIEW_SOURCE_PUBLIC_KEY or
-    // any *_PUBLIC_KEY in the environment.
-    expect(config.sourcePublicKey).toBe("GADV2Q7MVEVOJ7C5QK4P6IN6H5MPMTSM3YPG5IDAJ7ZMXQTNCLUIUJRE");
-  });
-
-  it("falls back to BLOCK_OPERATOR_PUBLIC_KEY when VIEW_SOURCE_PUBLIC_KEY is unset", () => {
-    delete process.env.VIEW_SOURCE_PUBLIC_KEY;
-    process.env.BLOCK_OPERATOR_PUBLIC_KEY = "GD4KTM3SWERNNEPHCFWR2J4Q2VM6UUN54HYVLO6AEQTUSS7HCMDK5BRP";
-
-    const config = loadReadOnlyConfigFromEnv();
-    expect(config.sourcePublicKey).toBe("GD4KTM3SWERNNEPHCFWR2J4Q2VM6UUN54HYVLO6AEQTUSS7HCMDK5BRP");
-  });
-
-  it("throws ConfigError when no source pubkey is available", () => {
-    delete process.env.VIEW_SOURCE_PUBLIC_KEY;
-    for (const k of Object.keys(process.env)) {
-      if (k.endsWith("_PUBLIC_KEY")) delete process.env[k];
-    }
-    expect(() => loadReadOnlyConfigFromEnv()).toThrow(ConfigError);
-  });
-
-  it("throws ConfigError when SOROBAN_RPC_URL is missing", () => {
-    process.env.VIEW_SOURCE_PUBLIC_KEY = "GADV2Q7MVEVOJ7C5QK4P6IN6H5MPMTSM3YPG5IDAJ7ZMXQTNCLUIUJRE";
-    delete process.env.SOROBAN_RPC_URL;
-    expect(() => loadReadOnlyConfigFromEnv()).toThrow(ConfigError);
-  });
-
-  it("throws ConfigError when HORIZON_URL is missing", () => {
-    process.env.VIEW_SOURCE_PUBLIC_KEY = "GADV2Q7MVEVOJ7C5QK4P6IN6H5MPMTSM3YPG5IDAJ7ZMXQTNCLUIUJRE";
-    delete process.env.HORIZON_URL;
-    expect(() => loadReadOnlyConfigFromEnv()).toThrow(ConfigError);
   });
 });

@@ -10,9 +10,7 @@ export {
   loadUnblockOperatorConfigFromEnv,
   loadForcedTransferManagerConfigFromEnv,
   loadYieldRecipientManagerConfigFromEnv,
-  loadReadOnlyConfigFromEnv,
   validateConfig,
-  validateReadOnlyConfig,
   readFireblocksSecret,
 } from "./config";
 export { ConfigError, SimulationError, FireblocksSigningError, SubmissionError, IssuerContaminatedError, IssuerContaminationCounts, WasmHashMismatchError } from "./errors";

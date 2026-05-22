@@ -42,11 +42,12 @@ Each script reads only the env vars for its declared role, so a missing `MINTER_
 | Role                       | Used by                                                                       |
 |----------------------------|-------------------------------------------------------------------------------|
 | `ADMIN`                    | (no script yet — invoke via SDK directly for admin rotations / upgrades)      |
-| `MINTER`                   | `mint`, `burn`                                                                |
+| `MINTER`                   | `mint`, `burn`, `query` (legacy: uses minter creds to read state)             |
 | `PAUSER`                   | `pause`, `unpause`                                                            |
 | `BLOCK_OPERATOR`           | `block-user`                                                                  |
 | `UNBLOCK_OPERATOR`         | `unblock-user`                                                                |
-| `VIEW` (no Fireblocks env) | `query`, `verify-envelope` — only `SOROBAN_RPC_URL` etc.                       |
+
+`verify-envelope` is offline and needs no role at all — only `SOROBAN_NETWORK_PASSPHRASE` (or `--network`). For ad-hoc on-chain reads, use an external tool (`stellar-cli`, `soroban-cli`) — the SDK no longer ships a view-only config.
 
 ## Adding a new action script
 

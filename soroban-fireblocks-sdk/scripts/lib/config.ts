@@ -13,7 +13,6 @@ import {
   loadIssuerConfigFromEnv,
   loadMinterConfigFromEnv,
   loadPauserConfigFromEnv,
-  loadReadOnlyConfigFromEnv,
   loadUnblockOperatorConfigFromEnv,
   loadYieldRecipientManagerConfigFromEnv,
 } from "../../src";
@@ -27,8 +26,7 @@ export type Role =
   | "UNBLOCK_OPERATOR"
   | "FORCED_TRANSFER_MANAGER"
   | "YIELD_RECIPIENT_MANAGER"
-  | "ISSUER"
-  | "VIEW";
+  | "ISSUER";
 
 export function loadConfigForRole(role: Role): SorobanFireblocksConfig {
   switch (role) {
@@ -40,7 +38,6 @@ export function loadConfigForRole(role: Role): SorobanFireblocksConfig {
     case "FORCED_TRANSFER_MANAGER": return loadForcedTransferManagerConfigFromEnv();
     case "YIELD_RECIPIENT_MANAGER": return loadYieldRecipientManagerConfigFromEnv();
     case "ISSUER": return loadIssuerConfigFromEnv();
-    case "VIEW": return loadReadOnlyConfigFromEnv();
   }
 }
 
