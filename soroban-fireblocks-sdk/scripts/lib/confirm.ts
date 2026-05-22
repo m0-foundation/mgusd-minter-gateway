@@ -4,10 +4,10 @@ import * as readline from "readline";
  * Interactive y/N prompt. Resolves true only on explicit "y" / "yes".
  * Anything else (including empty input) resolves false.
  *
- * Scripts can skip the prompt with `--yes` on argv.
+ * Always interactive by design — there is no `--yes` escape hatch.
+ * Every destructive action requires a human at the keyboard to confirm.
  */
-export async function confirm(message: string, argv: string[] = process.argv): Promise<boolean> {
-  if (argv.includes("--yes")) return true;
+export async function confirm(message: string): Promise<boolean> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
     rl.question(`${message} [y/N]: `, (answer) => {
