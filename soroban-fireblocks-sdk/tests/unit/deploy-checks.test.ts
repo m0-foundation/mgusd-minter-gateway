@@ -1,5 +1,12 @@
+import { Fireblocks } from "@fireblocks/ts-sdk";
 import { Horizon } from "@stellar/stellar-sdk";
-import { assertIssuerNotContaminated } from "../../src/deploy-checks";
+import {
+  assertDeployerSufficientlyFunded,
+  assertIssuerFlagsClean,
+  assertIssuerNotContaminated,
+  assertIssuerSufficientlyFunded,
+  assertVaultMatchesPubkey,
+} from "../../src/deploy-checks";
 import { IssuerContaminatedError } from "../../src/errors";
 
 const ASSET_CODE = "MGUSD";
@@ -148,5 +155,168 @@ describe("assertIssuerNotContaminated", () => {
     expect(callBuilder.forCode).toHaveBeenCalledWith(ASSET_CODE);
     expect(callBuilder.forIssuer).toHaveBeenCalledWith(ISSUER);
     expect(callBuilder.call).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("assertIssuerSufficientlyFunded", () => {
+  function makeHorizonForBalance(balance: string | null): Horizon.Server {
+    const balances = balance === null ? [] : [{ asset_type: "native", balance }];
+    return {
+      loadAccount: jest.fn().mockResolvedValue({ balances }),
+    } as unknown as Horizon.Server;
+  }
+
+  it("resolves when issuer XLM balance meets the threshold", async () => {
+    const horizon = makeHorizonForBalance("10.0000000");
+    await expect(
+      assertIssuerSufficientlyFunded(horizon, ISSUER, 5),
+    ).resolves.toBeUndefined();
+  });
+
+  it("resolves exactly at the threshold", async () => {
+    const horizon = makeHorizonForBalance("5.0000000");
+    await expect(
+      assertIssuerSufficientlyFunded(horizon, ISSUER, 5),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws when balance is below the threshold", async () => {
+    const horizon = makeHorizonForBalance("1.0000000");
+    await expect(
+      assertIssuerSufficientlyFunded(horizon, ISSUER, 5),
+    ).rejects.toThrow(/has 1 XLM, needs at least 5/);
+  });
+
+  it("throws when issuer has no native balance entry", async () => {
+    const horizon = makeHorizonForBalance(null);
+    await expect(
+      assertIssuerSufficientlyFunded(horizon, ISSUER, 5),
+    ).rejects.toThrow(/needs at least 5/);
+  });
+
+  it("throws a clear message when the account doesn't exist on the network", async () => {
+    const horizon = {
+      loadAccount: jest.fn().mockRejectedValue(new Error("Not Found")),
+    } as unknown as Horizon.Server;
+    await expect(
+      assertIssuerSufficientlyFunded(horizon, ISSUER, 5),
+    ).rejects.toThrow(/not found on the network/);
+  });
+});
+
+describe("assertVaultMatchesPubkey", () => {
+  function makeFireblocks(addresses: Array<{ address: string }>): Fireblocks {
+    return {
+      vaults: {
+        getVaultAccountAssetAddressesPaginated: jest
+          .fn()
+          .mockResolvedValue({ data: { addresses } }),
+      },
+    } as unknown as Fireblocks;
+  }
+
+  it("resolves when the vault's returned address matches the expected pubkey", async () => {
+    const fb = makeFireblocks([{ address: ISSUER }]);
+    await expect(
+      assertVaultMatchesPubkey(fb, "0", "XLM_TEST", ISSUER),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws when the vault returns a different pubkey", async () => {
+    const wrongPubkey = "GWRONG2OAOZG5ZA47TY7AAYHC3DKFS6V5BJ7XNRAGJWZD5ZG5DKDXZEXAM";
+    const fb = makeFireblocks([{ address: wrongPubkey }]);
+    await expect(
+      assertVaultMatchesPubkey(fb, "0", "XLM_TEST", ISSUER),
+    ).rejects.toThrow(/Vault\/pubkey mismatch/);
+  });
+
+  it("throws when the vault has no addresses for the asset", async () => {
+    const fb = makeFireblocks([]);
+    await expect(
+      assertVaultMatchesPubkey(fb, "0", "XLM_TEST", ISSUER),
+    ).rejects.toThrow(/no XLM_TEST addresses/);
+  });
+});
+
+describe("assertIssuerFlagsClean", () => {
+  function makeHorizonWithFlags(flags: Partial<{
+    auth_required: boolean;
+    auth_revocable: boolean;
+    auth_clawback_enabled: boolean;
+    auth_immutable: boolean;
+  }>): Horizon.Server {
+    return {
+      loadAccount: jest.fn().mockResolvedValue({ flags }),
+    } as unknown as Horizon.Server;
+  }
+
+  it("resolves when all 4 auth flags are absent", async () => {
+    const horizon = makeHorizonWithFlags({});
+    await expect(assertIssuerFlagsClean(horizon, ISSUER)).resolves.toBeUndefined();
+  });
+
+  it("resolves when all 4 auth flags are explicitly false", async () => {
+    const horizon = makeHorizonWithFlags({
+      auth_required: false,
+      auth_revocable: false,
+      auth_clawback_enabled: false,
+      auth_immutable: false,
+    });
+    await expect(assertIssuerFlagsClean(horizon, ISSUER)).resolves.toBeUndefined();
+  });
+
+  it.each<[string, Parameters<typeof makeHorizonWithFlags>[0]]>([
+    ["auth_required", { auth_required: true }],
+    ["auth_revocable", { auth_revocable: true }],
+    ["auth_clawback_enabled", { auth_clawback_enabled: true }],
+    ["auth_immutable", { auth_immutable: true }],
+  ])("throws when %s is already set", async (flag, flags) => {
+    const horizon = makeHorizonWithFlags(flags);
+    await expect(assertIssuerFlagsClean(horizon, ISSUER)).rejects.toThrow(
+      new RegExp(flag),
+    );
+  });
+
+  it("lists every set flag in the error message", async () => {
+    const horizon = makeHorizonWithFlags({
+      auth_required: true,
+      auth_revocable: true,
+      auth_clawback_enabled: true,
+    });
+    await expect(assertIssuerFlagsClean(horizon, ISSUER)).rejects.toThrow(
+      /auth_required.*auth_revocable.*auth_clawback_enabled/,
+    );
+  });
+});
+
+describe("assertDeployerSufficientlyFunded", () => {
+  function makeHorizonForBalance(balance: string | null): Horizon.Server {
+    const balances = balance === null ? [] : [{ asset_type: "native", balance }];
+    return {
+      loadAccount: jest.fn().mockResolvedValue({ balances }),
+    } as unknown as Horizon.Server;
+  }
+
+  it("resolves when deployer XLM balance meets the default threshold (3)", async () => {
+    const horizon = makeHorizonForBalance("5.0000000");
+    await expect(
+      assertDeployerSufficientlyFunded(horizon, ISSUER),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws when balance is below the supplied threshold", async () => {
+    const horizon = makeHorizonForBalance("0.5000000");
+    await expect(
+      assertDeployerSufficientlyFunded(horizon, ISSUER, 3),
+    ).rejects.toThrow(/has 0.5 XLM, needs at least 3/);
+  });
+
+  it("throws when the deployer account doesn't exist", async () => {
+    const horizon = {
+      loadAccount: jest.fn().mockRejectedValue(new Error("Not Found")),
+    } as unknown as Horizon.Server;
+    await expect(
+      assertDeployerSufficientlyFunded(horizon, ISSUER),
+    ).rejects.toThrow(/not found on the network/);
   });
 });

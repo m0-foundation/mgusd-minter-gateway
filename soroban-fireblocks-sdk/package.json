@@ -12,6 +12,7 @@
     "trustline": "ts-node scripts/setup-trustline.ts",
     "trustline-self": "ts-node scripts/trustline-self.ts",
     "deploy": "ts-node scripts/deploy-full.ts",
+    "update-home-domain": "ts-node scripts/update-home-domain.ts",
     "verify-envelope": "ts-node scripts/verify-envelope.ts",
     "fb-tx-inspect": "ts-node scripts/fb-tx-inspect.ts",
     "roles": "ts-node scripts/roles.ts",

@@ -1,5 +1,7 @@
 // Base SDK
 export { SorobanFireblocksClient } from "./client";
+export { SorobanKeypairClient } from "./keypair-client";
+export type { SorobanKeypairConfig } from "./keypair-client";
 export {
   loadConfigFromEnv,
   loadIssuerConfigFromEnv,
@@ -8,7 +10,13 @@ export {
   readFireblocksSecret,
 } from "./config";
 export { ConfigError, SimulationError, FireblocksSigningError, SubmissionError, IssuerContaminatedError, IssuerContaminationCounts, WasmHashMismatchError } from "./errors";
-export { assertIssuerNotContaminated } from "./deploy-checks";
+export {
+  assertIssuerNotContaminated,
+  assertIssuerSufficientlyFunded,
+  assertVaultMatchesPubkey,
+  assertIssuerFlagsClean,
+  assertDeployerSufficientlyFunded,
+} from "./deploy-checks";
 export { createFireblocksClient, signHash } from "./fireblocks-signer";
 export {
   createRpcServer,

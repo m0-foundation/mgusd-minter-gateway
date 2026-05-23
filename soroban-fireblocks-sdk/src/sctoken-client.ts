@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { Address, Horizon, scValToNative } from "@stellar/stellar-sdk";
 import { SorobanFireblocksClient } from "./client";
+import { SorobanKeypairClient } from "./keypair-client";
 import { WasmHashMismatchError } from "./errors";
 import { assertIssuerNotContaminated } from "./deploy-checks";
 import { buildFireblocksNote } from "./fireblocks-note";
@@ -435,6 +436,16 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
   }
 
   async deployFull(params: DeployFullParams): Promise<DeployFullResult> {
+    // Build the local-deployer signing client up front. The deployer signs
+    // steps 2-4 (protocol-permissionless ops); this client (the issuer
+    // Fireblocks vault) signs steps 1 + 5 (the ops that actually need
+    // issuer authority). Mirrors the bash deploy-pipeline.sh signing split.
+    const deployerClient = new SorobanKeypairClient({
+      sorobanRpcUrl: this.config.sorobanRpcUrl,
+      networkPassphrase: this.config.networkPassphrase,
+      keypair: params.deployerKeypair,
+    });
+
     // Step 0: Refuse to deploy if the issuer has any prior on-chain
     // footprint for this asset (trustlines, claimable balances, pools,
     // contract holders). Stellar binds clawback eligibility at trustline-
@@ -449,17 +460,22 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     await assertIssuerNotContaminated(horizon, params.assetCode, params.assetIssuer);
     console.log("  Issuer is clean — no pre-existing trustlines or claimable balances");
 
-    // Step 1: Configure issuer flags (AUTH_REQUIRED + AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED — clawback enabled is required for burn)
-    console.log("Step 1/5: Configuring issuer flags...");
-    const issuerResult = await this.configureIssuer();
+    // Step 1: [ISSUER] Configure issuer flags (AUTH_REQUIRED + AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED).
+    // Signed by the issuer Fireblocks vault — requires issuer authority. Also
+    // sets `home_domain` (when supplied) in the same setOptions op, so SEP-1
+    // metadata at https://<home_domain>/.well-known/stellar.toml is reachable
+    // immediately after step 1 lands.
+    console.log("Step 1/5: [ISSUER] Configuring issuer flags...");
+    const issuerResult = await this.configureIssuer({ homeDomain: params.homeDomain });
     if (issuerResult.status !== "SUCCESS") {
       throw new Error(`configureIssuer failed (tx: ${issuerResult.txHash})`);
     }
-    console.log(`  Issuer configured (ledger: ${issuerResult.ledger})`);
+    console.log(`  Issuer configured (ledger: ${issuerResult.ledger})${params.homeDomain ? `, home_domain=${params.homeDomain}` : ""}`);
 
-    // Step 2: Deploy SAC (Stellar Asset Contract)
-    console.log("Step 2/5: Deploying SAC...");
-    const sacResult = await this.deploySac({
+    // Step 2: [DEPLOYER] Deploy SAC. Protocol-permissionless — signed by
+    // the local deployer keypair, no Fireblocks round-trip.
+    console.log("Step 2/5: [DEPLOYER] Deploying SAC...");
+    const sacResult = await deployerClient.deploySac({
       assetCode: params.assetCode,
       assetIssuer: params.assetIssuer,
     });
@@ -468,9 +484,9 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     }
     console.log(`  SAC deployed: ${sacResult.sacContractId}`);
 
-    // Step 3: Upload WASM
-    console.log("Step 3/5: Uploading WASM...");
-    const wasmResult = await this.uploadWasm({ wasm: params.wasm });
+    // Step 3: [DEPLOYER] Upload WASM. Protocol-permissionless.
+    console.log("Step 3/5: [DEPLOYER] Uploading WASM...");
+    const wasmResult = await deployerClient.uploadWasm({ wasm: params.wasm });
     if (wasmResult.status !== "SUCCESS" || !wasmResult.wasmHash) {
       throw new Error(`uploadWasm failed (tx: ${wasmResult.txHash})`);
     }
@@ -490,9 +506,12 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       );
     }
 
-    // Step 4: Deploy wrapper — SAC + eight role addresses (constructor)
-    console.log("Step 4/5: Deploying wrapper contract...");
-    const deployResult = await this.deployContract({
+    // Step 4: [DEPLOYER] Deploy wrapper — SAC + eight role addresses (constructor).
+    // The deployer holds the contract for one ledger before step 5 hands SAC
+    // admin over; it never holds any role on the wrapper itself (constructor
+    // wires admin/minter/etc. to the operator-supplied role pubkeys).
+    console.log("Step 4/5: [DEPLOYER] Deploying wrapper contract...");
+    const deployResult = await deployerClient.deployContract({
       wasmHash: localWasmHash,
       constructorArgs: [
         addressToScVal(sacResult.sacContractId),
@@ -511,8 +530,11 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     }
     console.log(`  Wrapper deployed: ${deployResult.contractId}`);
 
-    // Step 5: Transfer SAC admin to the wrapper contract
-    console.log("Step 5/5: Transferring SAC admin to wrapper...");
+    // Step 5: [ISSUER] Transfer SAC admin to the wrapper contract.
+    // Signed by the issuer Fireblocks vault — the issuer is the initial SAC
+    // admin (from step 2's SAC deploy under issuer auth), and only the
+    // current SAC admin can call set_admin.
+    console.log("Step 5/5: [ISSUER] Transferring SAC admin to wrapper...");
     const setAdminResult = await this.invokeContract({
       contractId: sacResult.sacContractId,
       method: "set_admin",
@@ -529,6 +551,23 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       throw new Error(`set_admin failed (tx: ${setAdminResult.txHash})`);
     }
     console.log(`  SAC admin transferred to wrapper`);
+
+    // Post-deploy smoke test: read wrapper.admin() back and assert it equals
+    // the admin pubkey we passed into the constructor. Mirrors the bash
+    // deploy-pipeline.sh `smoke_test_wrapper_admin` — catches "deploy txs
+    // all succeeded, but the constructor argument that landed on-chain was
+    // different from what we passed" (corrupt RPC, wrong WASM, ABI drift).
+    // Read-only / free; uses simulateView under the hood.
+    console.log("Smoke: Verifying wrapper.admin() matches configured admin...");
+    const onChainAdmin = await this.queryAdmin({ contractId: deployResult.contractId });
+    if (onChainAdmin !== params.admin) {
+      throw new Error(
+        `Smoke test failed: wrapper.admin() = ${onChainAdmin}, ` +
+          `expected ${params.admin}. The deploy txs landed but the contract ` +
+          `was not initialized with the expected admin. Investigate before using.`,
+      );
+    }
+    console.log(`  wrapper.admin() = ${onChainAdmin} ✓`);
 
     return {
       sacContractId: sacResult.sacContractId,

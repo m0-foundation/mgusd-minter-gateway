@@ -173,6 +173,10 @@ export interface DeployFullParams {
   unblockOperator: string;
   /** Pauser address (G... or C...) */
   pauser: string;
+  /** Local Keypair that signs the protocol-permissionless deploy ops (SAC deploy, WASM upload, contract create). Throwaway. */
+  deployerKeypair: import("@stellar/stellar-sdk").Keypair;
+  /** Optional `home_domain` bound to the issuer in step 1 (≤32 bytes, no scheme). Enables SEP-1 metadata discovery. */
+  homeDomain?: string;
 }
 
 export interface DeployFullResult {
