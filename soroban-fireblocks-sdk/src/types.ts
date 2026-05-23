@@ -76,6 +76,13 @@ export interface SetupTrustlineResult {
 }
 
 export interface ConfigureIssuerParams {
+  /**
+   * Optional `home_domain` for the issuer account (≤32 bytes, no scheme).
+   * Wallets and explorers resolve token metadata from
+   * `https://<home_domain>/.well-known/stellar.toml`. When supplied, set
+   * via the same `setOptions` op as the auth flags — one tx covers both.
+   */
+  homeDomain?: string;
   /** Transaction timeout in seconds (default: 30) */
   timeoutSeconds?: number;
 }

@@ -46,6 +46,7 @@ function setupMocks(returnValue?: xdr.ScVal): void {
     operations: [],
     signatures: [],
     addSignature: jest.fn(),
+    sign: jest.fn(),
     toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
   };
 
@@ -541,6 +542,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        sign: jest.fn(),
         toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
@@ -611,6 +613,14 @@ describe("SctokenFireblocksClient", () => {
       const config = makeConfig();
       const client = new SctokenFireblocksClient(config);
 
+      // Post-deploy smoke test calls queryAdmin → simulateView. Short-circuit
+      // it here so we don't have to fake out the server's simulateTransaction
+      // mock; the smoke test's only assertion is that the returned pubkey
+      // equals the admin we passed into the constructor.
+      const queryAdminSpy = jest
+        .spyOn(SctokenFireblocksClient.prototype, "queryAdmin")
+        .mockResolvedValue(config.sourcePublicKey);
+
       const customIssuer = Keypair.random().publicKey();
       const result = await client.deployFull({
         assetCode: "TMGUSD",
@@ -624,13 +634,14 @@ describe("SctokenFireblocksClient", () => {
         blockOperator: config.sourcePublicKey,
         unblockOperator: config.sourcePublicKey,
         pauser: config.sourcePublicKey,
+        deployerKeypair: Keypair.random(),
       });
 
       expect(result.sacContractId).toBe(sacContractId);
       expect(result.wasmHash).toBe(wasmHashBytes.toString("hex"));
       expect(result.wrapperContractId).toBe(wrapperContractId);
 
-      // Verify all 5 steps were called
+      // Verify all 5 steps were called (each via its own tx-builder helper)
       expect(mockedTxBuilder.buildConfigureIssuerTransaction).toHaveBeenCalledTimes(1);
       expect(mockedTxBuilder.buildDeploySacTransaction).toHaveBeenCalledTimes(1);
       expect(mockedTxBuilder.buildUploadWasmTransaction).toHaveBeenCalledTimes(1);
@@ -644,11 +655,17 @@ describe("SctokenFireblocksClient", () => {
         assetIssuer: customIssuer,
       });
 
-      // 5 total sign + submit calls
-      expect(mockedFbSigner.signHash).toHaveBeenCalledTimes(5);
+      // Split signing: issuer Fireblocks vault signs steps 1 + 5 only.
+      // Steps 2, 3, 4 are signed locally by the deployer Keypair (no Fireblocks
+      // round-trip), so signHash drops from 5 → 2.
+      expect(mockedFbSigner.signHash).toHaveBeenCalledTimes(2);
+      // All 5 deploy steps still submit through the same RPC helper.
       expect(mockedTxBuilder.submitAndPoll).toHaveBeenCalledTimes(5);
+      // Smoke test invoked queryAdmin against the freshly-deployed wrapper.
+      expect(queryAdminSpy).toHaveBeenCalledWith({ contractId: wrapperContractId });
 
       consoleSpy.mockRestore();
+      queryAdminSpy.mockRestore();
     });
 
     it("aborts at step 0 when issuer is contaminated, never touching tx-builder helpers", async () => {
@@ -678,6 +695,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          deployerKeypair: Keypair.random(),
         }),
       ).rejects.toBeInstanceOf(IssuerContaminatedError);
 
@@ -707,6 +725,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        sign: jest.fn(),
         toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
@@ -742,6 +761,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          deployerKeypair: Keypair.random(),
         }),
       ).rejects.toThrow("configureIssuer failed");
 
@@ -756,6 +776,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        sign: jest.fn(),
         toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
@@ -798,6 +819,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          deployerKeypair: Keypair.random(),
         }),
       ).rejects.toThrow("deploySac failed");
 
@@ -812,6 +834,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        sign: jest.fn(),
         toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
@@ -869,15 +892,18 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          deployerKeypair: Keypair.random(),
         }),
       ).rejects.toBeInstanceOf(WasmHashMismatchError);
 
       // Critical: the deploy and set_admin txs were never built or signed.
-      // Step 3 itself signs once (the upload), so signHash must be exactly 3
-      // (configureIssuer, deploySac, uploadWasm) — never 4 or 5.
+      // Under split signing, only step 1 (configureIssuer) goes through
+      // Fireblocks — steps 2 + 3 are signed locally by the deployer Keypair —
+      // so signHash is exactly 1. The upload (step 3) submitted via the
+      // shared submitAndPoll helper but never touched signHash.
       expect(mockedTxBuilder.buildDeployContractTransaction).not.toHaveBeenCalled();
       expect(mockedTxBuilder.buildInvokeTransaction).not.toHaveBeenCalled();
-      expect(mockedFbSigner.signHash).toHaveBeenCalledTimes(3);
+      expect(mockedFbSigner.signHash).toHaveBeenCalledTimes(1);
 
       consoleSpy.mockRestore();
     });
@@ -890,6 +916,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        sign: jest.fn(),
         toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
@@ -941,6 +968,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          deployerKeypair: Keypair.random(),
         }),
       ).rejects.toThrow("uploadWasm failed");
 
@@ -955,6 +983,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        sign: jest.fn(),
         toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
@@ -1014,6 +1043,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          deployerKeypair: Keypair.random(),
         }),
       ).rejects.toThrow("deployContract failed");
 
@@ -1028,6 +1058,7 @@ describe("SctokenFireblocksClient", () => {
         operations: [],
         signatures: [],
         addSignature: jest.fn(),
+        sign: jest.fn(),
         toEnvelope: jest.fn().mockReturnValue({ toXDR: jest.fn().mockReturnValue("FAKE_XDR_B64") }),
       };
 
@@ -1095,6 +1126,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          deployerKeypair: Keypair.random(),
         }),
       ).rejects.toThrow("set_admin failed");
 

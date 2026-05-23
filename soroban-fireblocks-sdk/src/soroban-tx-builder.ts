@@ -1,5 +1,4 @@
 import {
-  Account,
   Address,
   Asset,
   AuthClawbackEnabledFlag,
@@ -20,13 +19,21 @@ import {
   DeploySacParams,
   InvokeContractParams,
   SetupTrustlineParams,
-  SorobanFireblocksConfig,
   UploadWasmParams,
 } from "./types";
 
-// 5 minutes — long enough to cover Fireblocks mobile-approval latency.
-// Local-signing paths complete well under this; this only sets the tx
-// envelope's maxTime upper bound.
+/**
+ * Narrow config consumed by tx-builder functions. Any object that supplies
+ * a source pubkey and a network passphrase satisfies it — that includes the
+ * full SorobanFireblocksConfig as well as a leaner config built from a local
+ * Keypair (used by SorobanKeypairClient for deployer-signed steps).
+ */
+export interface TxBuilderConfig {
+  sourcePublicKey: string;
+  networkPassphrase: string;
+}
+
+// Covers Fireblocks mobile-approval latency; local-signing finishes much faster.
 const DEFAULT_TIMEOUT_SECONDS = 300;
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 60;
@@ -38,7 +45,7 @@ export function createRpcServer(rpcUrl: string): rpc.Server {
 
 export async function buildInvokeTransaction(
   server: rpc.Server,
-  config: SorobanFireblocksConfig,
+  config: TxBuilderConfig,
   params: InvokeContractParams,
 ): Promise<Transaction> {
   const account = await server.getAccount(config.sourcePublicKey);
@@ -124,7 +131,7 @@ export function addSignatureToTransaction(
 
 export async function buildChangeTrustTransaction(
   server: rpc.Server,
-  config: SorobanFireblocksConfig,
+  config: TxBuilderConfig,
   params: SetupTrustlineParams,
 ): Promise<Transaction> {
   const account = await server.getAccount(config.sourcePublicKey);
@@ -146,26 +153,38 @@ export async function buildChangeTrustTransaction(
 
 export async function buildConfigureIssuerTransaction(
   server: rpc.Server,
-  config: SorobanFireblocksConfig,
+  config: TxBuilderConfig,
   params: ConfigureIssuerParams,
 ): Promise<Transaction> {
   const account = await server.getAccount(config.sourcePublicKey);
+
+  // Intentionally never sets AUTH_IMMUTABLE — issuer is NOT renounced here.
+  const setOptionsParams: Parameters<typeof Operation.setOptions>[0] = {
+    // IMPORTANT: AuthRequiredFlag — accounts must be explicitly authorized (unfrozen)
+    //   before they can hold or receive tokens. Without this, any account can receive freely.
+    // IMPORTANT: AuthRevocableFlag — allows the admin to freeze (deauthorize) accounts
+    //   after they have been authorized, enabling compliance enforcement.
+    // IMPORTANT: AuthClawbackEnabledFlag — allows the admin to clawback (burn) tokens
+    //   from any account, required for the contract's burn() via SAC clawback.
+    setFlags: (AuthRequiredFlag | AuthRevocableFlag | AuthClawbackEnabledFlag) as unknown as AuthFlag,
+  };
+
+  if (params.homeDomain !== undefined) {
+    // Stellar caps home_domain at 32 UTF-8 bytes (IDNs encode to more bytes than JS chars).
+    const homeDomainBytes = Buffer.byteLength(params.homeDomain, "utf8");
+    if (homeDomainBytes > 32) {
+      throw new Error(
+        `homeDomain too long: ${homeDomainBytes} UTF-8 bytes (${params.homeDomain.length} chars). Stellar protocol max is 32 bytes.`,
+      );
+    }
+    setOptionsParams.homeDomain = params.homeDomain;
+  }
 
   const tx = new TransactionBuilder(account, {
     fee: "100",
     networkPassphrase: config.networkPassphrase,
   })
-    .addOperation(
-      Operation.setOptions({
-        // IMPORTANT: AuthRequiredFlag — accounts must be explicitly authorized (unfrozen)
-        //   before they can hold or receive tokens. Without this, any account can receive freely.
-        // IMPORTANT: AuthRevocableFlag — allows the admin to freeze (deauthorize) accounts
-        //   after they have been authorized, enabling compliance enforcement.
-        // IMPORTANT: AuthClawbackEnabledFlag — allows the admin to clawback (burn) tokens
-        //   from any account, required for the contract's burn() via SAC clawback.
-        setFlags: (AuthRequiredFlag | AuthRevocableFlag | AuthClawbackEnabledFlag) as unknown as AuthFlag,
-      }),
-    )
+    .addOperation(Operation.setOptions(setOptionsParams))
     .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
     .build();
 
@@ -174,7 +193,7 @@ export async function buildConfigureIssuerTransaction(
 
 export async function buildDeploySacTransaction(
   server: rpc.Server,
-  config: SorobanFireblocksConfig,
+  config: TxBuilderConfig,
   params: DeploySacParams,
 ): Promise<Transaction> {
   const account = await server.getAccount(config.sourcePublicKey);
@@ -196,7 +215,7 @@ export async function buildDeploySacTransaction(
 
 export async function buildUploadWasmTransaction(
   server: rpc.Server,
-  config: SorobanFireblocksConfig,
+  config: TxBuilderConfig,
   params: UploadWasmParams,
 ): Promise<Transaction> {
   const account = await server.getAccount(config.sourcePublicKey);
@@ -218,7 +237,7 @@ export async function buildUploadWasmTransaction(
 
 export async function buildDeployContractTransaction(
   server: rpc.Server,
-  config: SorobanFireblocksConfig,
+  config: TxBuilderConfig,
   params: DeployContractParams,
 ): Promise<Transaction> {
   const account = await server.getAccount(config.sourcePublicKey);

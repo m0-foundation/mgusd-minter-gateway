@@ -13,6 +13,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { createHash } from "crypto";
 import { Keypair } from "@stellar/stellar-sdk";
 
 const ROLE_ENV_VARS = [
@@ -38,6 +39,29 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
 
     jest.doMock("dotenv", () => ({ config: jest.fn() }));
 
+    // Mock the new dependencies the deploy script invokes: all preflights
+    // (no Horizon / Fireblocks API hits in unit tests), interactive confirm
+    // (auto-yes), and receipt writer (no disk writes).
+    jest.doMock("../../src/deploy-checks", () => ({
+      assertIssuerNotContaminated: jest.fn().mockResolvedValue(undefined),
+      assertIssuerSufficientlyFunded: jest.fn().mockResolvedValue(undefined),
+      assertVaultMatchesPubkey: jest.fn().mockResolvedValue(undefined),
+      assertIssuerFlagsClean: jest.fn().mockResolvedValue(undefined),
+      assertDeployerSufficientlyFunded: jest.fn().mockResolvedValue(undefined),
+    }));
+    jest.doMock("../../scripts/lib/confirm", () => ({
+      confirm: jest.fn().mockResolvedValue(true),
+    }));
+    jest.doMock("../../scripts/lib/deploy-receipt", () => ({
+      gitInfo: jest.fn().mockReturnValue({
+        commit: "deadbeef",
+        branch: "test",
+        repo: "test",
+        dirty: false,
+      }),
+      writeDeployReceipt: jest.fn().mockReturnValue("/tmp/fake-receipt.json"),
+    }));
+
     jest.restoreAllMocks();
 
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stel1-5-deploy-"));
@@ -50,7 +74,9 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
       secretPath,
       "-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----\n",
     );
-    fs.writeFileSync(wasmPath, Buffer.from([0x00, 0x61, 0x73, 0x6d]));
+    const wasmBytes = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
+    fs.writeFileSync(wasmPath, wasmBytes);
+    const wasmSha256 = createHash("sha256").update(wasmBytes).digest("hex");
 
     envSetup = {
       SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org",
@@ -65,6 +91,9 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
       MINTER_FIREBLOCKS_VAULT_ACCOUNT_ID: "1",
       ASSET_CODE: "TMGUSD",
       WASM_PATH: wasmPath,
+      EXPECTED_WASM_SHA256: wasmSha256,
+      DEPLOYER_SECRET_KEY: Keypair.random().secret(),
+      HOME_DOMAIN: "test.example",
       // Each role gets its OWN distinct pubkey — proves no-collapse.
       ADMIN_PUBLIC_KEY: Keypair.random().publicKey(),
       MINTER_PUBLIC_KEY: Keypair.random().publicKey(),
@@ -190,6 +219,78 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
 
     await expect(main()).rejects.toThrow(/ADMIN_PUBLIC_KEY/);
 
+    expect(deploySpy).not.toHaveBeenCalled();
+  });
+
+  it("aborts when EXPECTED_WASM_SHA256 is missing", async () => {
+    delete process.env.EXPECTED_WASM_SHA256;
+
+    const sdk = require("../../src") as typeof import("../../src");
+    const deploySpy = jest
+      .spyOn(sdk.SctokenFireblocksClient.prototype, "deployFull")
+      .mockResolvedValue({
+        sacContractId: "C".padEnd(56, "A"),
+        wasmHash: "11".repeat(32),
+        wrapperContractId: "C".padEnd(56, "B"),
+      });
+
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const { main } = require("../../scripts/deploy-full") as {
+      main: () => Promise<void>;
+    };
+
+    await expect(main()).rejects.toThrow(/EXPECTED_WASM_SHA256/);
+    expect(deploySpy).not.toHaveBeenCalled();
+  });
+
+  it("aborts when EXPECTED_WASM_SHA256 does not match the file's actual sha256", async () => {
+    // Replace the file's content so its sha256 no longer matches what envSetup recorded.
+    fs.writeFileSync(process.env.WASM_PATH as string, Buffer.from([0xff, 0xff, 0xff, 0xff]));
+
+    const sdk = require("../../src") as typeof import("../../src");
+    const deploySpy = jest
+      .spyOn(sdk.SctokenFireblocksClient.prototype, "deployFull")
+      .mockResolvedValue({
+        sacContractId: "C".padEnd(56, "A"),
+        wasmHash: "11".repeat(32),
+        wrapperContractId: "C".padEnd(56, "B"),
+      });
+
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const { main } = require("../../scripts/deploy-full") as {
+      main: () => Promise<void>;
+    };
+
+    await expect(main()).rejects.toThrow(/WASM hash mismatch/);
+    expect(deploySpy).not.toHaveBeenCalled();
+  });
+
+  it("does not call deployFull when the operator declines the confirm prompt", async () => {
+    jest.doMock("../../scripts/lib/confirm", () => ({
+      confirm: jest.fn().mockResolvedValue(false),
+    }));
+
+    const sdk = require("../../src") as typeof import("../../src");
+    const deploySpy = jest
+      .spyOn(sdk.SctokenFireblocksClient.prototype, "deployFull")
+      .mockResolvedValue({
+        sacContractId: "C".padEnd(56, "A"),
+        wasmHash: "11".repeat(32),
+        wrapperContractId: "C".padEnd(56, "B"),
+      });
+
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const { main } = require("../../scripts/deploy-full") as {
+      main: () => Promise<void>;
+    };
+
+    await main();
     expect(deploySpy).not.toHaveBeenCalled();
   });
 });

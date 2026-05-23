@@ -162,7 +162,8 @@ export class SorobanFireblocksClient {
     const hashHex = tx.hash().toString("hex");
     const envelopeB64 = tx.toEnvelope().toXDR("base64");
     printShareBlock(hashHex, envelopeB64);
-    const note = `configureIssuer (set flags AUTH_REQUIRED + AUTH_REVOCABLE) on ${this.config.sourcePublicKey}`;
+    const homeDomainPart = params.homeDomain ? `, home_domain=${params.homeDomain}` : "";
+    const note = `configureIssuer (set AUTH_REQUIRED + AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED${homeDomainPart}) on ${this.config.sourcePublicKey}`;
     const sigResult = await signHash(this.fireblocks, this.config, hashHex, note, envelopeB64);
 
     const signedTx = addSignatureToTransaction(
