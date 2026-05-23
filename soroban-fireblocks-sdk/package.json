@@ -30,8 +30,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@fireblocks/ts-sdk": "^5.0.0",
-    "@stellar/stellar-sdk": "^14.5.0",
+    "@fireblocks/ts-sdk": "^19.0.0",
+    "@stellar/stellar-sdk": "^15.1.0",
     "dotenv": "^16.5.0"
   },
   "devDependencies": {
