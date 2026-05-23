@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.key
+
+# Generated deploy receipts. Ignored by default; operators can `git add -f`
+# a specific production receipt if they want it in the audit trail.
+deploys/

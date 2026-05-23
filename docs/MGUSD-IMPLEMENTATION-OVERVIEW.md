@@ -407,21 +407,13 @@ All events emitted by the contract. Event names are the snake_case form of the u
 | `yield_recipient_manager_set` | `set_yield_recipient_manager` | `old` **(topic)**, `new` |
 | `yield_recipient_set` | `set_yield_recipient` | `old` **(topic)**, `new` |
 | `forced_transfer_manager_set` | `set_forced_transfer_manager` | `old` **(topic)**, `new` |
-<<<<<<< HEAD
-=======
-| `pauser_set` | `set_pauser` | `old` **(topic)**, `new` |
->>>>>>> main
 | `block_operator_added` | `add_block_operator` | `addr` **(topic)** |
 | `block_operator_removed` | `remove_block_operator` | `addr` **(topic)** |
 | `unblock_operator_added` | `add_unblock_operator` | `addr` **(topic)** |
 | `unblock_operator_removed` | `remove_unblock_operator` | `addr` **(topic)** |
-<<<<<<< HEAD
 | `pauser_added` | `add_pauser` | `addr` **(topic)** |
 | `pauser_removed` | `remove_pauser` | `addr` **(topic)** |
 | `interest_rate_set` | `set_interest_rate` | `rate_bps` |
-=======
-| `interest_rate_set` | `set_rate` | `rate_bps` |
->>>>>>> main
 | `mint` | `mint` | `to` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
 | `burn` | `burn` | `from` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
 | `reconcile` | `reconcile_burn` | `amount`, `new_total_principal`, `new_total_supply` |
