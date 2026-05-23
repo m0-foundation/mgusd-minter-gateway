@@ -1,0 +1,82 @@
+#------------------------------------------------------------------------------
+# burn-tracker-deploy.yml
+#
+# Builds the burn-tracker service, uploads the Lambda zip to S3, and
+# updates the Lambda function code in AWS on every merge to main.
+#
+# Required repo secrets (set after first terraform apply of burn-tracker):
+#   AWS_ROLE_ARN     — output: ci_deploy_role_arn
+#   ARTIFACT_BUCKET  — output: artifact_bucket_name
+#   LAMBDA_FUNCTION  — output: lambda_function_name
+#   AWS_REGION       — e.g. us-east-1
+#------------------------------------------------------------------------------
+name: Deploy burn-tracker Lambda
+
+on:
+  push:
+    branches: [main, sdk-integration, feature/asset-burn-tracker]
+    paths:
+      - "services/burn-tracker/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write  # required for OIDC
+  contents: read
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: services/burn-tracker/package-lock.json
+
+      - name: Install dependencies
+        working-directory: services/burn-tracker
+        run: npm ci
+
+      - name: Build (esbuild bundle)
+        working-directory: services/burn-tracker
+        run: npm run build
+
+      - name: Create Lambda zip
+        working-directory: services/burn-tracker
+        run: |
+          zip -r burn-tracker-${{ github.sha }}.zip dist/
+          echo "ZIP_KEY=burn-tracker/burn-tracker-${{ github.sha }}.zip" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Upload artifact to S3
+        working-directory: services/burn-tracker
+        run: |
+          aws s3 cp burn-tracker-${{ github.sha }}.zip \
+            s3://${{ secrets.ARTIFACT_BUCKET }}/${{ env.ZIP_KEY }}
+
+      - name: Update Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ secrets.LAMBDA_FUNCTION }} \
+            --s3-bucket ${{ secrets.ARTIFACT_BUCKET }} \
+            --s3-key ${{ env.ZIP_KEY }} \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Wait for update to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name ${{ secrets.LAMBDA_FUNCTION }} \
+            --region ${{ secrets.AWS_REGION }}
+          echo "Lambda updated to ${{ github.sha }}"
