@@ -35,6 +35,10 @@ export interface TxBuilderConfig {
 
 // Covers Fireblocks mobile-approval latency; local-signing finishes much faster.
 const DEFAULT_TIMEOUT_SECONDS = 300;
+
+// Soroban inclusion fee. Network surge-prices Soroban separately from classic
+// ops; submitting below the floor gets the tx silently dropped from the mempool.
+const SOROBAN_INCLUSION_FEE = "10000";
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 60;
 
@@ -52,7 +56,7 @@ export async function buildInvokeTransaction(
   const contract = new Contract(params.contractId);
 
   const tx = new TransactionBuilder(account, {
-    fee: "100",
+    fee: SOROBAN_INCLUSION_FEE, // Soroban op (contract.call)
     networkPassphrase: config.networkPassphrase,
   })
     .addOperation(contract.call(params.method, ...(params.args ?? [])))
@@ -97,6 +101,10 @@ export async function submitAndPoll(
 
   const txHash = sendResponse.hash;
 
+  // Surface hash + lookup URL immediately so the operator isn't blind during the poll.
+  console.log(`  [submit] status=${sendResponse.status} hash=${txHash}`);
+  console.log(`  [lookup] https://stellar.expert/explorer/public/tx/${txHash}`);
+
   for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
     await sleep(POLL_INTERVAL_MS);
 
@@ -110,10 +118,16 @@ export async function submitAndPoll(
       return getResponse as rpc.Api.GetFailedTransactionResponse;
     }
 
-    // NOT_FOUND means still pending — keep polling
+    if ((i + 1) % 10 === 0) {
+      console.log(`  [poll ${i + 1}/${MAX_POLL_ATTEMPTS}] still NOT_FOUND on RPC — waiting for ledger close`);
+    }
   }
 
-  throw new SubmissionError(`Transaction ${txHash} not confirmed after ${MAX_POLL_ATTEMPTS} polls`, txHash);
+  throw new SubmissionError(
+    `Tx ${txHash} not confirmed after ${MAX_POLL_ATTEMPTS} polls. ` +
+      `Lookup: https://stellar.expert/explorer/public/tx/${txHash} — if never landed, the RPC may have dropped it; try a different SOROBAN_RPC_URL.`,
+    txHash,
+  );
 }
 
 export function addSignatureToTransaction(
@@ -199,7 +213,7 @@ export async function buildDeploySacTransaction(
   const account = await server.getAccount(config.sourcePublicKey);
 
   const tx = new TransactionBuilder(account, {
-    fee: "100",
+    fee: SOROBAN_INCLUSION_FEE, // Soroban op (createStellarAssetContract)
     networkPassphrase: config.networkPassphrase,
   })
     .addOperation(
@@ -221,7 +235,7 @@ export async function buildUploadWasmTransaction(
   const account = await server.getAccount(config.sourcePublicKey);
 
   const tx = new TransactionBuilder(account, {
-    fee: "100",
+    fee: SOROBAN_INCLUSION_FEE, // Soroban op (uploadContractWasm)
     networkPassphrase: config.networkPassphrase,
   })
     .addOperation(
@@ -243,7 +257,7 @@ export async function buildDeployContractTransaction(
   const account = await server.getAccount(config.sourcePublicKey);
 
   const tx = new TransactionBuilder(account, {
-    fee: "100",
+    fee: SOROBAN_INCLUSION_FEE, // Soroban op (createCustomContract)
     networkPassphrase: config.networkPassphrase,
   })
     .addOperation(
