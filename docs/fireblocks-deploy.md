@@ -106,6 +106,20 @@ When the operator deploys via `RELEASE_TAG`, the resulting on-chain contract is 
 
 Stellar Lab and stellar.expert surface this chain as a "Verified Build" badge. The CLI command `stellar contract info build --contract-id <id> --rpc-url ... --network-passphrase ...` walks the entire chain in one call.
 
+## Producing the release (CI workflow)
+
+Releases that the deploy script consumes via `RELEASE_TAG` come from [`.github/workflows/release-contract.yml`](../.github/workflows/release-contract.yml), triggered by either pushing a `v*` git tag or invoking `workflow_dispatch` manually. The workflow builds the WASM reproducibly with two `--meta` entries baked into the binary:
+
+- `source_repo` — derived from `${{ github.repository }}`, always the canonical repo
+- `home_domain` — **parameterized**, resolved in this precedence:
+  1. `workflow_dispatch` input `home_domain` (one-off override)
+  2. `vars.HOME_DOMAIN` (repo variable, set in GitHub → Settings → Secrets and variables → Actions → Variables)
+  3. `"m0.org"` (fallback default)
+
+Tag-push releases use the repo variable or the default. The resolved value is echoed into the published release-notes body so reviewers can see what was baked in without inspecting the WASM.
+
+**Important distinction from the asset's home_domain:** the WASM-embedded `home_domain` identifies the **builder organization** (Stellar Lab follows it to the org's stellar.toml). The per-asset `home_domain` set by step 1 of the deploy is **separate** — that one lives on the issuer Stellar account and is what wallets follow for SEP-1 asset metadata. The two values can be the same or different; they serve different purposes.
+
 ## Preflight checklist (operator)
 
 Before running `npm run deploy`:
