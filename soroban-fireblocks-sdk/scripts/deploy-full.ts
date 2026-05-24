@@ -15,6 +15,7 @@
 // Required .env vars are in .env.example. Run: `npm run deploy`.
 
 import * as fs from "fs";
+import * as path from "path";
 import { createHash } from "crypto";
 import * as dotenv from "dotenv";
 import { Horizon, Keypair } from "@stellar/stellar-sdk";
@@ -31,8 +32,109 @@ import {
   gitInfo,
   writeDeployReceipt,
 } from "./lib/deploy-receipt";
+import {
+  crossVerifyLocalBuild,
+  fetchAttestedWasm,
+  requireGhCli,
+  verifyAttestation,
+} from "./lib/attestation";
 
 dotenv.config();
+
+const DEFAULT_RELEASE_REPO = "m0-foundation/mgusd-minter-gateway";
+const DEFAULT_RELEASE_WASM_PATTERN = "mintergateway_v*.wasm";
+
+interface ResolvedWasmSource {
+  wasmPath: string;
+  attested: boolean;
+  releaseTag?: string;
+  releaseRepo?: string;
+}
+
+/**
+ * Implements the operator-facing decision matrix for picking the WASM to
+ * deploy. Mirrors the bash flow in scripts/deploy-pipeline.sh added in PR #80.
+ *
+ *   RELEASE_TAG set                         → fetch + verify attestation (attested=true)
+ *   WASM_PATH + ALLOW_UNATTESTED_WASM=1     → local file, loud warn (attested=false)
+ *   WASM_PATH alone                         → hard-error
+ *   neither                                 → hard-error
+ *   RELEASE_TAG + WASM_PATH                 → RELEASE_TAG wins; "ignoring WASM_PATH" warn
+ *
+ * When CROSS_VERIFY_LOCAL_BUILD=1 AND we took the attested path, reproduce
+ * the WASM locally and refuse to deploy if it doesn't match.
+ */
+function resolveWasmSource(): ResolvedWasmSource {
+  const releaseTag = process.env.RELEASE_TAG?.trim();
+  const wasmPath = process.env.WASM_PATH?.trim();
+  const allowUnattested = process.env.ALLOW_UNATTESTED_WASM === "1";
+  const crossVerify = process.env.CROSS_VERIFY_LOCAL_BUILD === "1";
+
+  if (releaseTag) {
+    if (wasmPath) {
+      console.warn(
+        `NOTE: RELEASE_TAG=${releaseTag} is set — ignoring WASM_PATH=${wasmPath}. ` +
+          `Attested release path takes precedence over local files.`,
+      );
+    }
+
+    const releaseRepo = (process.env.RELEASE_REPO?.trim() || DEFAULT_RELEASE_REPO);
+    const pattern = process.env.RELEASE_WASM_PATTERN?.trim() || DEFAULT_RELEASE_WASM_PATTERN;
+
+    requireGhCli();
+
+    // Per-invocation outDir eliminates the concurrent-deploy race noted in the plan.
+    const outDir = path.resolve(`./dist/release-${Date.now()}`);
+    const downloadedWasm = fetchAttestedWasm({
+      releaseTag,
+      releaseRepo,
+      outDir,
+      pattern,
+    });
+
+    verifyAttestation({ wasmPath: downloadedWasm, releaseRepo });
+
+    if (crossVerify) {
+      crossVerifyLocalBuild({ wasmPath: downloadedWasm, releaseTag, releaseRepo });
+    }
+
+    return {
+      wasmPath: downloadedWasm,
+      attested: true,
+      releaseTag,
+      releaseRepo,
+    };
+  }
+
+  if (wasmPath) {
+    if (!allowUnattested) {
+      throw new Error(
+        `WASM_PATH is set but ALLOW_UNATTESTED_WASM is not "1". ` +
+          `Pick one: set RELEASE_TAG=v<version> for an attested deploy ` +
+          `(recommended), or set ALLOW_UNATTESTED_WASM=1 to acknowledge that ` +
+          `you're deploying unverified local bytes.`,
+      );
+    }
+    if (!fs.existsSync(wasmPath)) {
+      throw new Error(`WASM not found: ${wasmPath}`);
+    }
+    console.warn(
+      `\n  WARNING: deploying UNATTESTED WASM\n` +
+        `    WASM_PATH=${wasmPath}\n` +
+        `    ALLOW_UNATTESTED_WASM=1 — skipping GitHub attestation check.\n` +
+        `    For production, prefer RELEASE_TAG=v<version> so the bytes are\n` +
+        `    fetched from a release and verified against the Sigstore attestation.\n`,
+    );
+    return { wasmPath, attested: false };
+  }
+
+  throw new Error(
+    `Must set RELEASE_TAG (recommended) or WASM_PATH + ALLOW_UNATTESTED_WASM=1.\n` +
+      `  Attested:     RELEASE_TAG=v1.0.0 npm run deploy\n` +
+      `  Local build:  WASM_PATH=./target/wasm32v1-none/release/mintergateway.wasm \\\n` +
+      `                ALLOW_UNATTESTED_WASM=1 npm run deploy`,
+  );
+}
 
 function requireRolePubkey(name: string): string {
   const v = process.env[name];
@@ -68,11 +170,6 @@ async function main(): Promise<void> {
 
   const assetCode = process.env.ASSET_CODE || "TMGUSD";
   const assetIssuer = config.sourcePublicKey;
-  const wasmPath =
-    process.env.WASM_PATH ||
-    "./target/wasm32v1-none/release/mintergateway.wasm";
-
-  if (!fs.existsSync(wasmPath)) throw new Error(`WASM not found: ${wasmPath}`);
 
   // home_domain is OPTIONAL on-chain (Stellar accepts setOptions with or
   // without it), but we make the HOME_DOMAIN env var REQUIRED so the operator
@@ -117,6 +214,12 @@ async function main(): Promise<void> {
   if (uniqueRoles.size < Object.keys(roles).length) {
     console.warn("WARNING: multiple roles share the same pubkey — role separation is reduced");
   }
+
+  // Resolve WASM source (RELEASE_TAG vs WASM_PATH) BEFORE preflights so a
+  // misconfigured deploy fails in ~5s without burning Horizon/Fireblocks
+  // quota. May fetch + verify a release attestation as a side effect.
+  const wasmSource = resolveWasmSource();
+  const wasmPath = wasmSource.wasmPath;
 
   const wasm = fs.readFileSync(wasmPath);
   const actualSha = createHash("sha256").update(wasm).digest("hex");
@@ -174,6 +277,13 @@ async function main(): Promise<void> {
   console.log(`  Deployer:     ${deployerPubkey} (local key) — signs steps 2, 3, 4`);
   console.log(`  WASM:         ${wasmPath} (${wasm.length} bytes)`);
   console.log(`  WASM sha256:  ${actualSha}`);
+  if (wasmSource.attested) {
+    console.log(
+      `  Source:       release ${wasmSource.releaseTag} from ${wasmSource.releaseRepo} (attested)`,
+    );
+  } else {
+    console.log(`  Source:       local file ${wasmPath} (UNATTESTED)`);
+  }
   console.log(`  Source:       ${source.commit}${source.dirty ? " (DIRTY)" : ""} on ${source.branch}`);
   console.log(`  Network:      ${config.networkPassphrase}`);
   console.log(`  RPC:          ${config.sorobanRpcUrl}`);
@@ -218,7 +328,14 @@ async function main(): Promise<void> {
       horizonUrl: config.horizonUrl,
     },
     source,
-    wasm: { path: wasmPath, sha256: actualSha, sizeBytes: wasm.length },
+    wasm: {
+      path: wasmPath,
+      sha256: actualSha,
+      sizeBytes: wasm.length,
+      attested: wasmSource.attested,
+      releaseTag: wasmSource.releaseTag,
+      releaseRepo: wasmSource.releaseRepo,
+    },
     issuer: {
       publicKey: assetIssuer,
       vaultAccountId: String(config.fireblocksVaultAccountId),

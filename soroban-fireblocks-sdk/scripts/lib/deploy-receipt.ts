@@ -33,6 +33,12 @@ export interface DeployReceipt {
     path: string;
     sha256: string;
     sizeBytes: number;
+    // Did the WASM come from a verified GitHub release attestation?
+    // True iff the deploy ran via RELEASE_TAG; false on the
+    // WASM_PATH + ALLOW_UNATTESTED_WASM=1 dev path.
+    attested: boolean;
+    releaseTag?: string;
+    releaseRepo?: string;
   };
   issuer: {
     publicKey: string;

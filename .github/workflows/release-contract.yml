@@ -104,7 +104,10 @@ jobs:
             --optimize \
             --out-dir "$OUTPUT" \
             --meta "source_repo=github:${{ github.repository }}" \
-            --meta "home_domain=m0.org"
+            --meta "home_domain=stoml-testnet.pages.dev"
+            # TODO(testnet-attestation-test): test/pr80-integration is a
+            # throwaway branch — this stays here. If any of this content ever
+            # gets ported to develop/PR #80, revert to "home_domain=m0.org".
 
           # Get the package version
           PACKAGE_VERSION=$(echo "$CARGO_METADATA" | jq -r '.packages[] | select(.name == "'"$PACKAGE_NAME"'") | .version')
@@ -155,7 +158,7 @@ jobs:
 
             **Embedded contract metadata:**
               - `source_repo = github:${{ github.repository }}` (commit binding via attestation)
-              - `home_domain = m0.org`
+              - `home_domain = stoml-testnet.pages.dev`
 
             **Verify the build attestation:**
 
