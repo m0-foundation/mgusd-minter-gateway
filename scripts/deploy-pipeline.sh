@@ -245,7 +245,7 @@ init_deploy_pipeline_env() {
 
   ASSET_CODE="${ASSET_CODE:-TMGUSD}"
   STELLAR_NETWORK="${STELLAR_NETWORK:-testnet}"
-  RELEASE_REPO="${RELEASE_REPO:-m0-foundation/stellar-minter-gateway}"
+  RELEASE_REPO="${RELEASE_REPO:-m0-foundation/mgusd-minter-gateway}"
   RELEASE_TAG="${RELEASE_TAG:-}"
   EXPECTED_WASM_HASH="${EXPECTED_WASM_HASH:-}"
   ALLOW_UNATTESTED_WASM="${ALLOW_UNATTESTED_WASM:-0}"
