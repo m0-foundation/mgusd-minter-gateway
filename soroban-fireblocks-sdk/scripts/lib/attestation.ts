@@ -1,5 +1,5 @@
 // GitHub release attestation verification for the Fireblocks-signed deploy.
-// Mirrors the bash flow added in PR #80 (scripts/deploy-pipeline.sh): pull a
+// Mirrors the bash flow (scripts/deploy-pipeline.sh): pull a
 // WASM from a tagged GitHub release, verify the Sigstore build-provenance
 // attestation, and (opt-in) reproduce the bytes locally to prove the local
 // toolchain matches what CI built.
