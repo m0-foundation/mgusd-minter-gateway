@@ -138,7 +138,7 @@ cross_verify_local_build() {
         --optimize \
         --out-dir "$local_build_dir" \
         --meta "source_repo=github:${RELEASE_REPO}" \
-        --meta "home_domain=m0.org" >/dev/null; then
+        --meta "home_domain=$HOME_DOMAIN" >/dev/null; then
     echo "ERROR: local build failed" >&2
     exit 1
   fi
@@ -245,6 +245,7 @@ init_deploy_pipeline_env() {
 
   ASSET_CODE="${ASSET_CODE:-TMGUSD}"
   STELLAR_NETWORK="${STELLAR_NETWORK:-testnet}"
+  HOME_DOMAIN="${HOME_DOMAIN:-m0.org}"
   RELEASE_REPO="${RELEASE_REPO:-m0-foundation/mgusd-minter-gateway}"
   RELEASE_TAG="${RELEASE_TAG:-}"
   EXPECTED_WASM_HASH="${EXPECTED_WASM_HASH:-}"
@@ -364,7 +365,7 @@ step_1_issuer_set_options() {
     --set-required \
     --set-revocable \
     --set-clawback-enabled \
-    --home-domain m0.org
+    --home-domain "$HOME_DOMAIN"
   echo "      done."
   echo ""
 }
