@@ -1,4 +1,7 @@
 [toolchain]
-channel = "stable"
+# Pinned to the exact version that produced the May 2026 mainnet WASM hash
+# 59c75ad4...c31dd. Bumping requires a new mainnet release (the hash will change).
+# See .github/workflows/release-contract.yml for the reproducible-build flow.
+channel = "1.94.0"
 targets = ["wasm32v1-none"]
 components = ["rustfmt", "clippy", "rust-src"]

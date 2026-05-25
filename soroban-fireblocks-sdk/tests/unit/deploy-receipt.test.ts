@@ -16,7 +16,12 @@ function makeReceipt(overrides: Partial<DeployReceipt> = {}): DeployReceipt {
       horizonUrl: "https://horizon-testnet.stellar.org",
     },
     source: { commit: "abcd1234", branch: "main", repo: "git@example.com:org/repo.git", dirty: false },
-    wasm: { path: "./mintergateway.wasm", sha256: "00".repeat(32), sizeBytes: 1234 },
+    wasm: {
+      path: "./mintergateway.wasm",
+      sha256: "00".repeat(32),
+      sizeBytes: 1234,
+      attested: false,
+    },
     issuer: { publicKey: "GAAAA", vaultAccountId: "0" },
     deployer: { publicKey: "GDEPL" },
     asset: { code: "TMGUSD", issuer: "GAAAA" },
@@ -69,6 +74,22 @@ describe("writeDeployReceipt", () => {
     expect(fs.existsSync(nested)).toBe(false);
     writeDeployReceipt(makeReceipt(), nested);
     expect(fs.existsSync(nested)).toBe(true);
+  });
+
+  it("round-trips wasm.attested, wasm.releaseTag, wasm.releaseRepo when present", () => {
+    const receipt = makeReceipt({
+      wasm: {
+        path: "/tmp/x.wasm",
+        sha256: "ab".repeat(32),
+        sizeBytes: 4242,
+        attested: true,
+        releaseTag: "v1.2.3",
+        releaseRepo: "m0-foundation/mgusd-minter-gateway",
+      },
+    });
+    const filepath = writeDeployReceipt(receipt, tempDir);
+    const onDisk = JSON.parse(fs.readFileSync(filepath, "utf8"));
+    expect(onDisk.wasm).toEqual(receipt.wasm);
   });
 });
 

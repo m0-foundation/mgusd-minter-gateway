@@ -7,8 +7,10 @@
 #   scripts/deploy-renounce.sh + docs/issuer-renunciation.md
 #
 # Config: copy scripts/deploy.env.example to .env at repo root and fill in.
-# Prereq: ISSUER + DEPLOYER funded; wrapper WASM built (`make build`);
-# issuer must be clean (no pre-existing trustlines / flags) — not verified here.
+# Prereq: ISSUER + DEPLOYER funded; set RELEASE_TAG=v<version> so the script
+# downloads the attested WASM from the GH release (or set WASM_PATH=… with
+# ALLOW_UNATTESTED_WASM=1 for local-build dev); issuer must be clean (no
+# pre-existing trustlines / flags) — not verified here.
 
 set -euo pipefail
 

@@ -1,6 +1,9 @@
 # Rust build artifacts
 target/
 
+# Release WASM downloaded by scripts/deploy-pipeline.sh
+dist/
+
 # Secrets
 .env
 *.key
