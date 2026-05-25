@@ -1,0 +1,279 @@
+import {
+  Address,
+  Asset,
+  AuthClawbackEnabledFlag,
+  AuthFlag,
+  AuthRequiredFlag,
+  AuthRevocableFlag,
+  Contract,
+  Keypair,
+  Operation,
+  rpc,
+  TransactionBuilder,
+  Transaction,
+} from "@stellar/stellar-sdk";
+import { SimulationError, SubmissionError } from "./errors";
+import {
+  ConfigureIssuerParams,
+  DeployContractParams,
+  DeploySacParams,
+  InvokeContractParams,
+  SetupTrustlineParams,
+  UploadWasmParams,
+} from "./types";
+
+/**
+ * Narrow config consumed by tx-builder functions. Any object that supplies
+ * a source pubkey and a network passphrase satisfies it — that includes the
+ * full SorobanFireblocksConfig as well as a leaner config built from a local
+ * Keypair (used by SorobanKeypairClient for deployer-signed steps).
+ */
+export interface TxBuilderConfig {
+  sourcePublicKey: string;
+  networkPassphrase: string;
+}
+
+// Covers Fireblocks mobile-approval latency; local-signing finishes much faster.
+const DEFAULT_TIMEOUT_SECONDS = 300;
+
+// Soroban inclusion fee. Network surge-prices Soroban separately from classic
+// ops; submitting below the floor gets the tx silently dropped from the mempool.
+const SOROBAN_INCLUSION_FEE = "10000";
+const POLL_INTERVAL_MS = 2000;
+const MAX_POLL_ATTEMPTS = 60;
+
+
+export function createRpcServer(rpcUrl: string): rpc.Server {
+  return new rpc.Server(rpcUrl);
+}
+
+export async function buildInvokeTransaction(
+  server: rpc.Server,
+  config: TxBuilderConfig,
+  params: InvokeContractParams,
+): Promise<Transaction> {
+  const account = await server.getAccount(config.sourcePublicKey);
+  const contract = new Contract(params.contractId);
+
+  const tx = new TransactionBuilder(account, {
+    fee: SOROBAN_INCLUSION_FEE, // Soroban op (contract.call)
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(contract.call(params.method, ...(params.args ?? [])))
+    .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
+    .build();
+
+  return tx;
+}
+
+export async function simulateAndPrepare(
+  server: rpc.Server,
+  tx: Transaction,
+  networkPassphrase: string,
+): Promise<Transaction> {
+  const simResponse = await server.simulateTransaction(tx);
+
+  if (rpc.Api.isSimulationError(simResponse)) {
+    const errorMsg =
+      "error" in simResponse ? String(simResponse.error) : "Unknown simulation error";
+    throw new SimulationError(`Transaction simulation failed: ${errorMsg}`);
+  }
+
+  if (!rpc.Api.isSimulationSuccess(simResponse)) {
+    throw new SimulationError("Transaction simulation did not return a success response");
+  }
+
+  const assembled = rpc.assembleTransaction(tx, simResponse);
+  return assembled.build();
+}
+
+export async function submitAndPoll(
+  server: rpc.Server,
+  tx: Transaction,
+): Promise<rpc.Api.GetSuccessfulTransactionResponse | rpc.Api.GetFailedTransactionResponse> {
+  const sendResponse = await server.sendTransaction(tx);
+
+  if (sendResponse.status === "ERROR") {
+    throw new SubmissionError(
+      `Transaction submission failed: ${sendResponse.errorResult?.toXDR("base64") ?? "unknown error"}`,
+    );
+  }
+
+  const txHash = sendResponse.hash;
+
+  // Surface hash + lookup URL immediately so the operator isn't blind during the poll.
+  console.log(`  [submit] status=${sendResponse.status} hash=${txHash}`);
+  console.log(`  [lookup] https://stellar.expert/explorer/public/tx/${txHash}`);
+
+  for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
+    await sleep(POLL_INTERVAL_MS);
+
+    const getResponse = await server.getTransaction(txHash);
+
+    if (getResponse.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+      return getResponse as rpc.Api.GetSuccessfulTransactionResponse;
+    }
+
+    if (getResponse.status === rpc.Api.GetTransactionStatus.FAILED) {
+      return getResponse as rpc.Api.GetFailedTransactionResponse;
+    }
+
+    if ((i + 1) % 10 === 0) {
+      console.log(`  [poll ${i + 1}/${MAX_POLL_ATTEMPTS}] still NOT_FOUND on RPC — waiting for ledger close`);
+    }
+  }
+
+  throw new SubmissionError(
+    `Tx ${txHash} not confirmed after ${MAX_POLL_ATTEMPTS} polls. ` +
+      `Lookup: https://stellar.expert/explorer/public/tx/${txHash} — if never landed, the RPC may have dropped it; try a different SOROBAN_RPC_URL.`,
+    txHash,
+  );
+}
+
+export function addSignatureToTransaction(
+  tx: Transaction,
+  publicKey: string,
+  signatureHex: string,
+  networkPassphrase: string,
+): Transaction {
+  const keypair = Keypair.fromPublicKey(publicKey);
+  const signature = Buffer.from(signatureHex, "hex");
+
+  tx.addSignature(keypair.publicKey(), signature.toString("base64"));
+  return tx;
+}
+
+export async function buildChangeTrustTransaction(
+  server: rpc.Server,
+  config: TxBuilderConfig,
+  params: SetupTrustlineParams,
+): Promise<Transaction> {
+  const account = await server.getAccount(config.sourcePublicKey);
+
+  const tx = new TransactionBuilder(account, {
+    fee: "100",
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(
+      Operation.changeTrust({
+        asset: new Asset(params.assetCode, params.assetIssuer),
+      }),
+    )
+    .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
+    .build();
+
+  return tx;
+}
+
+export async function buildConfigureIssuerTransaction(
+  server: rpc.Server,
+  config: TxBuilderConfig,
+  params: ConfigureIssuerParams,
+): Promise<Transaction> {
+  const account = await server.getAccount(config.sourcePublicKey);
+
+  // Intentionally never sets AUTH_IMMUTABLE — issuer is NOT renounced here.
+  const setOptionsParams: Parameters<typeof Operation.setOptions>[0] = {
+    // IMPORTANT: AuthRequiredFlag — accounts must be explicitly authorized (unfrozen)
+    //   before they can hold or receive tokens. Without this, any account can receive freely.
+    // IMPORTANT: AuthRevocableFlag — allows the admin to freeze (deauthorize) accounts
+    //   after they have been authorized, enabling compliance enforcement.
+    // IMPORTANT: AuthClawbackEnabledFlag — allows the admin to clawback (burn) tokens
+    //   from any account, required for the contract's burn() via SAC clawback.
+    setFlags: (AuthRequiredFlag | AuthRevocableFlag | AuthClawbackEnabledFlag) as unknown as AuthFlag,
+  };
+
+  if (params.homeDomain !== undefined) {
+    // Stellar caps home_domain at 32 UTF-8 bytes (IDNs encode to more bytes than JS chars).
+    const homeDomainBytes = Buffer.byteLength(params.homeDomain, "utf8");
+    if (homeDomainBytes > 32) {
+      throw new Error(
+        `homeDomain too long: ${homeDomainBytes} UTF-8 bytes (${params.homeDomain.length} chars). Stellar protocol max is 32 bytes.`,
+      );
+    }
+    setOptionsParams.homeDomain = params.homeDomain;
+  }
+
+  const tx = new TransactionBuilder(account, {
+    fee: "100",
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(Operation.setOptions(setOptionsParams))
+    .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
+    .build();
+
+  return tx;
+}
+
+export async function buildDeploySacTransaction(
+  server: rpc.Server,
+  config: TxBuilderConfig,
+  params: DeploySacParams,
+): Promise<Transaction> {
+  const account = await server.getAccount(config.sourcePublicKey);
+
+  const tx = new TransactionBuilder(account, {
+    fee: SOROBAN_INCLUSION_FEE, // Soroban op (createStellarAssetContract)
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(
+      Operation.createStellarAssetContract({
+        asset: new Asset(params.assetCode, params.assetIssuer),
+      }),
+    )
+    .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
+    .build();
+
+  return tx;
+}
+
+export async function buildUploadWasmTransaction(
+  server: rpc.Server,
+  config: TxBuilderConfig,
+  params: UploadWasmParams,
+): Promise<Transaction> {
+  const account = await server.getAccount(config.sourcePublicKey);
+
+  const tx = new TransactionBuilder(account, {
+    fee: SOROBAN_INCLUSION_FEE, // Soroban op (uploadContractWasm)
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(
+      Operation.uploadContractWasm({
+        wasm: params.wasm,
+      }),
+    )
+    .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
+    .build();
+
+  return tx;
+}
+
+export async function buildDeployContractTransaction(
+  server: rpc.Server,
+  config: TxBuilderConfig,
+  params: DeployContractParams,
+): Promise<Transaction> {
+  const account = await server.getAccount(config.sourcePublicKey);
+
+  const tx = new TransactionBuilder(account, {
+    fee: SOROBAN_INCLUSION_FEE, // Soroban op (createCustomContract)
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(
+      Operation.createCustomContract({
+        address: new Address(config.sourcePublicKey),
+        wasmHash: params.wasmHash,
+        constructorArgs: params.constructorArgs ?? [],
+        salt: params.salt,
+      }),
+    )
+    .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
+    .build();
+
+  return tx;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

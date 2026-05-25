@@ -16,7 +16,7 @@
 #
 # Quick start:
 #   cp scripts/deploy.env.example .env && $EDITOR .env
-#   make build
+#   export RELEASE_TAG=<RELEASE>                               # downloads attested WASM
 #   ./scripts/deploy-renounce.sh                              # deploy only
 #   ./scripts/deploy-renounce.sh --renounce-issuer --dry-run  # build renounce XDR
 #   RENOUNCE_ISSUER=1 ./scripts/deploy-renounce.sh --execute  # full pipeline
