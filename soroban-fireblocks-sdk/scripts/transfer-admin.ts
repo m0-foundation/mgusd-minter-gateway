@@ -31,7 +31,7 @@ import { printResult } from "./lib/result";
 dotenv.config();
 
 // ─── VARS — edit before running ─────────────────────────────────────────
-const NEW_ADMIN = "";
+const NEW_ADMIN = "GBT2YM25S3TSORSVV3TTMGNSFK6ZELMLTRFFSRNGKTBAXQFUUSJN5XBX";
 // ────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {

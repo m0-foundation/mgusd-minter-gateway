@@ -60,13 +60,23 @@ function flagsNumeric(flags: HorizonFlags): number {
   );
 }
 
+// Minimal structural type covering the fields we actually read. Assignable from
+// both `Horizon.Server.loadAccount()`'s AccountResponse (used here) and the
+// richer ServerApi.AccountRecord — avoids coupling these helpers to whichever
+// Horizon return-type a given @stellar/stellar-sdk version exposes.
+interface AccountSummary {
+  account_id: string;
+  signers: ReadonlyArray<{ key: string; weight: number }>;
+  balances: ReadonlyArray<{ asset_type: string; balance: string }>;
+}
+
 // Weight of the master signer (the signer whose key equals the account id).
-function masterWeight(account: Horizon.ServerApi.AccountRecord): number {
+function masterWeight(account: AccountSummary): number {
   const master = account.signers.find((s) => s.key === account.account_id);
   return master?.weight ?? 0;
 }
 
-function nativeBalance(account: Horizon.ServerApi.AccountRecord): string {
+function nativeBalance(account: AccountSummary): string {
   return account.balances.find((b) => b.asset_type === "native")?.balance ?? "0";
 }
 
