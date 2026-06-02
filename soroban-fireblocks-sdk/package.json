@@ -22,6 +22,7 @@
     "unpause": "ts-node scripts/unpause.ts",
     "set-admin": "ts-node scripts/set-admin.ts",
     "transfer-admin": "ts-node scripts/transfer-admin.ts",
+    "add-issuer-signer": "ts-node scripts/add-issuer-signer.ts",
     "test": "jest --selectProjects unit",
     "test:integration": "jest --selectProjects integration",
     "test:all": "jest"

@@ -1,7 +1,8 @@
-import { Account, Keypair, Networks, rpc, Transaction } from "@stellar/stellar-sdk";
+import { Account, Keypair, Networks, Operation, rpc, Transaction } from "@stellar/stellar-sdk";
 import {
   buildInvokeTransaction,
   buildConfigureIssuerTransaction,
+  buildAddIssuerSignerTransaction,
   buildDeploySacTransaction,
   buildUploadWasmTransaction,
   buildDeployContractTransaction,
@@ -215,6 +216,86 @@ describe("buildConfigureIssuerTransaction", () => {
     expect(tx.source).toBe(kp.publicKey());
     expect(tx.operations).toHaveLength(1);
     expect(tx.operations[0].type).toBe("setOptions");
+  });
+});
+
+describe("buildAddIssuerSignerTransaction", () => {
+  it("adds ONLY a signer — master weight, thresholds, and flags untouched", async () => {
+    const kp = Keypair.random();
+    const signerKp = Keypair.random();
+    const config = makeConfig({ sourcePublicKey: kp.publicKey() });
+    const server = mockServer({
+      getAccount: jest.fn().mockResolvedValue(new Account(kp.publicKey(), "100")),
+    });
+
+    const tx = await buildAddIssuerSignerTransaction(server, config, {
+      signerPublicKey: signerKp.publicKey(),
+    });
+
+    expect(tx).toBeInstanceOf(Transaction);
+    expect(tx.source).toBe(kp.publicKey());
+    expect(tx.operations).toHaveLength(1);
+    expect(tx.operations[0].type).toBe("setOptions");
+
+    const op = tx.operations[0] as Operation.SetOptions;
+    // Adds the new signer at the default weight 1 ...
+    expect(op.signer).toEqual({ ed25519PublicKey: signerKp.publicKey(), weight: 1 });
+    // ... and THIS op sets no other field, so building "add a signer" can never
+    // also mutate the master weight, thresholds, or auth flags in the same tx.
+    // (A guard on what this transaction changes — NOT a limit on the signer:
+    // with thresholds at 0 the new weight-1 signer can later do anything,
+    // renounce included.) This is the load-bearing safety property.
+    expect(op.masterWeight).toBeUndefined();
+    expect(op.lowThreshold).toBeUndefined();
+    expect(op.medThreshold).toBeUndefined();
+    expect(op.highThreshold).toBeUndefined();
+    expect(op.setFlags).toBeUndefined();
+    expect(op.clearFlags).toBeUndefined();
+  });
+
+  it("honors an explicit signer weight", async () => {
+    const kp = Keypair.random();
+    const signerKp = Keypair.random();
+    const config = makeConfig({ sourcePublicKey: kp.publicKey() });
+    const server = mockServer({
+      getAccount: jest.fn().mockResolvedValue(new Account(kp.publicKey(), "100")),
+    });
+
+    const tx = await buildAddIssuerSignerTransaction(server, config, {
+      signerPublicKey: signerKp.publicKey(),
+      weight: 10,
+    });
+
+    const op = tx.operations[0] as Operation.SetOptions;
+    expect(op.signer).toEqual({ ed25519PublicKey: signerKp.publicKey(), weight: 10 });
+  });
+
+  it("rejects adding the issuer's own master key as a signer", async () => {
+    const kp = Keypair.random();
+    const config = makeConfig({ sourcePublicKey: kp.publicKey() });
+    const server = mockServer({
+      getAccount: jest.fn().mockResolvedValue(new Account(kp.publicKey(), "100")),
+    });
+
+    await expect(
+      buildAddIssuerSignerTransaction(server, config, { signerPublicKey: kp.publicKey() }),
+    ).rejects.toThrow(/master key/);
+  });
+
+  it("rejects an out-of-range weight", async () => {
+    const kp = Keypair.random();
+    const signerKp = Keypair.random();
+    const config = makeConfig({ sourcePublicKey: kp.publicKey() });
+    const server = mockServer({
+      getAccount: jest.fn().mockResolvedValue(new Account(kp.publicKey(), "100")),
+    });
+
+    await expect(
+      buildAddIssuerSignerTransaction(server, config, {
+        signerPublicKey: signerKp.publicKey(),
+        weight: 256,
+      }),
+    ).rejects.toThrow(/weight/);
   });
 });
 
