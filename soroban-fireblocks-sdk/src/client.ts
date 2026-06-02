@@ -5,6 +5,7 @@ import { createFireblocksClient, signHash } from "./fireblocks-signer";
 import { SimulationError, WasmHashMismatchError } from "./errors";
 import {
   addSignatureToTransaction,
+  buildAddIssuerSignerTransaction,
   buildChangeTrustTransaction,
   buildConfigureIssuerTransaction,
   buildDeployContractTransaction,
@@ -16,6 +17,8 @@ import {
   submitAndPoll,
 } from "./soroban-tx-builder";
 import {
+  AddIssuerSignerParams,
+  AddIssuerSignerResult,
   ConfigureIssuerParams,
   ConfigureIssuerResult,
   DeployContractParams,
@@ -164,6 +167,41 @@ export class SorobanFireblocksClient {
     printShareBlock(hashHex, envelopeB64);
     const homeDomainPart = params.homeDomain ? `, home_domain=${params.homeDomain}` : "";
     const note = `configureIssuer (set AUTH_REQUIRED + AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED${homeDomainPart}) on ${this.config.sourcePublicKey}`;
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note, envelopeB64);
+
+    const signedTx = addSignatureToTransaction(
+      tx,
+      this.config.sourcePublicKey,
+      sigResult.signatureHex,
+      this.config.networkPassphrase,
+    );
+
+    const result = await submitAndPoll(this.server, signedTx);
+    const txHash = tx.hash().toString("hex");
+
+    if (result.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+      return { txHash, status: "SUCCESS", ledger: result.ledger };
+    }
+
+    return { txHash, status: "FAILED", ledger: result.ledger };
+  }
+
+  /**
+   * Grant a second ed25519 signer privileges on the issuer account via one
+   * classic setOptions op (signer-add only — master weight, thresholds, and
+   * auth flags untouched). With thresholds at the default 0 this yields a
+   * 2-key multisig with mutual independent access. Reversible (a later
+   * setOptions can drop the signer); the OPPOSITE of renounce.
+   */
+  async addIssuerSigner(params: AddIssuerSignerParams): Promise<AddIssuerSignerResult> {
+    // Classic setOptions — no simulation needed
+    const tx = await buildAddIssuerSignerTransaction(this.server, this.config, params);
+
+    const hashHex = tx.hash().toString("hex");
+    const envelopeB64 = tx.toEnvelope().toXDR("base64");
+    printShareBlock(hashHex, envelopeB64);
+    const weight = params.weight ?? 1;
+    const note = `addIssuerSigner signer=${params.signerPublicKey} weight=${weight} on ${this.config.sourcePublicKey}`;
     const sigResult = await signHash(this.fireblocks, this.config, hashHex, note, envelopeB64);
 
     const signedTx = addSignatureToTransaction(
