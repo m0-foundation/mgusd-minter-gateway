@@ -145,7 +145,17 @@ Before running `npm run deploy`:
 
 ## Renouncing the issuer post-deploy
 
-Out of scope here. Once the test or staging deploy is validated, see [`docs/issuer-renunciation.md`](issuer-renunciation.md) for permanently sealing the issuer account.
+Once the deploy is validated, permanently seal the issuer with the Fireblocks-signed
+renounce script:
+
+```bash
+cd soroban-fireblocks-sdk
+npm run renounce-issuer -- --dry-run   # review the renounce XDR first
+npm run renounce-issuer -- --execute   # IRREVERSIBLE: issuer vault signs + submits
+```
+
+See [`docs/issuer-renunciation.md`](issuer-renunciation.md) for what renouncing means, the
+compliance trade-off, and the Fireblocks-specific notes.
 
 ## Source files
 

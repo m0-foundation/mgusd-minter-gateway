@@ -96,6 +96,20 @@ export interface ConfigureIssuerResult {
   ledger: number;
 }
 
+export interface RenounceIssuerParams {
+  /** Transaction timeout in seconds (default: 300) */
+  timeoutSeconds?: number;
+}
+
+export interface RenounceIssuerResult {
+  /** Transaction hash */
+  txHash: string;
+  /** Transaction status (SUCCESS or FAILED) */
+  status: string;
+  /** Ledger the transaction was included in */
+  ledger: number;
+}
+
 export interface DeploySacParams {
   /** Asset code (e.g., TMGUSD) */
   assetCode: string;

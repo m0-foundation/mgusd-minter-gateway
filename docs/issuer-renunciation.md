@@ -60,6 +60,39 @@ The "no future flag changes" gap means the step 1 flag set is what you live with
 - **Clean-issuer assertion.** Before step 1, the script aborts if the issuer already has account flags, holders, claimable balances, or liquidity pools. Pre-existing trustlines bypass `AUTH_REQUIRED` (they auto-authorize because the issuer had no flags at create time) **and cannot be clawed back** — the per-trustline `TRUSTLINE_CLAWBACK_ENABLED` bit is set only at trustline creation and only if the issuer has `AUTH_CLAWBACK_ENABLED` at that moment. After renunciation, `force_transfer` (which routes through SAC clawback) fails on those holders forever. Block/unblock still works on them — that gates on the issuer's `AUTH_REVOCABLE` flag, which step 1 sets, not on a per-trustline bit.
 - **Post-renounce verification.** Step 7 reads chain state back and asserts master weight, AUTH_IMMUTABLE, and the admin invariants. For behavioral confirmation, run `./scripts/verify-issuer-burned.sh --probe` separately.
 
+## Fireblocks-signed renounce
+
+`scripts/deploy-renounce.sh` signs the renounce op with the `stellar` CLI and a local
+seed. For an issuer custodied in Fireblocks, use the SDK equivalent instead:
+
+```bash
+cd soroban-fireblocks-sdk
+npm run renounce-issuer -- --dry-run   # build + print the renounce XDR, no signing
+npm run renounce-issuer -- --execute   # IRREVERSIBLE: issuer vault signs + submits
+```
+
+Exactly one of `--dry-run` or `--execute` is required — bare `npm run renounce-issuer` exits with an error, mirroring `deploy-renounce.sh`'s `--execute` gate.
+
+It is the TypeScript equivalent of `deploy-renounce.sh --skip-deploy --renounce-issuer
+--execute`: it operates on an **already-deployed** issuer and submits the same single
+`SetOptionsOp` (`master_weight = 0` + `AUTH_IMMUTABLE`). The issuer Fireblocks vault signs
+it (RAW Ed25519); approvers see the op described in the Fireblocks note and can verify the
+hash/envelope via `npm run verify-envelope`.
+
+Differences from the bash path:
+
+- **Verification is issuer-state-only.** After submit, the script re-reads the issuer from
+  Horizon and asserts `master_weight = 0`, `AUTH_IMMUTABLE` set, and `flags == 15`. It does
+  **not** check the SAC/wrapper admin invariants (step 7 of the bash flow) — confirm those
+  separately if needed.
+- **No behavioral probe.** The bash `verify-issuer-burned.sh --probe` submits a tx expecting
+  `TxBadAuth`; under Fireblocks that would burn a second approval, so it's omitted. The
+  chain-state read above is sufficient.
+- **Two confirmation gates.** An interactive `y/N` plus re-typing the issuer address in full,
+  given the irreversibility.
+
+See [soroban-fireblocks-sdk/scripts/renounce-issuer.ts](../soroban-fireblocks-sdk/scripts/renounce-issuer.ts).
+
 ## After renunciation
 
 - The issuer's minimum-reserve XLM (~1.5 XLM at current schedule) is locked forever — account merge requires a signature, which is now impossible.
@@ -68,6 +101,7 @@ The "no future flag changes" gap means the step 1 flag set is what you live with
 
 ## Further reading
 
-- Script: [scripts/deploy-renounce.sh](../scripts/deploy-renounce.sh)
+- Script (CLI/local seed): [scripts/deploy-renounce.sh](../scripts/deploy-renounce.sh)
+- Script (Fireblocks): [soroban-fireblocks-sdk/scripts/renounce-issuer.ts](../soroban-fireblocks-sdk/scripts/renounce-issuer.ts)
 - Shared pipeline: [scripts/deploy-pipeline.sh](../scripts/deploy-pipeline.sh)
 - Environment template: [scripts/deploy.env.example](../scripts/deploy.env.example)

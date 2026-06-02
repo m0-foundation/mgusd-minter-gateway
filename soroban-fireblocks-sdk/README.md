@@ -148,6 +148,25 @@ Calls `admin()` and `sac_token()` on the wrapper contract, decoding the returned
 
 Uses `.env` variables: `CONTRACT_ID`
 
+### `npm run renounce-issuer`
+
+**⚠️ IRREVERSIBLE.** Permanently neuters an already-deployed issuer via a single
+Fireblocks-signed `setOptions` op (`master_weight = 0` + `AUTH_IMMUTABLE`). The TypeScript
+equivalent of `scripts/deploy-renounce.sh --skip-deploy --renounce-issuer --execute`; the
+issuer Fireblocks vault signs. Run **after** `npm run deploy`.
+
+```bash
+npm run renounce-issuer -- --dry-run   # build + print the renounce XDR, do NOT sign/submit
+npm run renounce-issuer -- --execute   # IRREVERSIBLE: sign via Fireblocks + submit
+```
+
+Exactly one of `--dry-run` or `--execute` is required; bare `npm run renounce-issuer` exits with an error. Preflight asserts the issuer isn't already renounced; gated by an interactive `y/N` plus
+re-typing the issuer address. After submit it re-reads Horizon and verifies `master_weight = 0`,
+`AUTH_IMMUTABLE`, and `flags == 15`. See [docs/issuer-renunciation.md](../docs/issuer-renunciation.md).
+
+Uses `.env` variables: `ISSUER_PUBLIC_KEY`, `ISSUER_FIREBLOCKS_VAULT_ACCOUNT_ID` (plus the
+shared `SOROBAN_RPC_URL` / `SOROBAN_NETWORK_PASSPHRASE` / `HORIZON_URL` / `FIREBLOCKS_*`).
+
 ### `npm test`
 
 Runs unit tests only.

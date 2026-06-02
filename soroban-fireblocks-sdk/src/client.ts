@@ -10,6 +10,7 @@ import {
   buildDeployContractTransaction,
   buildDeploySacTransaction,
   buildInvokeTransaction,
+  buildRenounceIssuerTransaction,
   buildUploadWasmTransaction,
   createRpcServer,
   simulateAndPrepare,
@@ -24,6 +25,8 @@ import {
   DeploySacResult,
   InvokeContractParams,
   InvokeContractResult,
+  RenounceIssuerParams,
+  RenounceIssuerResult,
   SetupTrustlineParams,
   SetupTrustlineResult,
   SorobanFireblocksConfig,
@@ -164,6 +167,40 @@ export class SorobanFireblocksClient {
     printShareBlock(hashHex, envelopeB64);
     const homeDomainPart = params.homeDomain ? `, home_domain=${params.homeDomain}` : "";
     const note = `configureIssuer (set AUTH_REQUIRED + AUTH_REVOCABLE + AUTH_CLAWBACK_ENABLED${homeDomainPart}) on ${this.config.sourcePublicKey}`;
+    const sigResult = await signHash(this.fireblocks, this.config, hashHex, note, envelopeB64);
+
+    const signedTx = addSignatureToTransaction(
+      tx,
+      this.config.sourcePublicKey,
+      sigResult.signatureHex,
+      this.config.networkPassphrase,
+    );
+
+    const result = await submitAndPoll(this.server, signedTx);
+    const txHash = tx.hash().toString("hex");
+
+    if (result.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+      return { txHash, status: "SUCCESS", ledger: result.ledger };
+    }
+
+    return { txHash, status: "FAILED", ledger: result.ledger };
+  }
+
+  /**
+   * WARNING: IRREVERSIBLE. Permanently neuters the issuer key via a single
+   * classic setOptions op (master_weight 0 + AUTH_IMMUTABLE). After this lands
+   * the issuer account can never sign again and its flags are locked forever.
+   * Intended for an already-deployed issuer (post-deployFull); the Fireblocks
+   * equivalent of `deploy-renounce.sh --skip-deploy --renounce-issuer --execute`.
+   */
+  async renounceIssuer(params: RenounceIssuerParams = {}): Promise<RenounceIssuerResult> {
+    // Classic setOptions — no simulation needed
+    const tx = await buildRenounceIssuerTransaction(this.server, this.config, params);
+
+    const hashHex = tx.hash().toString("hex");
+    const envelopeB64 = tx.toEnvelope().toXDR("base64");
+    printShareBlock(hashHex, envelopeB64);
+    const note = `renounceIssuer IRREVERSIBLE (set-immutable + master-weight 0) on ${this.config.sourcePublicKey}`;
     const sigResult = await signHash(this.fireblocks, this.config, hashHex, note, envelopeB64);
 
     const signedTx = addSignatureToTransaction(

@@ -3,6 +3,7 @@ import {
   Asset,
   AuthClawbackEnabledFlag,
   AuthFlag,
+  AuthImmutableFlag,
   AuthRequiredFlag,
   AuthRevocableFlag,
   Contract,
@@ -18,6 +19,7 @@ import {
   DeployContractParams,
   DeploySacParams,
   InvokeContractParams,
+  RenounceIssuerParams,
   SetupTrustlineParams,
   UploadWasmParams,
 } from "./types";
@@ -193,6 +195,36 @@ export async function buildConfigureIssuerTransaction(
     }
     setOptionsParams.homeDomain = params.homeDomain;
   }
+
+  const tx = new TransactionBuilder(account, {
+    fee: "100",
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(Operation.setOptions(setOptionsParams))
+    .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
+    .build();
+
+  return tx;
+}
+
+export async function buildRenounceIssuerTransaction(
+  server: rpc.Server,
+  config: TxBuilderConfig,
+  params: RenounceIssuerParams = {},
+): Promise<Transaction> {
+  const account = await server.getAccount(config.sourcePublicKey);
+
+  // Single atomic SetOptionsOp that permanently neuters the issuer:
+  //   masterWeight 0 — the master key contributes 0 to every signature
+  //     threshold; with no other signers, no key can ever sign for the account.
+  //   setFlags AUTH_IMMUTABLE — locks the account's flag set forever.
+  // setFlags is additive (bitwise-OR), so this only adds IMMUTABLE on top of the
+  // AUTH_REQUIRED | AUTH_REVOCABLE | AUTH_CLAWBACK_ENABLED set at deploy step 1
+  // (11 → 15). It intentionally does NOT re-assert those flags. IRREVERSIBLE.
+  const setOptionsParams: Parameters<typeof Operation.setOptions>[0] = {
+    masterWeight: 0,
+    setFlags: AuthImmutableFlag as unknown as AuthFlag,
+  };
 
   const tx = new TransactionBuilder(account, {
     fee: "100",

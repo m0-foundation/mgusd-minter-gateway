@@ -2,6 +2,7 @@ import { Account, Keypair, Networks, rpc, Transaction } from "@stellar/stellar-s
 import {
   buildInvokeTransaction,
   buildConfigureIssuerTransaction,
+  buildRenounceIssuerTransaction,
   buildDeploySacTransaction,
   buildUploadWasmTransaction,
   buildDeployContractTransaction,
@@ -215,6 +216,32 @@ describe("buildConfigureIssuerTransaction", () => {
     expect(tx.source).toBe(kp.publicKey());
     expect(tx.operations).toHaveLength(1);
     expect(tx.operations[0].type).toBe("setOptions");
+  });
+});
+
+describe("buildRenounceIssuerTransaction", () => {
+  it("builds a setOptions op with masterWeight 0 and AUTH_IMMUTABLE, not re-asserting other flags", async () => {
+    const kp = Keypair.random();
+    const config = makeConfig({ sourcePublicKey: kp.publicKey() });
+    const server = mockServer({
+      getAccount: jest.fn().mockResolvedValue(new Account(kp.publicKey(), "100")),
+    });
+
+    const tx = await buildRenounceIssuerTransaction(server, config, {});
+
+    expect(tx).toBeInstanceOf(Transaction);
+    expect(tx.source).toBe(kp.publicKey());
+    expect(tx.operations).toHaveLength(1);
+
+    const op = tx.operations[0] as unknown as {
+      type: string;
+      masterWeight?: number;
+      setFlags?: number;
+    };
+    expect(op.type).toBe("setOptions");
+    expect(op.masterWeight).toBe(0);
+    // AUTH_IMMUTABLE = 4, and ONLY that flag — REQUIRED/REVOCABLE/CLAWBACK are not re-set.
+    expect(op.setFlags).toBe(4);
   });
 });
 
