@@ -54,7 +54,7 @@ fn test_mint_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.pause(&s.pauser);
 
     assert!(s
@@ -72,7 +72,7 @@ fn test_burn_blocked_when_paused_resumes_after_unpause() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
@@ -137,8 +137,8 @@ fn test_force_transfer_works_when_paused() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
     assert!(s.contract.paused());
@@ -164,7 +164,7 @@ fn test_reconcile_burn_works_when_paused() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.pause(&s.pauser);
 
@@ -180,7 +180,7 @@ fn test_block_unblock_work_when_paused() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.pause(&s.pauser);
 
     s.contract.block_user(&user, &s.block_operator);

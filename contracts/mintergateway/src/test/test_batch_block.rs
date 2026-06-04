@@ -19,6 +19,9 @@ fn test_batch_unblock_by_unblock_operator() {
         ],
     );
 
+    // Onboard, then block, then verify batch_unblock_users restores authorization
+    s.onboard_users(&accounts);
+    s.contract.batch_block_users(&accounts, &s.block_operator);
     s.contract
         .batch_unblock_users(&accounts, &s.unblock_operator);
 
@@ -39,11 +42,8 @@ fn test_batch_block_by_block_operator() {
         ],
     );
 
-    // First authorize all accounts
-    s.contract
-        .batch_unblock_users(&accounts, &s.unblock_operator);
-
-    // Then block them
+    // Onboard, then block
+    s.onboard_users(&accounts);
     s.contract.batch_block_users(&accounts, &s.block_operator);
 
     for account in accounts.iter() {
@@ -85,8 +85,7 @@ fn test_batch_block_single_user() {
     let account = Address::generate(&s.env);
     let accounts: Vec<Address> = Vec::from_array(&s.env, [account.clone()]);
 
-    s.contract
-        .batch_unblock_users(&accounts, &s.unblock_operator);
+    s.contract.onboard_user(&account, &s.onboarder);
     assert!(!s.contract.blocked(&account));
 
     s.contract.batch_block_users(&accounts, &s.block_operator);
@@ -189,8 +188,6 @@ fn test_batch_block_exceeds_max_size() {
 #[test]
 fn test_batch_unblock_at_max_size() {
     let s = setup();
-    // Bypass the Rust SDK test harness's shadow budget (see
-    // `test_batch_block_at_max_size` for the full explanation).
     s.env.cost_estimate().budget().reset_unlimited();
 
     let mut accounts: Vec<Address> = Vec::new(&s.env);
@@ -198,7 +195,9 @@ fn test_batch_unblock_at_max_size() {
         accounts.push_back(Address::generate(&s.env));
     }
 
-    // Should succeed at exactly 40
+    // Onboard and block all 40, then verify batch_unblock succeeds at max size
+    s.onboard_users(&accounts);
+    s.contract.batch_block_users(&accounts, &s.block_operator);
     s.contract
         .batch_unblock_users(&accounts, &s.unblock_operator);
 
@@ -243,10 +242,10 @@ fn test_batch_block_blocks_transfers() {
     let bob = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    // Authorize and mint to both users
+    // Onboard and mint to both users
     let users: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
-    s.contract.batch_unblock_users(&users, &s.unblock_operator);
+    s.onboard_users(&users);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 
@@ -273,10 +272,10 @@ fn test_batch_unblock_restores_transfers() {
     let bob = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    // Authorize, mint, then block
+    // Onboard, mint, then block
     let all: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
-    s.contract.batch_unblock_users(&all, &s.unblock_operator);
+    s.onboard_users(&all);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 

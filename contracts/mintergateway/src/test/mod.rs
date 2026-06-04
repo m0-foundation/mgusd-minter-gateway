@@ -9,6 +9,7 @@ mod test_deployment;
 mod test_force_transfer;
 mod test_issuer;
 mod test_mint_burn;
+mod test_onboard;
 mod test_pausable;
 mod test_rate_boundaries;
 mod test_reconcile_burn;

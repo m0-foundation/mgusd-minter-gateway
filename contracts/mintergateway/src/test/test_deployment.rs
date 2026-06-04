@@ -22,6 +22,7 @@ fn test_double_initialization_returns_error() {
     let block_op = s.block_operator.clone();
     let unblock_op = s.unblock_operator.clone();
     let pauser = s.pauser.clone();
+    let onboarder = s.onboarder.clone();
 
     // Re-invoke __constructor inside the contract's storage context
     // The admin already exists, so this should return AlreadyInitializedError
@@ -37,6 +38,7 @@ fn test_double_initialization_returns_error() {
             block_op,
             unblock_op,
             pauser,
+            onboarder,
         )
     });
 
@@ -68,6 +70,7 @@ fn test_constructor_extends_instance_ttl() {
     let block_operator = Address::generate(&env);
     let unblock_operator = Address::generate(&env);
     let pauser = Address::generate(&env);
+    let onboarder = Address::generate(&env);
 
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
     let sac_addr = sac.address();
@@ -84,6 +87,7 @@ fn test_constructor_extends_instance_ttl() {
             &block_operator,
             &unblock_operator,
             &pauser,
+            &onboarder,
         ),
     );
 
@@ -132,6 +136,7 @@ fn test_upgrade_requires_admin_auth() {
     let block_operator = Address::generate(&env);
     let unblock_operator = block_operator.clone();
     let pauser = Address::generate(&env);
+    let onboarder = Address::generate(&env);
 
     // Register SAC — env.register* helpers don't need auth
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
@@ -149,6 +154,7 @@ fn test_upgrade_requires_admin_auth() {
             &block_operator,
             &unblock_operator,
             &pauser,
+            &onboarder,
         ),
     );
     let contract = YieldTokenClient::new(&env, &contract_addr);

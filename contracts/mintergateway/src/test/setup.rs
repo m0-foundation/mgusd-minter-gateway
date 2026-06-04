@@ -29,6 +29,7 @@ pub struct TestSetup<'a> {
     pub block_operator: Address,
     pub unblock_operator: Address,
     pub pauser: Address,
+    pub onboarder: Address,
 }
 
 pub fn setup() -> TestSetup<'static> {
@@ -41,12 +42,12 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
-    // Default to separate block and unblock operators so the role split is
-    // exercised across the suite. Tests that need a single address holding
-    // both roles construct that case explicitly.
+    // Default to separate block, unblock, and onboard operators so role
+    // separation is exercised across the suite.
     let block_operator = Address::generate(&env);
     let unblock_operator = Address::generate(&env);
     let pauser = Address::generate(&env);
+    let onboarder = Address::generate(&env);
 
     // Register SAC token with admin as initial issuer
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
@@ -72,6 +73,7 @@ pub fn setup() -> TestSetup<'static> {
             &block_operator,
             &unblock_operator,
             &pauser,
+            &onboarder,
         ),
     );
     let contract = YieldTokenClient::new(&env, &contract_addr);
@@ -79,8 +81,8 @@ pub fn setup() -> TestSetup<'static> {
     // Set yield contract as SAC admin (so it can mint/clawback)
     sac_admin_client.set_admin(&contract_addr);
 
-    // Authorize yield_recipient so claim_yield can mint to it (AUTH_REQUIRED mode)
-    contract.unblock_user(&yield_recipient, &unblock_operator);
+    // Activate yield_recipient so claim_yield can mint to it (first-time onboarding)
+    contract.onboard_user(&yield_recipient, &onboarder);
 
     TestSetup {
         env,
@@ -95,6 +97,7 @@ pub fn setup() -> TestSetup<'static> {
         block_operator,
         unblock_operator,
         pauser,
+        onboarder,
     }
 }
 
@@ -107,6 +110,14 @@ pub fn setup_no_mock_auth() -> TestSetup<'static> {
 }
 
 impl TestSetup<'_> {
+    /// Onboard each address in `users` individually. Convenience for tests that
+    /// need multiple active accounts before exercising batch block / unblock.
+    pub fn onboard_users(&self, users: &soroban_sdk::Vec<Address>) {
+        for user in users.iter() {
+            self.contract.onboard_user(&user, &self.onboarder);
+        }
+    }
+
     /// Assert the most recent event emitted by the gateway contract equals
     /// `expected`. Must be called immediately after the emitting invocation —
     /// any subsequent top-level contract call (including view fns) resets the

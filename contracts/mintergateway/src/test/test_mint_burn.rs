@@ -15,7 +15,7 @@ fn test_mint_increases_both_accumulators_and_sac_balance() {
     let recipient = Address::generate(&s.env);
 
     // Authorize recipient before mint (AUTH_REQUIRED mode)
-    s.contract.unblock_user(&recipient, &s.unblock_operator);
+    s.contract.onboard_user(&recipient, &s.onboarder);
     s.contract.mint(&s.minter, &recipient, &amount);
 
     // Assert emitted event before any view calls — they reset the host event buffer.
@@ -38,8 +38,8 @@ fn test_mint_multiple_recipients() {
     let user_a = Address::generate(&s.env);
     let user_b = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user_a, &s.unblock_operator);
-    s.contract.unblock_user(&user_b, &s.unblock_operator);
+    s.contract.onboard_user(&user_a, &s.onboarder);
+    s.contract.onboard_user(&user_b, &s.onboarder);
     s.contract.mint(&s.minter, &user_a, &(500 * DECIMALS));
     s.contract.mint(&s.minter, &user_b, &(300 * DECIMALS));
 
@@ -58,7 +58,7 @@ fn test_burn_decreases_both_accumulators_and_sac_balance() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
     s.contract.burn(&s.minter, &user, &(400 * DECIMALS));
 
@@ -193,7 +193,7 @@ fn test_burn_exceeding_total_supply_reverts() {
     let user = Address::generate(&s.env);
     let mint_amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &mint_amount);
 
     // Grow index so PV conversion shrinks amounts
@@ -284,7 +284,7 @@ fn test_authorized_account_can_receive_mint() {
     let user = Address::generate(&s.env);
 
     // Authorize via unfreeze_account (allowlist)
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     assert!(!s.contract.blocked(&user));
 
     // Minting to authorized account succeeds
