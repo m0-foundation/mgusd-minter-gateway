@@ -1,6 +1,7 @@
 #![no_std]
 
 mod admin;
+mod block_list;
 mod constants;
 mod continuous_index;
 mod contract;
