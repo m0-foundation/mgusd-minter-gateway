@@ -180,3 +180,42 @@ pub fn require_pauser(env: &Env, caller: &Address) -> Result<(), MinterGatewayEr
     }
     Ok(())
 }
+
+// =============================================================================
+// Onboarder - Membership set. Any onboarder can call onboard_user.
+// Cannot override compliance: onboard_user rejects accounts on the block list.
+// =============================================================================
+
+pub fn is_onboarder(env: &Env, addr: &Address) -> bool {
+    env.storage()
+        .instance()
+        .has(&DataKey::Onboarder(addr.clone()))
+}
+
+/// Returns true if this call added a new onboarder (false if already present).
+pub fn insert_onboarder(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::Onboarder(addr.clone());
+    if env.storage().instance().has(&key) {
+        return false;
+    }
+    env.storage().instance().set(&key, &());
+    true
+}
+
+/// Returns true if this call removed an existing onboarder (false if not present).
+pub fn delete_onboarder(env: &Env, addr: &Address) -> bool {
+    let key = DataKey::Onboarder(addr.clone());
+    if !env.storage().instance().has(&key) {
+        return false;
+    }
+    env.storage().instance().remove(&key);
+    true
+}
+
+pub fn require_onboarder(env: &Env, caller: &Address) -> Result<(), MinterGatewayError> {
+    caller.require_auth();
+    if !is_onboarder(env, caller) {
+        return Err(MinterGatewayError::UnauthorizedError);
+    }
+    Ok(())
+}

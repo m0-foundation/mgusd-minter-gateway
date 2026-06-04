@@ -46,4 +46,11 @@ pub enum DataKey {
     UnblockOperator(Address),
     /// Instance: () — membership set; presence allows `pause` / `unpause`
     Pauser(Address),
+    /// Instance: () — membership set; presence allows `onboard_user`
+    Onboarder(Address),
+    /// Instance: () — compliance block list; presence means this account is currently held back by compliance
+    BlockListed(Address),
+    /// Instance: () — monotonic onboarding record; set on first `onboard_user`, never cleared.
+    /// `unblock_user` only restores SAC authorization when this key is present.
+    Onboarded(Address),
 }
