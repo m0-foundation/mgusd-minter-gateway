@@ -14,6 +14,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { SimulationError, SubmissionError } from "./errors";
 import {
+  AddIssuerSignerParams,
   ConfigureIssuerParams,
   DeployContractParams,
   DeploySacParams,
@@ -199,6 +200,47 @@ export async function buildConfigureIssuerTransaction(
     networkPassphrase: config.networkPassphrase,
   })
     .addOperation(Operation.setOptions(setOptionsParams))
+    .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
+    .build();
+
+  return tx;
+}
+
+export async function buildAddIssuerSignerTransaction(
+  server: rpc.Server,
+  config: TxBuilderConfig,
+  params: AddIssuerSignerParams,
+): Promise<Transaction> {
+  // Adds a second ed25519 signer to the issuer account and NOTHING else. The op
+  // carries only the `signer` field — no masterWeight, no *Threshold, no setFlags
+  // — so the master key's weight, the account thresholds, and the auth flags are
+  // all left untouched (Stellar only mutates fields the op actually sets). With
+  // thresholds at their default 0 this yields mutual independent access: either
+  // the master key or the new signer can authorize any issuer op alone.
+  // Contrast buildConfigureIssuerTransaction (sets auth flags) — this sets none.
+  if (params.signerPublicKey === config.sourcePublicKey) {
+    throw new Error(
+      `signerPublicKey equals the issuer master key (${config.sourcePublicKey}) — that is a ` +
+        `no-op signer-add. Pass the address you actually want to grant signing rights to.`,
+    );
+  }
+
+  const weight = params.weight ?? 1;
+  if (!Number.isInteger(weight) || weight < 0 || weight > 255) {
+    throw new Error(`signer weight must be an integer 0–255, got ${weight}`);
+  }
+
+  const account = await server.getAccount(config.sourcePublicKey);
+
+  const tx = new TransactionBuilder(account, {
+    fee: "100",
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(
+      Operation.setOptions({
+        signer: { ed25519PublicKey: params.signerPublicKey, weight },
+      }),
+    )
     .setTimeout(params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS)
     .build();
 

@@ -96,6 +96,28 @@ export interface ConfigureIssuerResult {
   ledger: number;
 }
 
+export interface AddIssuerSignerParams {
+  /** G... ed25519 public key to grant signer privileges on the issuer account */
+  signerPublicKey: string;
+  /**
+   * Weight for the new signer (0–255, default 1). With the account thresholds
+   * left at their default 0, any weight ≥ 1 is enough to sign alone, so the
+   * exact value is cosmetic unless the thresholds are later raised.
+   */
+  weight?: number;
+  /** Transaction timeout in seconds (default: 30) */
+  timeoutSeconds?: number;
+}
+
+export interface AddIssuerSignerResult {
+  /** Transaction hash */
+  txHash: string;
+  /** Transaction status (SUCCESS or FAILED) */
+  status: string;
+  /** Ledger the transaction was included in */
+  ledger: number;
+}
+
 export interface DeploySacParams {
   /** Asset code (e.g., TMGUSD) */
   assetCode: string;

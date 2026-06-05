@@ -104,7 +104,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 |----------|-----------|-------------|
 | `mint` | `(caller: Address, to: Address, amount: i128)` | Mint SAC tokens and increase both accumulators |
 | `burn` | `(caller: Address, from: Address, amount: i128)` | Remove SAC tokens and decrease both accumulators |
-| `set_interest_rate` | `(caller: Address, rate_bps: u32)` | Set interest rate in basis points (max 10000 = 100%) |
+| `set_interest_rate` | `(caller: Address, rate_bps: u32)` | Set interest rate in basis points (max 5000 = 50%) |
 
 ### Forced Transfer Manager Functions (1)
 
@@ -216,7 +216,7 @@ set_interest_rate(rate_bps: u32)
 2. Calls `set_interest_rate()` which first updates the index at the old rate, then applies the new rate
 3. Emits `interest_rate_set` event with `(rate_bps)`
 
-Rate is in basis points: 100 = 1%, max 10,000 = 100%. Returns `Err(RateExceedsMax)` if rate exceeds 10,000.
+Rate is in basis points: 100 = 1%, max 5,000 = 50%. Returns `Err(RateExceedsMax)` if rate exceeds 5,000.
 
 ### Key Properties
 
@@ -431,6 +431,54 @@ All events emitted by the contract. Event names are the snake_case form of the u
 | `user_unblocked` | `unblock_user`, `batch_unblock_users` | `user` **(topic)** | `stellar_tokens::fungible::blocklist` |
 | `paused` | `pause` | *(no fields)* | `stellar_contract_utils::pausable` |
 | `unpaused` | `unpause` | *(no fields)* | `stellar_contract_utils::pausable` |
+
+---
+
+## Invariants
+
+Core mathematical properties the contract upholds. These should hold across every reachable state.
+
+The present value of a nominal amount at the current index is `amount × INDEX_SCALE / latest_index`.
+
+### Bounds
+
+- **INV-1 — Non-negative accumulators.** `total_principal ≥ 0`, `total_supply ≥ 0`, `accrued_yield ≥ 0`.
+- **INV-2 — Index floor and monotonicity.** `latest_index ≥ INDEX_SCALE` and `current_index ≥ latest_index`. The index never decreases and never falls below `1.0` (`= INDEX_SCALE`).
+- **INV-3 — Rate bound.** `0 ≤ rate_bps ≤ 5_000` (0%–50% APR).
+
+### Conservation per operation
+
+Each state-changing call adjusts the accumulators as follows:
+
+| Operation | Δ `total_principal` | Δ `total_supply` | SAC effect |
+|-----------|---------------------|------------------|------------|
+| `mint(amount)` | `+ amount × INDEX_SCALE / latest_index` | `+ amount` | `+ amount` minted to recipient |
+| `burn(amount)` | `− amount × INDEX_SCALE / latest_index` | `− amount` | `− amount` clawed back from holder |
+| `reconcile_burn(amount)` | `− amount × INDEX_SCALE / latest_index` | `− amount` | none (off-chain destruction already happened) |
+| `claim_yield()` → `amount` | `0` | `+ amount` | `+ amount` minted to yield recipient |
+| `force_transfer(amount)` | `0` | `0` | `− amount` from sender, `+ amount` to recipient |
+| `set_interest_rate`, `update_index` | `0` | `0` | none |
+
+- **INV-4 — Burn cannot exceed principal.** `burn` and `reconcile_burn` revert with `BurnExceedsPrincipal` if `amount × INDEX_SCALE / latest_index > total_principal`. Equivalently, `total_principal` is never driven negative.
+- **INV-5 — Force transfer is supply-neutral.** `force_transfer` leaves `total_principal`, `total_supply`, and `accrued_yield` unchanged.
+- **INV-6 — Yield does not compound.** `claim_yield` increases `total_supply` only. `total_principal` is the sole yield-earning base; claimed yield never re-enters the principal accumulator.
+
+### Yield accrual
+
+- **INV-7 — Pending yield identity.** Between index updates, `pending_yield = total_principal × (current_index − latest_index) / INDEX_SCALE`. After `update_index`, this pending amount is added to `accrued_yield` and `latest_index` is advanced to `current_index`.
+- **INV-8 — Index-update neutrality.** `update_index` modifies only `latest_index`, `accrued_yield`, and `last_update_timestamp`. It never changes `total_principal` or `total_supply`.
+- **INV-9 — Index-before-state ordering.** Every operation that mutates `total_principal`, `total_supply`, or `rate_bps` (i.e. `mint`, `burn`, `reconcile_burn`, `claim_yield`, `set_interest_rate`) finalizes the index first. Yield is therefore always accrued at the principal and rate that were in effect during the elapsed interval.
+- **INV-10 — Claim resets pending yield.** Immediately after `claim_yield` returns `amount`, `accrued_yield = 0` and `total_supply` has increased by exactly `amount`.
+
+### Supply ↔ SAC reconciliation
+
+- **INV-11 — Supply bookkeeping.** Under normal operation (no off-contract destruction such as issuer burns), `total_supply` equals the SAC's circulating supply (sum of holder balances). When tokens are destroyed outside the contract, the SAC's circulating supply falls below `total_supply` until `reconcile_burn` is called to restore equality.
+- **INV-12 — Authoritative source for supply changes.** `total_supply` only changes via `mint`, `burn`, `reconcile_burn`, and `claim_yield`. SAC `transfer` between accounts does not change `total_supply` or `total_principal`.
+
+### Roles and access
+
+- **INV-13 — Single-address roles are total.** `admin`, `minter`, `yield_recipient_manager`, `yield_recipient`, `forced_transfer_manager`, and `pauser` each resolve to exactly one address after construction.
+- **INV-14 — Role gating.** Every role-gated function calls `require_auth` on its `caller` argument and verifies the caller equals the designated role holder. Admin is not a super-role: it cannot exercise another role's powers without first granting itself that role.
 
 ---
 
