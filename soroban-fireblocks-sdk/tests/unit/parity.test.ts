@@ -19,9 +19,13 @@ const EXPECTED_CONTRACT_METHODS = [
   "remove_block_operator",
   "add_unblock_operator",
   "remove_unblock_operator",
-  // Block / unblock user actions
+  // Onboarder role management
+  "add_onboarder",
+  "remove_onboarder",
+  // Block / unblock / onboard user actions
   "block_user",
   "unblock_user",
+  "onboard_user",
   "batch_block_users",
   "batch_unblock_users",
   // SAC + upgrade
@@ -57,6 +61,9 @@ const EXPECTED_CONTRACT_METHODS = [
   "forced_transfer_manager",
   "is_block_operator",
   "is_unblock_operator",
+  "is_onboarder",
+  "is_on_block_list",
+  "is_onboarded",
   "pauser",
 ] as const;
 

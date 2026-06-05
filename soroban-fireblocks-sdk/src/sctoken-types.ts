@@ -113,6 +113,14 @@ export interface BlockUserParams {
   operator: string;
 }
 
+export interface OnboardUserParams {
+  contractId: string;
+  /** User (account) to activate for the first time */
+  user: string;
+  /** Operator address — must hold the onboarder role. Cannot override a compliance block: returns UserBlockedError if the user is on the block list. */
+  operator: string;
+}
+
 export interface BatchBlockUsersParams {
   contractId: string;
   /** Users (accounts) to block or unblock (max 40) */
@@ -173,6 +181,8 @@ export interface DeployFullParams {
   unblockOperator: string;
   /** Pauser address (G... or C...) */
   pauser: string;
+  /** Initial onboarder — authorised to call `onboard_user` for first-time user activation (G... or C...) */
+  onboarder: string;
   /** Local Keypair that signs the protocol-permissionless deploy ops (SAC deploy, WASM upload, contract create). Throwaway. */
   deployerKeypair: import("@stellar/stellar-sdk").Keypair;
   /** Optional `home_domain` bound to the issuer in step 1 (≤32 bytes, no scheme). Enables SEP-1 metadata discovery. */

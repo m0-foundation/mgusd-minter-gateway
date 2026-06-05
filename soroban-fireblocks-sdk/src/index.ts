@@ -68,6 +68,7 @@ export type {
   UpgradeParams,
   PauseParams,
   BlockUserParams,
+  OnboardUserParams,
   BatchBlockUsersParams,
   ForceTransferParams,
   ReconcileBurnParams,

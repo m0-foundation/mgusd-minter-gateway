@@ -18,6 +18,7 @@ import {
   DeployFullResult,
   ForceTransferParams,
   MintParams,
+  OnboardUserParams,
   PauseParams,
   QueryParams,
   ReconcileBurnParams,
@@ -237,6 +238,33 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     });
   }
 
+  async onboardUser(params: OnboardUserParams): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "onboard_user",
+      args: [addressToScVal(params.user), addressToScVal(params.operator)],
+      fireblocksNote: this.noteFor("onboard_user", params.contractId, { user: params.user }),
+    });
+  }
+
+  async addOnboarder(params: QueryParams & { addr: string }): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "add_onboarder",
+      args: [addressToScVal(params.addr)],
+      fireblocksNote: this.noteFor("add_onboarder", params.contractId, { addr: params.addr }),
+    });
+  }
+
+  async removeOnboarder(params: QueryParams & { addr: string }): Promise<InvokeContractResult> {
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "remove_onboarder",
+      args: [addressToScVal(params.addr)],
+      fireblocksNote: this.noteFor("remove_onboarder", params.contractId, { addr: params.addr }),
+    });
+  }
+
   async forceTransfer(params: ForceTransferParams): Promise<InvokeContractResult> {
     return this.invokeContract({
       contractId: params.contractId,
@@ -374,6 +402,36 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       args: [addressToScVal(params.account)],
     });
     if (!retval) throw new Error("blocked returned no value");
+    return scValToNative(retval) as boolean;
+  }
+
+  async queryIsOnBlockList(params: QueryParams & { account: string }): Promise<boolean> {
+    const retval = await this.simulateView({
+      contractId: params.contractId,
+      method: "is_on_block_list",
+      args: [addressToScVal(params.account)],
+    });
+    if (!retval) throw new Error("is_on_block_list returned no value");
+    return scValToNative(retval) as boolean;
+  }
+
+  async queryIsOnboarded(params: QueryParams & { account: string }): Promise<boolean> {
+    const retval = await this.simulateView({
+      contractId: params.contractId,
+      method: "is_onboarded",
+      args: [addressToScVal(params.account)],
+    });
+    if (!retval) throw new Error("is_onboarded returned no value");
+    return scValToNative(retval) as boolean;
+  }
+
+  async queryIsOnboarder(params: QueryParams & { account: string }): Promise<boolean> {
+    const retval = await this.simulateView({
+      contractId: params.contractId,
+      method: "is_onboarder",
+      args: [addressToScVal(params.account)],
+    });
+    if (!retval) throw new Error("is_onboarder returned no value");
     return scValToNative(retval) as boolean;
   }
 
@@ -523,6 +581,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
         addressToScVal(params.blockOperator),
         addressToScVal(params.unblockOperator),
         addressToScVal(params.pauser),
+        addressToScVal(params.onboarder),
       ],
     });
     if (deployResult.status !== "SUCCESS" || !deployResult.contractId) {
