@@ -1,22 +1,23 @@
-use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, BytesN, Env, Vec};
+use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, BytesN, Env, Symbol,
+    Vec};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::constants::MAX_BATCH_SIZE;
 use crate::errors::MinterGatewayError;
 use crate::events::{
-    emit_admin_set, emit_block_operator_added, emit_block_operator_removed, emit_burn,
+    emit_admin_set, emit_authorized_blocker_removed, emit_authorized_blocker_set, emit_burn,
     emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set, emit_mint,
     emit_minter_set, emit_pauser_added, emit_pauser_removed, emit_reconcile,
-    emit_sac_admin_transferred, emit_unblock_operator_added, emit_unblock_operator_removed,
-    emit_upgraded, emit_yield_claimed, emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_sac_admin_transferred, emit_upgraded, emit_yield_claimed,
+    emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    delete_block_operator, delete_pauser, delete_unblock_operator, insert_block_operator,
-    insert_pauser, insert_unblock_operator, is_block_operator, is_pauser, is_unblock_operator,
-    read_forced_transfer_manager, read_minter, read_yield_recipient, read_yield_recipient_manager,
-    require_block_operator, require_pauser, require_role_holder, require_unblock_operator,
-    write_forced_transfer_manager, write_minter, write_yield_recipient,
-    write_yield_recipient_manager,
+    add_block_source, delete_pauser, get_authorized_blocker, get_block_sources, has_any_block,
+    insert_pauser, is_pauser, read_forced_transfer_manager, read_minter, read_yield_recipient,
+    read_yield_recipient_manager, remove_authorized_blocker_storage, remove_block_source,
+    require_authorized_blocker, require_pauser, require_role_holder,
+    set_authorized_blocker_storage, write_forced_transfer_manager, write_minter,
+    write_yield_recipient, write_yield_recipient_manager,
 };
 use crate::sac_token::{read_sac_token, write_sac_token};
 use crate::storage_types::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
@@ -66,12 +67,10 @@ impl YieldToken {
     /// * `yield_recipient_manager` - Address that can set the yield recipient
     /// * `yield_recipient` - Address that receives claimed yield (passive — `claim_yield` is gated by `yield_recipient_manager`)
     /// * `forced_transfer_manager` - Address that can authorize accounts and transfer tokens
-    /// * `block_operator` - Initial address with block permission; added to the block-operator set.
-    ///   More addresses can be granted via `add_block_operator`.
-    /// * `unblock_operator` - Initial address with unblock permission; added to the unblock-operator set.
-    ///   More addresses can be granted via `add_unblock_operator`. May equal `block_operator`.
     /// * `pauser` - Initial address with pause permission; added to the pauser set.
     ///   More addresses can be granted via `add_pauser`.
+    ///
+    /// Blocking parties are registered post-deployment via `set_authorized_blocker`.
     pub fn __constructor(
         e: Env,
         sac_token: Address,
@@ -80,25 +79,19 @@ impl YieldToken {
         yield_recipient_manager: Address,
         yield_recipient: Address,
         forced_transfer_manager: Address,
-        block_operator: Address,
-        unblock_operator: Address,
         pauser: Address,
     ) -> Result<(), MinterGatewayError> {
         if has_admin(&e) {
             return Err(MinterGatewayError::AlreadyInitializedError);
         }
 
-        // Store SAC token address
         write_sac_token(&e, &sac_token);
 
-        // Set all roles
         write_admin(&e, &admin);
         write_minter(&e, &minter);
         write_yield_recipient_manager(&e, &yield_recipient_manager);
         write_yield_recipient(&e, &yield_recipient);
         write_forced_transfer_manager(&e, &forced_transfer_manager);
-        insert_block_operator(&e, &block_operator);
-        insert_unblock_operator(&e, &unblock_operator);
         insert_pauser(&e, &pauser);
 
         extend_instance_ttl(&e);
@@ -161,49 +154,25 @@ impl YieldToken {
         emit_forced_transfer_manager_set(&e, old, new_forced_transfer_manager);
     }
 
-    /// Grants block permission to `addr`. Admin only.
-    /// Idempotent: silent no-op (no event) if the address is already a block operator.
-    pub fn add_block_operator(e: Env, addr: Address) {
+    /// Registers or updates the blocker address for a given source. Admin only.
+    /// The source is an arbitrary Symbol identifying a blocking party (e.g. `bridge_compliance`).
+    pub fn set_authorized_blocker(e: Env, source: Symbol, blocker: Address) {
         require_admin(&e);
-
-        // Prolongs the Time-To-Live of the contract's instance storage.
         extend_instance_ttl(&e);
 
-        if insert_block_operator(&e, &addr) {
-            emit_block_operator_added(&e, addr);
+        if set_authorized_blocker_storage(&e, &source, &blocker) {
+            emit_authorized_blocker_set(&e, source, blocker);
         }
     }
 
-    /// Revokes block permission from `addr`. Admin only.
-    /// Idempotent: silent no-op (no event) if the address does not have block permission.
-    pub fn remove_block_operator(e: Env, addr: Address) {
+    /// Removes a source and its associated blocker address. Admin only.
+    /// Idempotent: silent no-op (no event) if the source is not registered.
+    pub fn remove_authorized_blocker(e: Env, source: Symbol) {
         require_admin(&e);
         extend_instance_ttl(&e);
 
-        if delete_block_operator(&e, &addr) {
-            emit_block_operator_removed(&e, addr);
-        }
-    }
-
-    /// Grants unblock permission to `addr`. Admin only.
-    /// Idempotent: silent no-op (no event) if the address is already an unblock operator.
-    pub fn add_unblock_operator(e: Env, addr: Address) {
-        require_admin(&e);
-        extend_instance_ttl(&e);
-
-        if insert_unblock_operator(&e, &addr) {
-            emit_unblock_operator_added(&e, addr);
-        }
-    }
-
-    /// Revokes unblock permission from `addr`. Admin only.
-    /// Idempotent: silent no-op (no event) if the address does not have unblock permission.
-    pub fn remove_unblock_operator(e: Env, addr: Address) {
-        require_admin(&e);
-        extend_instance_ttl(&e);
-
-        if delete_unblock_operator(&e, &addr) {
-            emit_unblock_operator_removed(&e, addr);
+        if remove_authorized_blocker_storage(&e, &source) {
+            emit_authorized_blocker_removed(&e, source);
         }
     }
 
@@ -230,58 +199,68 @@ impl YieldToken {
     }
 
     // =========================================================================
-    // BlockList Functions (Block / Unblock operators)
+    // Multi-party block / unblock
     //
-    // Mirrors the `stellar_tokens::fungible::blocklist::FungibleBlockList`
-    // interface: `block_user` / `unblock_user` / `blocked`. Backed by the SAC
-    // allowlist (`set_authorized`) — the SAC is the authoritative source of
-    // authorization state, so we do not mirror into contract storage.
+    // Each blocking party is identified by a source Symbol (e.g. `bridge_compliance`,
+    // `moneygram_onboarding`). The admin registers source→blocker mappings via
+    // `set_authorized_blocker`. Each user maintains a set of active block sources.
     //
-    // `blocked` is the inverse of SAC authorization:
-    //   `blocked(a) == true`  ⇔  SAC `authorized(a) == false`
+    // Union semantic: SAC authorization is restored only when the block set is empty
+    // (ALL blocking parties have cleared their hold). No party can override another's block.
     //
-    // Note on polarity under AUTH_REQUIRED: untouched accounts are SAC-
-    // unauthorized by default, so `blocked` returns `true` for them.
+    // `blocked(user)` returns true iff the user has any active block sources.
     // =========================================================================
 
-    /// Blocks a user, preventing them from sending or receiving SAC tokens.
-    /// Block operator only.
-    pub fn block_user(e: Env, user: Address, operator: Address) -> Result<(), MinterGatewayError> {
-        require_block_operator(&e, &operator)?;
+    /// Adds `source` to the user's block set and revokes SAC authorization.
+    /// Caller must be the registered blocker for `source`. Idempotent.
+    pub fn block_user(
+        e: Env,
+        caller: Address,
+        user: Address,
+        source: Symbol,
+    ) -> Result<(), MinterGatewayError> {
+        require_authorized_blocker(&e, &caller, &source)?;
         extend_instance_ttl(&e);
 
-        let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &false);
-
-        emit_user_blocked(&e, &user);
+        if add_block_source(&e, &user, &source) {
+            let sac_addr = read_sac_token(&e);
+            token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &false);
+            emit_user_blocked(&e, &user);
+        }
         Ok(())
     }
 
-    /// Unblocks a user, restoring their ability to send and receive SAC tokens.
-    /// Unblock operator only.
+    /// Removes `source` from the user's block set. Restores SAC authorization only when
+    /// the block set becomes empty — other active sources keep the account unauthorized.
+    /// Caller must be the registered blocker for `source`. Idempotent.
     pub fn unblock_user(
         e: Env,
+        caller: Address,
         user: Address,
-        operator: Address,
+        source: Symbol,
     ) -> Result<(), MinterGatewayError> {
-        require_unblock_operator(&e, &operator)?;
+        require_authorized_blocker(&e, &caller, &source)?;
         extend_instance_ttl(&e);
 
-        let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &true);
+        remove_block_source(&e, &user, &source);
 
+        if !has_any_block(&e, &user) {
+            let sac_addr = read_sac_token(&e);
+            token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &true);
+        }
         emit_user_unblocked(&e, &user);
         Ok(())
     }
 
-    /// Blocks multiple users in a single transaction.
-    /// Block operator only. Max 40 users per call.
+    /// Adds `source` to each user's block set and revokes SAC authorization.
+    /// Caller must be the registered blocker for `source`. Max 40 users per call.
     pub fn batch_block_users(
         e: Env,
+        caller: Address,
         users: Vec<Address>,
-        operator: Address,
+        source: Symbol,
     ) -> Result<(), MinterGatewayError> {
-        require_block_operator(&e, &operator)?;
+        require_authorized_blocker(&e, &caller, &source)?;
         extend_instance_ttl(&e);
 
         if users.len() > MAX_BATCH_SIZE {
@@ -292,21 +271,23 @@ impl YieldToken {
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
 
         for user in users.iter() {
-            sac_client.set_authorized(&user, &false);
-            emit_user_blocked(&e, &user);
+            if add_block_source(&e, &user, &source) {
+                sac_client.set_authorized(&user, &false);
+                emit_user_blocked(&e, &user);
+            }
         }
-
         Ok(())
     }
 
-    /// Unblocks multiple users in a single transaction.
-    /// Unblock operator only. Max 40 users per call.
+    /// Removes `source` from each user's block set, restoring SAC authorization for those
+    /// whose block set becomes empty. Max 40 users per call.
     pub fn batch_unblock_users(
         e: Env,
+        caller: Address,
         users: Vec<Address>,
-        operator: Address,
+        source: Symbol,
     ) -> Result<(), MinterGatewayError> {
-        require_unblock_operator(&e, &operator)?;
+        require_authorized_blocker(&e, &caller, &source)?;
         extend_instance_ttl(&e);
 
         if users.len() > MAX_BATCH_SIZE {
@@ -317,10 +298,12 @@ impl YieldToken {
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
 
         for user in users.iter() {
-            sac_client.set_authorized(&user, &true);
+            remove_block_source(&e, &user, &source);
+            if !has_any_block(&e, &user) {
+                sac_client.set_authorized(&user, &true);
+            }
             emit_user_unblocked(&e, &user);
         }
-
         Ok(())
     }
 
@@ -575,24 +558,29 @@ impl YieldToken {
     // View Functions
     // =========================================================================
 
-    /// Returns whether the given account is blocked.
-    /// Matches `stellar_tokens::fungible::blocklist::FungibleBlockList::blocked` —
-    /// `true` means the account is blocked (SAC-unauthorized). Untouched
-    /// accounts return `true` because the SAC issuer uses AUTH_REQUIRED.
-    ///
-    /// The SAC's `authorized` host function traps (not returns `false`) when
-    /// the account has no classic trustline for the asset — so a naive
-    /// `!authorized(account)` would make `blocked()` unusable for onboarding
-    /// pre-flight checks. We catch that trap via `try_authorized` and treat
-    /// any non-success outcome as "blocked": without a trustline there is no
-    /// authorization state, so denying is the safe and truthful answer.
+    /// Returns whether the given account has any active block sources.
+    /// `true` means at least one blocking party has blocked this account.
     pub fn blocked(e: Env, account: Address) -> bool {
         extend_instance_ttl(&e);
-        let sac_addr = read_sac_token(&e);
-        match token::StellarAssetClient::new(&e, &sac_addr).try_authorized(&account) {
-            Ok(Ok(authorized)) => !authorized,
-            _ => true,
-        }
+        has_any_block(&e, &account)
+    }
+
+    /// Returns whether `source` has an active block on `account`.
+    pub fn blocked_by(e: Env, account: Address, source: Symbol) -> bool {
+        extend_instance_ttl(&e);
+        get_block_sources(&e, &account).contains(&source)
+    }
+
+    /// Returns the set of active block sources for `account`.
+    pub fn get_blocks(e: Env, account: Address) -> Vec<Symbol> {
+        extend_instance_ttl(&e);
+        get_block_sources(&e, &account)
+    }
+
+    /// Returns the registered blocker address for `source`, or `None` if not registered.
+    pub fn get_authorized_blocker(e: Env, source: Symbol) -> Option<Address> {
+        extend_instance_ttl(&e);
+        get_authorized_blocker(&e, &source)
     }
 
     /// Returns the SAC token balance for the given address.
@@ -674,18 +662,6 @@ impl YieldToken {
     pub fn forced_transfer_manager(e: Env) -> Address {
         extend_instance_ttl(&e);
         read_forced_transfer_manager(&e)
-    }
-
-    /// Returns whether `addr` has block permission.
-    pub fn is_block_operator(e: Env, addr: Address) -> bool {
-        extend_instance_ttl(&e);
-        is_block_operator(&e, &addr)
-    }
-
-    /// Returns whether `addr` has unblock permission.
-    pub fn is_unblock_operator(e: Env, addr: Address) -> bool {
-        extend_instance_ttl(&e);
-        is_unblock_operator(&e, &addr)
     }
 
     /// Returns whether `addr` has pause permission.

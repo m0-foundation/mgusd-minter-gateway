@@ -16,4 +16,5 @@ pub enum MinterGatewayError {
     BatchTooLargeError = 102,
     BurnExceedsSupply = 103,
     NoTrustline = 104, // SAC destination has no trustline or trustline is not authorized
+    UnknownSourceError = 105, // block/unblock called with a source that has no registered blocker
 }

@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, Symbol, Vec};
 
 use crate::errors::MinterGatewayError;
 use crate::storage_types::DataKey;
@@ -72,30 +72,32 @@ pub fn write_forced_transfer_manager(env: &Env, addr: &Address) {
 }
 
 // =============================================================================
-// Block / Unblock operators — separate membership sets. Block operators can
-// block accounts; unblock operators can unblock. Either role may be held alone
-// or both by the same address.
+// Authorized blockers — maps a source name (Symbol) to the Address authorized
+// to call block_user / unblock_user for that source. Admin manages this registry
+// via set_authorized_blocker / remove_authorized_blocker.
 // =============================================================================
 
-pub fn is_block_operator(env: &Env, addr: &Address) -> bool {
+pub fn get_authorized_blocker(env: &Env, source: &Symbol) -> Option<Address> {
     env.storage()
         .instance()
-        .has(&DataKey::BlockOperator(addr.clone()))
+        .get(&DataKey::AuthorizedBlocker(source.clone()))
 }
 
-/// Returns true if this call added a new block operator (false if already present).
-pub fn insert_block_operator(env: &Env, addr: &Address) -> bool {
-    let key = DataKey::BlockOperator(addr.clone());
-    if env.storage().instance().has(&key) {
-        return false;
+/// Returns true if the blocker was newly set or changed (false if already identical).
+pub fn set_authorized_blocker_storage(env: &Env, source: &Symbol, blocker: &Address) -> bool {
+    let key = DataKey::AuthorizedBlocker(source.clone());
+    if let Some(existing) = env.storage().instance().get::<_, Address>(&key) {
+        if existing == *blocker {
+            return false;
+        }
     }
-    env.storage().instance().set(&key, &());
+    env.storage().instance().set(&key, blocker);
     true
 }
 
-/// Returns true if this call removed an existing block operator (false if not present).
-pub fn delete_block_operator(env: &Env, addr: &Address) -> bool {
-    let key = DataKey::BlockOperator(addr.clone());
+/// Returns true if the source existed and was removed.
+pub fn remove_authorized_blocker_storage(env: &Env, source: &Symbol) -> bool {
+    let key = DataKey::AuthorizedBlocker(source.clone());
     if !env.storage().instance().has(&key) {
         return false;
     }
@@ -103,46 +105,78 @@ pub fn delete_block_operator(env: &Env, addr: &Address) -> bool {
     true
 }
 
-pub fn require_block_operator(env: &Env, caller: &Address) -> Result<(), MinterGatewayError> {
+/// Verifies caller is auth'd and is the registered blocker for `source`.
+/// Returns UnknownSourceError if the source has no registered blocker.
+/// Returns UnauthorizedError if the caller is not that blocker.
+pub fn require_authorized_blocker(
+    env: &Env,
+    caller: &Address,
+    source: &Symbol,
+) -> Result<(), MinterGatewayError> {
     caller.require_auth();
-    if !is_block_operator(env, caller) {
-        return Err(MinterGatewayError::UnauthorizedError);
+    match get_authorized_blocker(env, source) {
+        None => Err(MinterGatewayError::UnknownSourceError),
+        Some(registered) if registered != *caller => Err(MinterGatewayError::UnauthorizedError),
+        _ => Ok(()),
     }
-    Ok(())
 }
 
-pub fn is_unblock_operator(env: &Env, addr: &Address) -> bool {
+// =============================================================================
+// Block registry — maps each user Address to the Vec<Symbol> of active block
+// sources. SAC authorization is restored only when the vec is empty.
+// =============================================================================
+
+pub fn get_block_sources(env: &Env, user: &Address) -> Vec<Symbol> {
     env.storage()
         .instance()
-        .has(&DataKey::UnblockOperator(addr.clone()))
+        .get(&DataKey::BlockSources(user.clone()))
+        .unwrap_or_else(|| Vec::new(env))
 }
 
-/// Returns true if this call added a new unblock operator (false if already present).
-pub fn insert_unblock_operator(env: &Env, addr: &Address) -> bool {
-    let key = DataKey::UnblockOperator(addr.clone());
-    if env.storage().instance().has(&key) {
+fn set_block_sources(env: &Env, user: &Address, sources: &Vec<Symbol>) {
+    if sources.is_empty() {
+        env.storage()
+            .instance()
+            .remove(&DataKey::BlockSources(user.clone()));
+    } else {
+        env.storage()
+            .instance()
+            .set(&DataKey::BlockSources(user.clone()), sources);
+    }
+}
+
+/// Adds `source` to the user's block set. Returns true if newly added (was not present).
+pub fn add_block_source(env: &Env, user: &Address, source: &Symbol) -> bool {
+    let mut sources = get_block_sources(env, user);
+    if sources.contains(source) {
         return false;
     }
-    env.storage().instance().set(&key, &());
+    sources.push_back(source.clone());
+    set_block_sources(env, user, &sources);
     true
 }
 
-/// Returns true if this call removed an existing unblock operator (false if not present).
-pub fn delete_unblock_operator(env: &Env, addr: &Address) -> bool {
-    let key = DataKey::UnblockOperator(addr.clone());
-    if !env.storage().instance().has(&key) {
+/// Removes `source` from the user's block set. Returns true if it was present and removed.
+pub fn remove_block_source(env: &Env, user: &Address, source: &Symbol) -> bool {
+    let sources = get_block_sources(env, user);
+    if !sources.contains(source) {
         return false;
     }
-    env.storage().instance().remove(&key);
+    let mut new_sources = Vec::new(env);
+    for s in sources.iter() {
+        if s != *source {
+            new_sources.push_back(s);
+        }
+    }
+    set_block_sources(env, user, &new_sources);
     true
 }
 
-pub fn require_unblock_operator(env: &Env, caller: &Address) -> Result<(), MinterGatewayError> {
-    caller.require_auth();
-    if !is_unblock_operator(env, caller) {
-        return Err(MinterGatewayError::UnauthorizedError);
-    }
-    Ok(())
+/// Returns true if the user has any active block sources (SAC remains unauthorized).
+pub fn has_any_block(env: &Env, user: &Address) -> bool {
+    env.storage()
+        .instance()
+        .has(&DataKey::BlockSources(user.clone()))
 }
 
 // =============================================================================
