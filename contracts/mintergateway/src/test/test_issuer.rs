@@ -629,7 +629,8 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     assert!(result.is_err());
 
     // Only after explicit authorization does it work
-    s.contract.unblock_user(&s.blocker, &contract_addr, &s.source);
+    s.contract
+        .unblock_user(&s.blocker, &contract_addr, &s.source);
     assert!(!s.contract.blocked(&contract_addr));
 
     s.sac_token

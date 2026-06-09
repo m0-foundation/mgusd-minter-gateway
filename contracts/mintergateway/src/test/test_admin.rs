@@ -19,7 +19,10 @@ fn test_forced_transfer_manager_view() {
 #[test]
 fn test_authorized_blocker_view() {
     let s = setup();
-    assert_eq!(s.contract.get_authorized_blocker(&s.source), Some(s.blocker.clone()));
+    assert_eq!(
+        s.contract.get_authorized_blocker(&s.source),
+        Some(s.blocker.clone())
+    );
     let unknown = Symbol::new(&s.env, "unknown");
     assert_eq!(s.contract.get_authorized_blocker(&unknown), None);
 }

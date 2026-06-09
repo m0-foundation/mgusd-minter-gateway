@@ -24,16 +24,7 @@ fn test_double_initialization_returns_error() {
     // Re-invoke __constructor inside the contract's storage context
     // The admin already exists, so this should return AlreadyInitializedError
     let result = s.env.as_contract(&s.contract.address, || {
-        YieldToken::__constructor(
-            s.env.clone(),
-            sac_addr,
-            admin,
-            minter,
-            yrm,
-            yr,
-            ftm,
-            pauser,
-        )
+        YieldToken::__constructor(s.env.clone(), sac_addr, admin, minter, yrm, yr, ftm, pauser)
     });
 
     assert_eq!(

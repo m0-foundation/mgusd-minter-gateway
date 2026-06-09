@@ -389,9 +389,9 @@ fn test_block_operator_cannot_force_transfer() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
 
-    let result =
-        s.contract
-            .try_force_transfer(&s.blocker, &alice, &bob, &(1_000 * DECIMALS));
+    let result = s
+        .contract
+        .try_force_transfer(&s.blocker, &alice, &bob, &(1_000 * DECIMALS));
     assert_eq!(
         result,
         Err(Ok(crate::MinterGatewayError::UnauthorizedError))

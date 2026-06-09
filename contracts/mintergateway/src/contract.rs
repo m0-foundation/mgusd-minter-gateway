@@ -1,5 +1,6 @@
-use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, BytesN, Env, Symbol,
-    Vec};
+use soroban_sdk::{
+    contract, contractimpl, panic_with_error, token, Address, BytesN, Env, Symbol, Vec,
+};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
 use crate::constants::MAX_BATCH_SIZE;

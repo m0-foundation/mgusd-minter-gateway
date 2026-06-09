@@ -140,7 +140,8 @@ fn test_onboarding_flow() {
 
     // Admin unfreezes both users (onboarding)
     s.contract.unblock_user(&s.blocker, &new_user, &s.source);
-    s.contract.unblock_user(&s.blocker, &existing_user, &s.source);
+    s.contract
+        .unblock_user(&s.blocker, &existing_user, &s.source);
 
     // Mint to new user
     s.contract.mint(&s.minter, &new_user, &mint_amount);
@@ -223,7 +224,8 @@ fn test_sac_transfer_to_contract_succeeds_when_contract_authorized() {
     s.contract.mint(&s.minter, &user, &amount);
 
     // Authorize the contract address itself
-    s.contract.unblock_user(&s.blocker, &contract_addr, &s.source);
+    s.contract
+        .unblock_user(&s.blocker, &contract_addr, &s.source);
 
     // Transfer to contract address — succeeds but tokens are locked forever
     s.sac_token
@@ -245,7 +247,8 @@ fn test_sac_transfer_full_balance_to_contract_locks_tokens() {
     let contract_addr = s.contract.address.clone();
 
     s.contract.unblock_user(&s.blocker, &user, &s.source);
-    s.contract.unblock_user(&s.blocker, &contract_addr, &s.source);
+    s.contract
+        .unblock_user(&s.blocker, &contract_addr, &s.source);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Send entire balance to the contract

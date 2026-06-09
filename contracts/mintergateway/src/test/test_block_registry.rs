@@ -131,7 +131,9 @@ fn test_sac_auth_revoked_on_first_block() {
     // SAC transfer fails while blocked
     let recipient = Address::generate(&s.env);
     s.contract.unblock_user(&s.blocker, &recipient, &s.source);
-    let result = s.sac_token.try_transfer(&user, &recipient, &(10 * DECIMALS));
+    let result = s
+        .sac_token
+        .try_transfer(&user, &recipient, &(10 * DECIMALS));
     assert!(result.is_err());
 }
 
@@ -154,7 +156,9 @@ fn test_sac_auth_restored_only_when_all_sources_clear() {
 
     // Source A clears - source B still holds, SAC auth NOT restored
     s.contract.unblock_user(&s.blocker, &user, &s.source);
-    let result = s.sac_token.try_transfer(&user, &recipient, &(10 * DECIMALS));
+    let result = s
+        .sac_token
+        .try_transfer(&user, &recipient, &(10 * DECIMALS));
     assert!(result.is_err());
 
     // Source B clears - all clear, SAC auth restored
@@ -172,25 +176,31 @@ fn test_recipient_activation_flow() {
     let onboarding_key = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    s.contract.set_authorized_blocker(&compliance, &compliance_key);
-    s.contract.set_authorized_blocker(&onboarding, &onboarding_key);
+    s.contract
+        .set_authorized_blocker(&compliance, &compliance_key);
+    s.contract
+        .set_authorized_blocker(&onboarding, &onboarding_key);
 
     // Step 1: Recipient has no blocks, onboarding party activates them
-    s.contract.unblock_user(&onboarding_key, &recipient, &onboarding);
+    s.contract
+        .unblock_user(&onboarding_key, &recipient, &onboarding);
     assert!(!s.contract.blocked(&recipient));
 
     // Step 2: Compliance detects a sanctions match and blocks
-    s.contract.block_user(&compliance_key, &recipient, &compliance);
+    s.contract
+        .block_user(&compliance_key, &recipient, &compliance);
     assert!(s.contract.blocked(&recipient));
     assert!(s.contract.blocked_by(&recipient, &compliance));
 
     // Step 3: Onboarding party tries to unblock their source - no-op, compliance block persists
-    s.contract.unblock_user(&onboarding_key, &recipient, &onboarding);
+    s.contract
+        .unblock_user(&onboarding_key, &recipient, &onboarding);
     assert!(s.contract.blocked(&recipient));
     assert!(s.contract.blocked_by(&recipient, &compliance));
 
     // Step 4: Compliance clears - all clear
-    s.contract.unblock_user(&compliance_key, &recipient, &compliance);
+    s.contract
+        .unblock_user(&compliance_key, &recipient, &compliance);
     assert!(!s.contract.blocked(&recipient));
 }
 
@@ -258,10 +268,12 @@ fn test_batch_block_multiple_sources_per_user() {
     assert_eq!(s.contract.get_blocks(&user).len(), 2);
 
     // Batch unblock source A - source B still holds
-    s.contract.batch_unblock_users(&s.blocker, &users, &s.source);
+    s.contract
+        .batch_unblock_users(&s.blocker, &users, &s.source);
     assert!(s.contract.blocked(&user));
 
     // Batch unblock source B - all clear
-    s.contract.batch_unblock_users(&blocker_b, &users, &source_b);
+    s.contract
+        .batch_unblock_users(&blocker_b, &users, &source_b);
     assert!(!s.contract.blocked(&user));
 }
