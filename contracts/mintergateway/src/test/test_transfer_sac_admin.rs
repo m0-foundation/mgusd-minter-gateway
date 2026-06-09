@@ -16,8 +16,6 @@ fn test_transfer_sac_admin_to_second_contract() {
     // Deploy a second contract
     let admin2 = Address::generate(&s.env);
     let minter2 = Address::generate(&s.env);
-    let block_operator2 = Address::generate(&s.env);
-    let unblock_operator2 = Address::generate(&s.env);
     let pauser2 = Address::generate(&s.env);
     let contract2_addr = s.env.register(
         YieldToken,
@@ -28,15 +26,13 @@ fn test_transfer_sac_admin_to_second_contract() {
             &Address::generate(&s.env),
             &Address::generate(&s.env),
             &Address::generate(&s.env),
-            &block_operator2,
-            &unblock_operator2,
             &pauser2,
         ),
     );
     let contract2 = YieldTokenClient::new(&s.env, &contract2_addr);
 
     // Contract A is SAC admin
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &user, &s.source);
     s.contract.mint(&s.minter, &user, &(200 * DECIMALS));
     s.contract.burn(&s.minter, &user, &(50 * DECIMALS));
 
@@ -89,7 +85,7 @@ fn test_transfer_sac_admin_revokes_and_restores_mint_capability() {
     let user = Address::generate(&s.env);
     let external_owner = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &user, &s.source);
 
     // Contract is SAC admin — mint should succeed.
     s.contract.mint(&s.minter, &user, &(100 * DECIMALS));

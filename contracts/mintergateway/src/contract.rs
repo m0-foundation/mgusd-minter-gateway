@@ -558,11 +558,24 @@ impl YieldToken {
     // View Functions
     // =========================================================================
 
-    /// Returns whether the given account has any active block sources.
-    /// `true` means at least one blocking party has blocked this account.
+    /// Returns whether the given account is unable to send or receive SAC tokens.
+    /// `true` if any blocking party has an active block, OR the account is not
+    /// SAC-authorized (never activated / no trustline under AUTH_REQUIRED).
+    ///
+    /// The block-registry check short-circuits first so a blocked account always
+    /// reports `true` regardless of its SAC trustline state. Otherwise we fall back
+    /// to the SAC authorization flag; `try_authorized` traps when the account has no
+    /// trustline, which we treat as blocked.
     pub fn blocked(e: Env, account: Address) -> bool {
         extend_instance_ttl(&e);
-        has_any_block(&e, &account)
+        if has_any_block(&e, &account) {
+            return true;
+        }
+        let sac_addr = read_sac_token(&e);
+        match token::StellarAssetClient::new(&e, &sac_addr).try_authorized(&account) {
+            Ok(Ok(authorized)) => !authorized,
+            _ => true,
+        }
     }
 
     /// Returns whether `source` has an active block on `account`.

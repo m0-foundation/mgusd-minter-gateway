@@ -19,8 +19,6 @@ fn test_double_initialization_returns_error() {
     let yrm = s.yield_recipient_manager.clone();
     let yr = s.yield_recipient.clone();
     let ftm = s.forced_transfer_manager.clone();
-    let block_op = s.block_operator.clone();
-    let unblock_op = s.unblock_operator.clone();
     let pauser = s.pauser.clone();
 
     // Re-invoke __constructor inside the contract's storage context
@@ -34,8 +32,6 @@ fn test_double_initialization_returns_error() {
             yrm,
             yr,
             ftm,
-            block_op,
-            unblock_op,
             pauser,
         )
     });
@@ -65,8 +61,6 @@ fn test_constructor_extends_instance_ttl() {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
-    let block_operator = Address::generate(&env);
-    let unblock_operator = Address::generate(&env);
     let pauser = Address::generate(&env);
 
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
@@ -81,8 +75,6 @@ fn test_constructor_extends_instance_ttl() {
             &yield_recipient_manager,
             &yield_recipient,
             &forced_transfer_manager,
-            &block_operator,
-            &unblock_operator,
             &pauser,
         ),
     );
@@ -129,8 +121,6 @@ fn test_upgrade_requires_admin_auth() {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
-    let block_operator = Address::generate(&env);
-    let unblock_operator = block_operator.clone();
     let pauser = Address::generate(&env);
 
     // Register SAC — env.register* helpers don't need auth
@@ -146,8 +136,6 @@ fn test_upgrade_requires_admin_auth() {
             &yield_recipient_manager,
             &yield_recipient,
             &forced_transfer_manager,
-            &block_operator,
-            &unblock_operator,
             &pauser,
         ),
     );

@@ -1,7 +1,7 @@
 pub use soroban_sdk::{
     testutils::{Events as _, IssuerFlags, Ledger},
     token::{StellarAssetClient, TokenClient},
-    xdr, Address, BytesN, Env, Event,
+    xdr, Address, BytesN, Env, Event, Symbol,
 };
 
 use soroban_sdk::testutils::Address as _;
@@ -16,6 +16,8 @@ pub use crate::contract::{YieldToken, YieldTokenClient};
 pub const T0: u64 = 1_000_000; // Arbitrary start timestamp
 pub const DECIMALS: i128 = 10_000_000; // 1 token = 10^7 stroops
 
+pub const SOURCE: &str = "default";
+
 pub struct TestSetup<'a> {
     pub env: Env,
     pub contract: YieldTokenClient<'a>,
@@ -26,8 +28,8 @@ pub struct TestSetup<'a> {
     pub yield_recipient_manager: Address,
     pub yield_recipient: Address,
     pub forced_transfer_manager: Address,
-    pub block_operator: Address,
-    pub unblock_operator: Address,
+    pub blocker: Address,
+    pub source: Symbol,
     pub pauser: Address,
 }
 
@@ -41,12 +43,9 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
-    // Default to separate block and unblock operators so the role split is
-    // exercised across the suite. Tests that need a single address holding
-    // both roles construct that case explicitly.
-    let block_operator = Address::generate(&env);
-    let unblock_operator = Address::generate(&env);
+    let blocker = Address::generate(&env);
     let pauser = Address::generate(&env);
+    let source = Symbol::new(&env, SOURCE);
 
     // Register SAC token with admin as initial issuer
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
@@ -69,8 +68,6 @@ pub fn setup() -> TestSetup<'static> {
             &yield_recipient_manager,
             &yield_recipient,
             &forced_transfer_manager,
-            &block_operator,
-            &unblock_operator,
             &pauser,
         ),
     );
@@ -79,8 +76,10 @@ pub fn setup() -> TestSetup<'static> {
     // Set yield contract as SAC admin (so it can mint/clawback)
     sac_admin_client.set_admin(&contract_addr);
 
+    contract.set_authorized_blocker(&source, &blocker);
+
     // Authorize yield_recipient so claim_yield can mint to it (AUTH_REQUIRED mode)
-    contract.unblock_user(&yield_recipient, &unblock_operator);
+    contract.unblock_user(&blocker, &yield_recipient, &source);
 
     TestSetup {
         env,
@@ -92,8 +91,8 @@ pub fn setup() -> TestSetup<'static> {
         yield_recipient_manager,
         yield_recipient,
         forced_transfer_manager,
-        block_operator,
-        unblock_operator,
+        blocker,
+        source,
         pauser,
     }
 }

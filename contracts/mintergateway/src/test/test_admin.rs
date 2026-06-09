@@ -1,7 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 
 use super::setup::*;
-use crate::events::{BlockOperatorAdded, UnblockOperatorAdded};
+use crate::events::AuthorizedBlockerSet;
 
 // =============================================================================
 // ROLE GETTERS — verify initial state
@@ -17,13 +17,11 @@ fn test_forced_transfer_manager_view() {
 }
 
 #[test]
-fn test_block_unblock_operator_views() {
+fn test_authorized_blocker_view() {
     let s = setup();
-    assert!(s.contract.is_block_operator(&s.block_operator));
-    assert!(s.contract.is_unblock_operator(&s.unblock_operator));
-    let someone = Address::generate(&s.env);
-    assert!(!s.contract.is_block_operator(&someone));
-    assert!(!s.contract.is_unblock_operator(&someone));
+    assert_eq!(s.contract.get_authorized_blocker(&s.source), Some(s.blocker.clone()));
+    let unknown = Symbol::new(&s.env, "unknown");
+    assert_eq!(s.contract.get_authorized_blocker(&unknown), None);
 }
 
 // =============================================================================
@@ -82,136 +80,78 @@ fn test_set_forced_transfer_manager() {
 }
 
 #[test]
-fn test_add_and_remove_block_operator() {
+fn test_set_and_remove_authorized_blocker() {
     let s = setup();
-    let extra = Address::generate(&s.env);
+    let new_blocker = Address::generate(&s.env);
+    let new_source = Symbol::new(&s.env, "compliance");
 
-    assert!(s.contract.is_block_operator(&s.block_operator));
-    assert!(!s.contract.is_block_operator(&extra));
+    assert_eq!(s.contract.get_authorized_blocker(&new_source), None);
 
-    s.contract.add_block_operator(&extra);
-    assert!(s.contract.is_block_operator(&s.block_operator));
-    assert!(s.contract.is_block_operator(&extra));
+    s.contract.set_authorized_blocker(&new_source, &new_blocker);
+    assert_eq!(
+        s.contract.get_authorized_blocker(&new_source),
+        Some(new_blocker.clone())
+    );
 
-    s.contract.remove_block_operator(&s.block_operator);
-    assert!(!s.contract.is_block_operator(&s.block_operator));
-    assert!(s.contract.is_block_operator(&extra));
+    s.contract.remove_authorized_blocker(&new_source);
+    assert_eq!(s.contract.get_authorized_blocker(&new_source), None);
 }
 
 #[test]
-fn test_add_and_remove_unblock_operator() {
+fn test_set_authorized_blocker_updates_existing_source() {
     let s = setup();
-    let extra = Address::generate(&s.env);
+    let new_blocker = Address::generate(&s.env);
 
-    assert!(s.contract.is_unblock_operator(&s.unblock_operator));
-    assert!(!s.contract.is_unblock_operator(&extra));
-
-    s.contract.add_unblock_operator(&extra);
-    assert!(s.contract.is_unblock_operator(&s.unblock_operator));
-    assert!(s.contract.is_unblock_operator(&extra));
-
-    s.contract.remove_unblock_operator(&s.unblock_operator);
-    assert!(!s.contract.is_unblock_operator(&s.unblock_operator));
-    assert!(s.contract.is_unblock_operator(&extra));
+    s.contract.set_authorized_blocker(&s.source, &new_blocker);
+    assert_eq!(
+        s.contract.get_authorized_blocker(&s.source),
+        Some(new_blocker)
+    );
 }
 
 #[test]
-fn test_add_block_operator_is_idempotent() {
+fn test_set_authorized_blocker_idempotent() {
     let s = setup();
-    s.contract.add_block_operator(&s.block_operator);
-    assert!(s.contract.is_block_operator(&s.block_operator));
+    s.contract.set_authorized_blocker(&s.source, &s.blocker);
+    s.assert_no_events();
 }
 
 #[test]
-fn test_remove_block_operator_is_idempotent() {
+fn test_remove_authorized_blocker_idempotent() {
     let s = setup();
-    let never_added = Address::generate(&s.env);
-    s.contract.remove_block_operator(&never_added);
-    assert!(!s.contract.is_block_operator(&never_added));
+    let unknown = Symbol::new(&s.env, "ghost");
+    s.contract.remove_authorized_blocker(&unknown);
+    s.assert_no_events();
 }
 
 #[test]
-fn test_add_unblock_operator_is_idempotent() {
+fn test_set_authorized_blocker_emits_event() {
     let s = setup();
-    s.contract.add_unblock_operator(&s.unblock_operator);
-    assert!(s.contract.is_unblock_operator(&s.unblock_operator));
+    let new_source = Symbol::new(&s.env, "new_source");
+    let blocker = Address::generate(&s.env);
+
+    s.contract.set_authorized_blocker(&new_source, &blocker);
+    s.assert_event(AuthorizedBlockerSet {
+        source: new_source,
+        blocker,
+    });
 }
 
 #[test]
-fn test_remove_unblock_operator_is_idempotent() {
+fn test_registered_blocker_can_block_and_unblock() {
+    // Guards against a regression where blocker lookup fails after registration.
     let s = setup();
-    let never_added = Address::generate(&s.env);
-    s.contract.remove_unblock_operator(&never_added);
-    assert!(!s.contract.is_unblock_operator(&never_added));
-}
-
-#[test]
-fn test_added_operators_can_block_and_unblock() {
-    // Confirms that operators added via `add_block_operator` / `add_unblock_operator`
-    // — not the ones wired up in the constructor — can exercise their respective
-    // capabilities. Guards against a `require_block_operator` / `require_unblock_operator`
-    // regression that checks a single address rather than set membership.
-    let s = setup();
-    let new_block = Address::generate(&s.env);
-    let new_unblock = Address::generate(&s.env);
+    let new_source = Symbol::new(&s.env, "bridge");
+    let new_blocker = Address::generate(&s.env);
     let user = Address::generate(&s.env);
 
-    s.contract.add_block_operator(&new_block);
-    s.contract.add_unblock_operator(&new_unblock);
+    s.contract.set_authorized_blocker(&new_source, &new_blocker);
 
-    s.contract.unblock_user(&user, &new_unblock);
-    assert!(!s.contract.blocked(&user));
-
-    s.contract.block_user(&user, &new_block);
+    s.contract.block_user(&new_blocker, &user, &new_source);
     assert!(s.contract.blocked(&user));
-}
 
-// Repeated `add_unblock_operator` calls for the same address must not
-// accumulate duplicate entries: the storage layer is keyed-per-address, so
-// re-adds are silent no-ops. This test pins that property by (1) asserting
-// no event fires on the duplicate add and (2) verifying a single remove
-// clears membership — which would fail if the address had been stored more
-// than once.
-#[test]
-fn test_add_unblock_operator_does_not_accumulate_duplicates() {
-    let s = setup();
-    let extra = Address::generate(&s.env);
-
-    s.contract.add_unblock_operator(&extra);
-    s.assert_event(UnblockOperatorAdded {
-        addr: extra.clone(),
-    });
-    assert!(s.contract.is_unblock_operator(&extra));
-
-    s.contract.add_unblock_operator(&extra);
-    s.assert_no_events();
-
-    s.contract.add_unblock_operator(&extra);
-    s.assert_no_events();
-
-    s.contract.remove_unblock_operator(&extra);
-    assert!(!s.contract.is_unblock_operator(&extra));
-}
-
-#[test]
-fn test_add_block_operator_does_not_accumulate_duplicates() {
-    let s = setup();
-    let extra = Address::generate(&s.env);
-
-    s.contract.add_block_operator(&extra);
-    s.assert_event(BlockOperatorAdded {
-        addr: extra.clone(),
-    });
-    assert!(s.contract.is_block_operator(&extra));
-
-    s.contract.add_block_operator(&extra);
-    s.assert_no_events();
-
-    s.contract.add_block_operator(&extra);
-    s.assert_no_events();
-
-    s.contract.remove_block_operator(&extra);
-    assert!(!s.contract.is_block_operator(&extra));
+    s.contract.unblock_user(&new_blocker, &user, &new_source);
+    assert!(!s.contract.blocked(&user));
 }
 
 // =============================================================================
@@ -235,7 +175,7 @@ fn test_admin_cannot_burn() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &user, &s.source);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_burn(&s.admin, &user, &(400 * DECIMALS));
@@ -324,46 +264,24 @@ fn test_set_forced_transfer_manager_reverts_without_auth() {
 }
 
 #[test]
-fn test_add_block_operator_reverts_without_auth() {
+fn test_set_authorized_blocker_reverts_without_auth() {
     let s = setup_no_mock_auth();
-    let new_addr = Address::generate(&s.env);
+    let blocker = Address::generate(&s.env);
+    let source = Symbol::new(&s.env, "src");
     let err = s
         .contract
-        .try_add_block_operator(&new_addr)
+        .try_set_authorized_blocker(&source, &blocker)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, auth_error());
 }
 
 #[test]
-fn test_remove_block_operator_reverts_without_auth() {
+fn test_remove_authorized_blocker_reverts_without_auth() {
     let s = setup_no_mock_auth();
     let err = s
         .contract
-        .try_remove_block_operator(&s.block_operator)
-        .unwrap_err()
-        .unwrap();
-    assert_eq!(err, auth_error());
-}
-
-#[test]
-fn test_add_unblock_operator_reverts_without_auth() {
-    let s = setup_no_mock_auth();
-    let new_addr = Address::generate(&s.env);
-    let err = s
-        .contract
-        .try_add_unblock_operator(&new_addr)
-        .unwrap_err()
-        .unwrap();
-    assert_eq!(err, auth_error());
-}
-
-#[test]
-fn test_remove_unblock_operator_reverts_without_auth() {
-    let s = setup_no_mock_auth();
-    let err = s
-        .contract
-        .try_remove_unblock_operator(&s.unblock_operator)
+        .try_remove_authorized_blocker(&s.source)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, auth_error());

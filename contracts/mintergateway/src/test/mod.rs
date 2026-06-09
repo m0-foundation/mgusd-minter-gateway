@@ -2,6 +2,7 @@ mod setup;
 mod test_accumulators;
 mod test_admin;
 mod test_batch_block;
+mod test_block_registry;
 mod test_batch_budget;
 mod test_block;
 mod test_continuous_index;

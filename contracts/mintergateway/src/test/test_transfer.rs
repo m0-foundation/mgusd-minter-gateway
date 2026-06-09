@@ -18,8 +18,8 @@ fn test_sac_transfer_full_balance() {
     let bob = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &alice, &s.source);
+    s.contract.unblock_user(&s.blocker, &bob, &s.source);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Transfer entire balance
@@ -41,9 +41,9 @@ fn test_sac_transfer_multiple_recipients() {
     let recipient_b = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&treasury, &s.unblock_operator);
-    s.contract.unblock_user(&recipient_a, &s.unblock_operator);
-    s.contract.unblock_user(&recipient_b, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &treasury, &s.source);
+    s.contract.unblock_user(&s.blocker, &recipient_a, &s.source);
+    s.contract.unblock_user(&s.blocker, &recipient_b, &s.source);
     s.contract.mint(&s.minter, &treasury, &amount);
 
     // Distribute to multiple recipients
@@ -68,8 +68,8 @@ fn test_sac_transfer_zero_amount() {
     let bob = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &alice, &s.source);
+    s.contract.unblock_user(&s.blocker, &bob, &s.source);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Transfer zero tokens
@@ -87,8 +87,8 @@ fn test_sac_transfer_insufficient_balance() {
     let bob = Address::generate(&s.env);
     let amount = 500 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &alice, &s.source);
+    s.contract.unblock_user(&s.blocker, &bob, &s.source);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Try to transfer more than alice has
@@ -107,8 +107,8 @@ fn test_sac_transfer_does_not_affect_yield() {
     let recipient = Address::generate(&s.env);
     let amount = 10_000 * DECIMALS;
 
-    s.contract.unblock_user(&treasury, &s.unblock_operator);
-    s.contract.unblock_user(&recipient, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &treasury, &s.source);
+    s.contract.unblock_user(&s.blocker, &recipient, &s.source);
     s.contract.mint(&s.minter, &treasury, &amount);
 
     // Set 5% rate and advance 1 year to accrue yield
@@ -139,8 +139,8 @@ fn test_onboarding_flow() {
     let transfer_amount = 100 * DECIMALS;
 
     // Admin unfreezes both users (onboarding)
-    s.contract.unblock_user(&new_user, &s.unblock_operator);
-    s.contract.unblock_user(&existing_user, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &new_user, &s.source);
+    s.contract.unblock_user(&s.blocker, &existing_user, &s.source);
 
     // Mint to new user
     s.contract.mint(&s.minter, &new_user, &mint_amount);
@@ -167,7 +167,7 @@ fn test_unauthorized_recipient_cannot_receive_transfer() {
     let recipient = Address::generate(&s.env);
 
     // Authorize and mint to sender
-    s.contract.unblock_user(&sender, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &sender, &s.source);
     s.contract.mint(&s.minter, &sender, &(1_000 * DECIMALS));
     assert!(!s.contract.blocked(&sender));
 
@@ -197,7 +197,7 @@ fn test_sac_transfer_to_contract_blocked_when_contract_not_authorized() {
     let contract_addr = s.contract.address.clone();
 
     // Authorize user and mint tokens
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &user, &s.source);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Contract address is NOT authorized (never unfrozen) — transfer should fail
@@ -219,11 +219,11 @@ fn test_sac_transfer_to_contract_succeeds_when_contract_authorized() {
     let contract_addr = s.contract.address.clone();
 
     // Authorize user and mint tokens
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &user, &s.source);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Authorize the contract address itself
-    s.contract.unblock_user(&contract_addr, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &contract_addr, &s.source);
 
     // Transfer to contract address — succeeds but tokens are locked forever
     s.sac_token
@@ -244,8 +244,8 @@ fn test_sac_transfer_full_balance_to_contract_locks_tokens() {
     let amount = 1_000 * DECIMALS;
     let contract_addr = s.contract.address.clone();
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
-    s.contract.unblock_user(&contract_addr, &s.unblock_operator);
+    s.contract.unblock_user(&s.blocker, &user, &s.source);
+    s.contract.unblock_user(&s.blocker, &contract_addr, &s.source);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Send entire balance to the contract
