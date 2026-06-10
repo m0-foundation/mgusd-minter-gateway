@@ -11,6 +11,7 @@ const PROTOCOL = "mintergateway";
 import {
   MAX_BATCH_SIZE,
   BatchBlockUsersParams,
+  BatchOnboardUsersParams,
   BlockUserParams,
   BurnParams,
   ClaimYieldParams,
@@ -244,6 +245,25 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       method: "onboard_user",
       args: [addressToScVal(params.user), addressToScVal(params.operator)],
       fireblocksNote: this.noteFor("onboard_user", params.contractId, { user: params.user }),
+    });
+  }
+
+  async batchOnboardUsers(params: BatchOnboardUsersParams): Promise<InvokeContractResult> {
+    if (params.users.length === 0) {
+      throw new Error("batchOnboardUsers: users array must not be empty");
+    }
+    if (params.users.length > MAX_BATCH_SIZE) {
+      throw new Error(`batchOnboardUsers: users array exceeds MAX_BATCH_SIZE (${MAX_BATCH_SIZE})`);
+    }
+    return this.invokeContract({
+      contractId: params.contractId,
+      method: "batch_onboard_users",
+      args: [addressVecToScVal(params.users), addressToScVal(params.operator)],
+      fireblocksNote: this.noteFor("batch_onboard_users", params.contractId, {
+        users_count: params.users.length,
+        first: params.users[0],
+        last: params.users[params.users.length - 1],
+      }),
     });
   }
 

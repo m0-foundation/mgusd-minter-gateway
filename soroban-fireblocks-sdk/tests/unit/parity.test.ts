@@ -26,6 +26,7 @@ const EXPECTED_CONTRACT_METHODS = [
   "block_user",
   "unblock_user",
   "onboard_user",
+  "batch_onboard_users",
   "batch_block_users",
   "batch_unblock_users",
   // SAC + upgrade

@@ -121,6 +121,14 @@ export interface OnboardUserParams {
   operator: string;
 }
 
+export interface BatchOnboardUsersParams {
+  contractId: string;
+  /** Users (accounts) to activate (max 40). Already-onboarded users are skipped; returns UserBlockedError if any user is on the block list. */
+  users: string[];
+  /** Operator address — must hold the onboarder role */
+  operator: string;
+}
+
 export interface BatchBlockUsersParams {
   contractId: string;
   /** Users (accounts) to block or unblock (max 40) */

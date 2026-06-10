@@ -85,6 +85,7 @@ Each role is read from its own env var (see audit STEL1-5). For local testing yo
 | `BLOCK_OPERATOR_PUBLIC_KEY` | Block / batch block on the allowlist |
 | `UNBLOCK_OPERATOR_PUBLIC_KEY` | Unblock / batch unblock on the allowlist |
 | `PAUSER_PUBLIC_KEY` | Pause / unpause |
+| `ONBOARDER_PUBLIC_KEY` | Onboard / batch onboard users for first-time activation |
 
 #### Per-script
 
@@ -198,6 +199,7 @@ const minterPublicKey = process.env.MINTER_PUBLIC_KEY!;
 const blockOp = process.env.BLOCK_OPERATOR_PUBLIC_KEY!;
 const unblockOp = process.env.UNBLOCK_OPERATOR_PUBLIC_KEY!;
 const pauser = process.env.PAUSER_PUBLIC_KEY!;
+const onboarder = process.env.ONBOARDER_PUBLIC_KEY!;
 
 const deploy = await issuerClient.deployFull({
   assetCode: "TMGUSD",
@@ -211,6 +213,7 @@ const deploy = await issuerClient.deployFull({
   blockOperator: blockOp,
   unblockOperator: unblockOp,
   pauser: pauser,
+  onboarder: onboarder,
 });
 console.log(deploy.sacContractId);      // C...
 console.log(deploy.wasmHash);           // hex
