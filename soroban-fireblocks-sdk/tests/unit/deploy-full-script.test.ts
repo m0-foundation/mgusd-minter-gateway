@@ -22,8 +22,6 @@ const ROLE_ENV_VARS = [
   "YIELD_RECIPIENT_MANAGER_PUBLIC_KEY",
   "YIELD_RECIPIENT_PUBLIC_KEY",
   "FORCED_TRANSFER_MANAGER_PUBLIC_KEY",
-  "BLOCK_OPERATOR_PUBLIC_KEY",
-  "UNBLOCK_OPERATOR_PUBLIC_KEY",
   "PAUSER_PUBLIC_KEY",
 ] as const;
 
@@ -118,8 +116,6 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
       YIELD_RECIPIENT_MANAGER_PUBLIC_KEY: Keypair.random().publicKey(),
       YIELD_RECIPIENT_PUBLIC_KEY: Keypair.random().publicKey(),
       FORCED_TRANSFER_MANAGER_PUBLIC_KEY: Keypair.random().publicKey(),
-      BLOCK_OPERATOR_PUBLIC_KEY: Keypair.random().publicKey(),
-      UNBLOCK_OPERATOR_PUBLIC_KEY: Keypair.random().publicKey(),
       PAUSER_PUBLIC_KEY: Keypair.random().publicKey(),
     };
 
@@ -171,11 +167,9 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
     expect(params.forcedTransferManager).toBe(
       process.env.FORCED_TRANSFER_MANAGER_PUBLIC_KEY,
     );
-    expect(params.blockOperator).toBe(process.env.BLOCK_OPERATOR_PUBLIC_KEY);
-    expect(params.unblockOperator).toBe(process.env.UNBLOCK_OPERATOR_PUBLIC_KEY);
     expect(params.pauser).toBe(process.env.PAUSER_PUBLIC_KEY);
 
-    // Strong "no collapse" assertion: the eight role values are all
+    // Strong "no collapse" assertion: the six role values are all
     // distinct. The audit's PoC bug-state would have all equal.
     const roles = [
       params.admin,
@@ -183,11 +177,9 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
       params.yieldRecipientManager,
       params.yieldRecipient,
       params.forcedTransferManager,
-      params.blockOperator,
-      params.unblockOperator,
       params.pauser,
     ];
-    expect(new Set(roles).size).toBe(8);
+    expect(new Set(roles).size).toBe(6);
   });
 
   it.each(ROLE_ENV_VARS)(

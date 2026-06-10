@@ -14,12 +14,10 @@ const EXPECTED_CONTRACT_METHODS = [
   "set_yield_recipient_manager",
   "set_forced_transfer_manager",
   "set_pauser",
-  // Block / unblock operator role management
-  "add_block_operator",
-  "remove_block_operator",
-  "add_unblock_operator",
-  "remove_unblock_operator",
-  // Block / unblock user actions
+  // Authorized blocker (source) registry management — admin
+  "set_authorized_blocker",
+  "remove_authorized_blocker",
+  // Block / unblock user actions (multi-party, source-keyed)
   "block_user",
   "unblock_user",
   "batch_block_users",
@@ -42,6 +40,9 @@ const EXPECTED_CONTRACT_METHODS = [
   "paused",
   // Views
   "blocked",
+  "blocked_by",
+  "get_blocks",
+  "get_authorized_blocker",
   "balance",
   "sac_token",
   "interest_rate",
@@ -55,8 +56,6 @@ const EXPECTED_CONTRACT_METHODS = [
   "yield_recipient_manager",
   "yield_recipient",
   "forced_transfer_manager",
-  "is_block_operator",
-  "is_unblock_operator",
   "pauser",
 ] as const;
 

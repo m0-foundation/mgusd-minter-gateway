@@ -82,9 +82,11 @@ Each role is read from its own env var (see audit STEL1-5). For local testing yo
 | `YIELD_RECIPIENT_MANAGER_PUBLIC_KEY` | Rotates yield recipient |
 | `YIELD_RECIPIENT_PUBLIC_KEY` | Receives claimed yield |
 | `FORCED_TRANSFER_MANAGER_PUBLIC_KEY` | Forced transfers |
-| `BLOCK_OPERATOR_PUBLIC_KEY` | Block / batch block on the allowlist |
-| `UNBLOCK_OPERATOR_PUBLIC_KEY` | Unblock / batch unblock on the allowlist |
 | `PAUSER_PUBLIC_KEY` | Pause / unpause |
+
+Block sources (authorized blockers) are not constructor roles - register them
+post-deploy with `npm run set-authorized-blocker` (maps a source name to a
+blocker key).
 
 #### Per-script
 
@@ -113,7 +115,7 @@ Runs the full 5-step Fireblocks-signed deployment pipeline. The **issuer** Fireb
 | 1 | **Configure issuer** — sets `AUTH_REVOCABLE` + `AUTH_CLAWBACK_ENABLED` flags on the issuer account | Classic `setOptions` |
 | 2 | **Deploy SAC** — creates the Stellar Asset Contract for the asset | Soroban `createStellarAssetContract` |
 | 3 | **Upload WASM** — uploads the compiled contract bytecode to the ledger | Soroban `uploadContractWasm` |
-| 4 | **Deploy wrapper** — instantiates the wrapper with constructor args: `sac_token`, admin, minter, yield recipient manager, yield recipient, forced transfer manager, block operator, unblock operator, pauser | Soroban `createCustomContract` |
+| 4 | **Deploy wrapper** — instantiates the wrapper with constructor args: `sac_token`, admin, minter, yield recipient manager, yield recipient, forced transfer manager, pauser. Block sources are registered post-deploy. | Soroban `createCustomContract` |
 | 5 | **Transfer SAC admin** — calls `set_admin` on the SAC to hand control to the wrapper | Soroban `invokeContract` |
 
 Build the contract WASM first (requires Rust + Soroban CLI):
@@ -166,19 +168,22 @@ Runs both unit and integration tests.
 # 1. Build the contract WASM (from repo root)
 stellar contract build
 
-# 2. Deploy (signed by issuer; configure all role env vars, including block/unblock operators)
+# 2. Deploy (signed by issuer; configure all role env vars)
 npm run deploy
 
-# 3. Set up trustline on the minter's account
+# 3. Register block sources (authorized blockers) - one per blocking party
+npm run set-authorized-blocker
+
+# 4. Set up trustline on the minter's account
 npm run trustline
 
-# 4. Mint tokens to the minter (minter is the admin)
+# 5. Mint tokens to the minter (minter is the admin)
 npm run mint
 
-# 5. Verify contract state
+# 6. Verify contract state
 npm run query
 
-# 6. Burn tokens from the minter
+# 7. Burn tokens from the minter
 npm run burn
 ```
 
@@ -191,12 +196,10 @@ import {
   loadMinterConfigFromEnv,
 } from "soroban-fireblocks-sdk";
 
-// Deploy pipeline (issuer signs; pass every role address — block/unblock may be the same pubkey)
+// Deploy pipeline (issuer signs; pass every role address)
 const issuerConfig = loadIssuerConfigFromEnv();
 const issuerClient = new SctokenFireblocksClient(issuerConfig);
 const minterPublicKey = process.env.MINTER_PUBLIC_KEY!;
-const blockOp = process.env.BLOCK_OPERATOR_PUBLIC_KEY!;
-const unblockOp = process.env.UNBLOCK_OPERATOR_PUBLIC_KEY!;
 const pauser = process.env.PAUSER_PUBLIC_KEY!;
 
 const deploy = await issuerClient.deployFull({
@@ -208,13 +211,18 @@ const deploy = await issuerClient.deployFull({
   yieldRecipientManager: minterPublicKey,
   yieldRecipient: minterPublicKey,
   forcedTransferManager: minterPublicKey,
-  blockOperator: blockOp,
-  unblockOperator: unblockOp,
   pauser: pauser,
 });
 console.log(deploy.sacContractId);      // C...
 console.log(deploy.wasmHash);           // hex
 console.log(deploy.wrapperContractId);  // C...
+
+// Register a block source post-deploy (admin signs), then block under it
+await issuerClient.setAuthorizedBlocker({
+  contractId: deploy.wrapperContractId,
+  source: "bridge_compliance",
+  blocker: process.env.BLOCKER_PUBLIC_KEY!,
+});
 
 // Mint (caller must be minter or admin)
 const minterConfig = loadMinterConfigFromEnv();

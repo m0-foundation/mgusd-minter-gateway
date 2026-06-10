@@ -199,14 +199,13 @@ async function main(): Promise<void> {
   }
 
   // STEL1-5: no role collapse — each role from its own env var.
+  // Block sources (authorized blockers) are registered post-deploy
   const roles = {
     admin: requireRolePubkey("ADMIN_PUBLIC_KEY"),
     minter: requireRolePubkey("MINTER_PUBLIC_KEY"),
     yieldRecipientManager: requireRolePubkey("YIELD_RECIPIENT_MANAGER_PUBLIC_KEY"),
     yieldRecipient: requireRolePubkey("YIELD_RECIPIENT_PUBLIC_KEY"),
     forcedTransferManager: requireRolePubkey("FORCED_TRANSFER_MANAGER_PUBLIC_KEY"),
-    blockOperator: requireRolePubkey("BLOCK_OPERATOR_PUBLIC_KEY"),
-    unblockOperator: requireRolePubkey("UNBLOCK_OPERATOR_PUBLIC_KEY"),
     pauser: requireRolePubkey("PAUSER_PUBLIC_KEY"),
   };
 
@@ -294,9 +293,9 @@ async function main(): Promise<void> {
   console.log(`    yieldRecipientManager: ${roles.yieldRecipientManager}`);
   console.log(`    yieldRecipient:        ${roles.yieldRecipient}`);
   console.log(`    forcedTransferManager: ${roles.forcedTransferManager}`);
-  console.log(`    blockOperator:         ${roles.blockOperator}`);
-  console.log(`    unblockOperator:       ${roles.unblockOperator}`);
   console.log(`    pauser:                ${roles.pauser}`);
+  console.log();
+  console.log("  Block sources: register post-deploy via `npm run set-authorized-blocker`.");
   console.log();
 
   if (!(await confirm("Proceed with deploy? Issuer will sign 2 Fireblocks txs (steps 1, 5); deployer will sign 3 local txs (steps 2-4)."))) {

@@ -12,6 +12,10 @@ export function u32ToScVal(value: number): xdr.ScVal {
   return nativeToScVal(value, { type: "u32" });
 }
 
+export function symbolToScVal(value: string): xdr.ScVal {
+  return nativeToScVal(value, { type: "symbol" });
+}
+
 export function addressVecToScVal(addresses: string[]): xdr.ScVal {
   return xdr.ScVal.scvVec(addresses.map(addressToScVal));
 }

@@ -5,7 +5,14 @@ import { SorobanKeypairClient } from "./keypair-client";
 import { WasmHashMismatchError } from "./errors";
 import { assertIssuerNotContaminated } from "./deploy-checks";
 import { buildFireblocksNote } from "./fireblocks-note";
-import { addressToScVal, addressVecToScVal, bytesN32ToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
+import {
+  addressToScVal,
+  addressVecToScVal,
+  bytesN32ToScVal,
+  i128ToScVal,
+  symbolToScVal,
+  u32ToScVal,
+} from "./scval-helpers";
 
 const PROTOCOL = "mintergateway";
 import {
@@ -21,7 +28,9 @@ import {
   PauseParams,
   QueryParams,
   ReconcileBurnParams,
+  RemoveAuthorizedBlockerParams,
   SetAdminParams,
+  SetAuthorizedBlockerParams,
   SetForcedTransferManagerParams,
   SetMinterParams,
   SetPauserParams,
@@ -183,8 +192,11 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     return this.invokeContract({
       contractId: params.contractId,
       method: "block_user",
-      args: [addressToScVal(params.user), addressToScVal(params.operator)],
-      fireblocksNote: this.noteFor("block_user", params.contractId, { user: params.user }),
+      args: [addressToScVal(params.caller), addressToScVal(params.user), symbolToScVal(params.source)],
+      fireblocksNote: this.noteFor("block_user", params.contractId, {
+        user: params.user,
+        source: params.source,
+      }),
     });
   }
 
@@ -192,8 +204,11 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     return this.invokeContract({
       contractId: params.contractId,
       method: "unblock_user",
-      args: [addressToScVal(params.user), addressToScVal(params.operator)],
-      fireblocksNote: this.noteFor("unblock_user", params.contractId, { user: params.user }),
+      args: [addressToScVal(params.caller), addressToScVal(params.user), symbolToScVal(params.source)],
+      fireblocksNote: this.noteFor("unblock_user", params.contractId, {
+        user: params.user,
+        source: params.source,
+      }),
     });
   }
 
@@ -207,10 +222,11 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     return this.invokeContract({
       contractId: params.contractId,
       method: "batch_block_users",
-      args: [addressVecToScVal(params.users), addressToScVal(params.operator)],
+      args: [addressToScVal(params.caller), addressVecToScVal(params.users), symbolToScVal(params.source)],
       // The full address list won't fit in a Fireblocks note. Summarize as
       // count + the first/last address so approvers can sanity-check the batch.
       fireblocksNote: this.noteFor("batch_block_users", params.contractId, {
+        source: params.source,
         users_count: params.users.length,
         first: params.users[0],
         last: params.users[params.users.length - 1],
@@ -228,8 +244,9 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     return this.invokeContract({
       contractId: params.contractId,
       method: "batch_unblock_users",
-      args: [addressVecToScVal(params.users), addressToScVal(params.operator)],
+      args: [addressToScVal(params.caller), addressVecToScVal(params.users), symbolToScVal(params.source)],
       fireblocksNote: this.noteFor("batch_unblock_users", params.contractId, {
+        source: params.source,
         users_count: params.users.length,
         first: params.users[0],
         last: params.users[params.users.length - 1],
@@ -311,59 +328,26 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     return Address.fromScVal(retval).toString();
   }
 
-  async queryIsBlockOperator(params: QueryParams & { account: string }): Promise<boolean> {
-    const retval = await this.simulateView({
-      contractId: params.contractId,
-      method: "is_block_operator",
-      args: [addressToScVal(params.account)],
-    });
-    if (!retval) throw new Error("is_block_operator returned no value");
-    return scValToNative(retval) as boolean;
-  }
-
-  async queryIsUnblockOperator(params: QueryParams & { account: string }): Promise<boolean> {
-    const retval = await this.simulateView({
-      contractId: params.contractId,
-      method: "is_unblock_operator",
-      args: [addressToScVal(params.account)],
-    });
-    if (!retval) throw new Error("is_unblock_operator returned no value");
-    return scValToNative(retval) as boolean;
-  }
-
-  async addBlockOperator(params: QueryParams & { addr: string }): Promise<InvokeContractResult> {
+  async setAuthorizedBlocker(params: SetAuthorizedBlockerParams): Promise<InvokeContractResult> {
     return this.invokeContract({
       contractId: params.contractId,
-      method: "add_block_operator",
-      args: [addressToScVal(params.addr)],
-      fireblocksNote: this.noteFor("add_block_operator", params.contractId, { addr: params.addr }),
+      method: "set_authorized_blocker",
+      args: [symbolToScVal(params.source), addressToScVal(params.blocker)],
+      fireblocksNote: this.noteFor("set_authorized_blocker", params.contractId, {
+        source: params.source,
+        blocker: params.blocker,
+      }),
     });
   }
 
-  async removeBlockOperator(params: QueryParams & { addr: string }): Promise<InvokeContractResult> {
+  async removeAuthorizedBlocker(params: RemoveAuthorizedBlockerParams): Promise<InvokeContractResult> {
     return this.invokeContract({
       contractId: params.contractId,
-      method: "remove_block_operator",
-      args: [addressToScVal(params.addr)],
-      fireblocksNote: this.noteFor("remove_block_operator", params.contractId, { addr: params.addr }),
-    });
-  }
-
-  async addUnblockOperator(params: QueryParams & { addr: string }): Promise<InvokeContractResult> {
-    return this.invokeContract({
-      contractId: params.contractId,
-      method: "add_unblock_operator",
-      args: [addressToScVal(params.addr)],
-      fireblocksNote: this.noteFor("add_unblock_operator", params.contractId, { addr: params.addr }),
-    });
-  }
-
-  async removeUnblockOperator(params: QueryParams & { addr: string }): Promise<InvokeContractResult> {
-    return this.invokeContract({
-      contractId: params.contractId,
-      method: "remove_unblock_operator",
-      args: [addressToScVal(params.addr)],
-      fireblocksNote: this.noteFor("remove_unblock_operator", params.contractId, { addr: params.addr }),
+      method: "remove_authorized_blocker",
+      args: [symbolToScVal(params.source)],
+      fireblocksNote: this.noteFor("remove_authorized_blocker", params.contractId, {
+        source: params.source,
+      }),
     });
   }
 
@@ -375,6 +359,39 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
     });
     if (!retval) throw new Error("blocked returned no value");
     return scValToNative(retval) as boolean;
+  }
+
+  async queryBlockedBy(params: QueryParams & { account: string; source: string }): Promise<boolean> {
+    const retval = await this.simulateView({
+      contractId: params.contractId,
+      method: "blocked_by",
+      args: [addressToScVal(params.account), symbolToScVal(params.source)],
+    });
+    if (!retval) throw new Error("blocked_by returned no value");
+    return scValToNative(retval) as boolean;
+  }
+
+  async queryGetBlocks(params: QueryParams & { account: string }): Promise<string[]> {
+    const retval = await this.simulateView({
+      contractId: params.contractId,
+      method: "get_blocks",
+      args: [addressToScVal(params.account)],
+    });
+    if (!retval) throw new Error("get_blocks returned no value");
+    return scValToNative(retval) as string[];
+  }
+
+  async queryGetAuthorizedBlocker(
+    params: QueryParams & { source: string },
+  ): Promise<string | null> {
+    const retval = await this.simulateView({
+      contractId: params.contractId,
+      method: "get_authorized_blocker",
+      args: [symbolToScVal(params.source)],
+    });
+    if (!retval) throw new Error("get_authorized_blocker returned no value");
+    const native = scValToNative(retval) as string | null | undefined;
+    return native ?? null;
   }
 
   async queryBalance(params: QueryParams & { id: string }): Promise<bigint> {
@@ -506,10 +523,11 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       );
     }
 
-    // Step 4: [DEPLOYER] Deploy wrapper — SAC + eight role addresses (constructor).
+    // Step 4: [DEPLOYER] Deploy wrapper — SAC + six role addresses (constructor).
     // The deployer holds the contract for one ledger before step 5 hands SAC
     // admin over; it never holds any role on the wrapper itself (constructor
     // wires admin/minter/etc. to the operator-supplied role pubkeys).
+    // Block sources are registered post-deploy via set_authorized_blocker.
     console.log("Step 4/5: [DEPLOYER] Deploying wrapper contract...");
     const deployResult = await deployerClient.deployContract({
       wasmHash: localWasmHash,
@@ -520,8 +538,6 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
         addressToScVal(params.yieldRecipientManager),
         addressToScVal(params.yieldRecipient),
         addressToScVal(params.forcedTransferManager),
-        addressToScVal(params.blockOperator),
-        addressToScVal(params.unblockOperator),
         addressToScVal(params.pauser),
       ],
     });

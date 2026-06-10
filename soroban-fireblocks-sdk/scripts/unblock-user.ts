@@ -19,6 +19,7 @@ dotenv.config();
 
 // ─── VARS — edit before running ─────────────────────────────────────────
 const USER_TO_UNBLOCK = "";
+const SOURCE = ""; // block source the caller is the registered blocker for (e.g. "bridge_compliance")
 const VAULT_ACCOUNT_ID = "";
 const VAULT_PUBLIC_KEY = "";
 // ────────────────────────────────────────────────────────────────────────
@@ -27,6 +28,10 @@ async function main(): Promise<void> {
   const contractId = assertStellarAddress(requireEnv("CONTRACT_ID"), "CONTRACT_ID");
   const user = assertStellarAddress(USER_TO_UNBLOCK, "USER_TO_UNBLOCK");
   const vaultPubkey = assertStellarAddress(VAULT_PUBLIC_KEY, "VAULT_PUBLIC_KEY");
+  if (!SOURCE) {
+    console.error("SOURCE is required — set the block source in the VARS block");
+    process.exit(1);
+  }
   if (!VAULT_ACCOUNT_ID) {
     console.error("VAULT_ACCOUNT_ID is required — set it in the VARS block");
     process.exit(1);
@@ -37,7 +42,8 @@ async function main(): Promise<void> {
   console.log("=== Unblock user ===");
   console.log(`  Contract:    ${contractId}`);
   console.log(`  Unblocking:  ${user}`);
-  console.log(`  Operator:    ${vaultPubkey} (vault ${VAULT_ACCOUNT_ID})`);
+  console.log(`  Source:      ${SOURCE}`);
+  console.log(`  Blocker:     ${vaultPubkey} (vault ${VAULT_ACCOUNT_ID})`);
   console.log();
 
   if (!(await confirm(`Proceed?`))) {
@@ -46,7 +52,7 @@ async function main(): Promise<void> {
   }
 
   const client = new SctokenFireblocksClient(config);
-  const result = await client.unblockUser({ contractId, user, operator: vaultPubkey });
+  const result = await client.unblockUser({ contractId, caller: vaultPubkey, user, source: SOURCE });
   printResult(result);
 }
 

@@ -31,9 +31,7 @@ function makeReceipt(overrides: Partial<DeployReceipt> = {}): DeployReceipt {
       yieldRecipientManager: "G3",
       yieldRecipient: "G4",
       forcedTransferManager: "G5",
-      blockOperator: "G6",
-      unblockOperator: "G7",
-      pauser: "G8",
+      pauser: "G6",
     },
     result: {
       sacContractId: "CAAAA",

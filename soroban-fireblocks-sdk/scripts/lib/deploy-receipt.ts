@@ -11,8 +11,6 @@ export interface DeployReceiptRoles {
   yieldRecipientManager: string;
   yieldRecipient: string;
   forcedTransferManager: string;
-  blockOperator: string;
-  unblockOperator: string;
   pauser: string;
 }
 

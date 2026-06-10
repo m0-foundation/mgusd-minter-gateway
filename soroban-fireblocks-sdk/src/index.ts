@@ -52,7 +52,7 @@ export type {
 
 // SCToken extensions
 export { SctokenFireblocksClient } from "./sctoken-client";
-export { addressToScVal, addressVecToScVal, bytesN32ToScVal, i128ToScVal, u32ToScVal } from "./scval-helpers";
+export { addressToScVal, addressVecToScVal, bytesN32ToScVal, i128ToScVal, symbolToScVal, u32ToScVal } from "./scval-helpers";
 export { MAX_BATCH_SIZE } from "./sctoken-types";
 export type {
   MintParams,
@@ -67,6 +67,8 @@ export type {
   TransferSacAdminParams,
   UpgradeParams,
   PauseParams,
+  SetAuthorizedBlockerParams,
+  RemoveAuthorizedBlockerParams,
   BlockUserParams,
   BatchBlockUsersParams,
   ForceTransferParams,

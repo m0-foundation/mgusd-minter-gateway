@@ -105,20 +105,38 @@ export interface QueryParams {
   contractId: string;
 }
 
+export interface SetAuthorizedBlockerParams {
+  contractId: string;
+  /** Block source name (e.g. "bridge_compliance", "moneygram_onboarding") */
+  source: string;
+  /** Address authorized to block/unblock under this source */
+  blocker: string;
+}
+
+export interface RemoveAuthorizedBlockerParams {
+  contractId: string;
+  /** Block source to remove (along with its registered blocker) */
+  source: string;
+}
+
 export interface BlockUserParams {
   contractId: string;
+  /** Caller address - must be the registered blocker for `source` */
+  caller: string;
   /** User (account) to block or unblock */
   user: string;
-  /** Operator address — for `block_user` must hold the block operator role; for `unblock_user` must hold the unblock operator role (admin alone cannot block/unblock) */
-  operator: string;
+  /** Block source the caller is authorized for */
+  source: string;
 }
 
 export interface BatchBlockUsersParams {
   contractId: string;
+  /** Caller address - must be the registered blocker for `source` */
+  caller: string;
   /** Users (accounts) to block or unblock (max 40) */
   users: string[];
-  /** Operator address — for `batch_block_users` must hold the block operator role; for `batch_unblock_users` must hold the unblock operator role (admin alone cannot block/unblock) */
-  operator: string;
+  /** Block source the caller is authorized for */
+  source: string;
 }
 
 export interface ForceTransferParams {
@@ -167,10 +185,6 @@ export interface DeployFullParams {
   yieldRecipient: string;
   /** Forced transfer manager address (G... or C...) */
   forcedTransferManager: string;
-  /** Initial **block** operator; may match `unblockOperator` (G... or C...) */
-  blockOperator: string;
-  /** Initial **unblock** operator; may match `blockOperator` (G... or C...) */
-  unblockOperator: string;
   /** Pauser address (G... or C...) */
   pauser: string;
   /** Local Keypair that signs the protocol-permissionless deploy ops (SAC deploy, WASM upload, contract create). Throwaway. */
