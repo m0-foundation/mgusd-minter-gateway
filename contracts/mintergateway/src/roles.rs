@@ -1,7 +1,7 @@
 use soroban_sdk::{Address, Env, Symbol, Vec};
 
 use crate::errors::MinterGatewayError;
-use crate::storage_types::DataKey;
+use crate::storage_types::{DataKey, PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD};
 
 /// Verifies that `caller` has authorized this invocation and is the specified role holder.
 pub fn require_role_holder(
@@ -127,21 +127,33 @@ pub fn require_authorized_blocker(
 // =============================================================================
 
 pub fn get_block_sources(env: &Env, user: &Address) -> Vec<Symbol> {
-    env.storage()
-        .instance()
-        .get(&DataKey::BlockSources(user.clone()))
-        .unwrap_or_else(|| Vec::new(env))
+    let key = DataKey::BlockSources(user.clone());
+    let sources = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or_else(|| Vec::new(env));
+    if !sources.is_empty() {
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+    sources
 }
 
 fn set_block_sources(env: &Env, user: &Address, sources: &Vec<Symbol>) {
+    let key = DataKey::BlockSources(user.clone());
     if sources.is_empty() {
-        env.storage()
-            .instance()
-            .remove(&DataKey::BlockSources(user.clone()));
+        env.storage().persistent().remove(&key);
     } else {
-        env.storage()
-            .instance()
-            .set(&DataKey::BlockSources(user.clone()), sources);
+        env.storage().persistent().set(&key, sources);
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
     }
 }
 
@@ -174,9 +186,17 @@ pub fn remove_block_source(env: &Env, user: &Address, source: &Symbol) -> bool {
 
 /// Returns true if the user has any active block sources (SAC remains unauthorized).
 pub fn has_any_block(env: &Env, user: &Address) -> bool {
-    env.storage()
-        .instance()
-        .has(&DataKey::BlockSources(user.clone()))
+    let key = DataKey::BlockSources(user.clone());
+    if env.storage().persistent().has(&key) {
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+        true
+    } else {
+        false
+    }
 }
 
 // =============================================================================

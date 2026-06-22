@@ -254,7 +254,7 @@ impl YieldToken {
     }
 
     /// Adds `source` to each user's block set and revokes SAC authorization.
-    /// Caller must be the registered blocker for `source`. Max 40 users per call.
+    /// Caller must be the registered blocker for `source`. Max 23 users per call.
     pub fn batch_block_users(
         e: Env,
         caller: Address,
@@ -281,7 +281,7 @@ impl YieldToken {
     }
 
     /// Removes `source` from each user's block set, restoring SAC authorization for those
-    /// whose block set becomes empty. Max 40 users per call.
+    /// whose block set becomes empty. Max 23 users per call.
     pub fn batch_unblock_users(
         e: Env,
         caller: Address,

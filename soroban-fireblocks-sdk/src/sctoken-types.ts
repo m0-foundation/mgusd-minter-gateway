@@ -1,4 +1,4 @@
-export const MAX_BATCH_SIZE = 40;
+export const MAX_BATCH_SIZE = 23;
 
 export interface MintParams {
   /** Contract ID (C...) */
@@ -133,7 +133,7 @@ export interface BatchBlockUsersParams {
   contractId: string;
   /** Caller address - must be the registered blocker for `source` */
   caller: string;
-  /** Users (accounts) to block or unblock (max 40) */
+  /** Users (accounts) to block or unblock (max 23) */
   users: string[];
   /** Block source the caller is authorized for */
   source: string;

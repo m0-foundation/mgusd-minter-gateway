@@ -17,7 +17,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Authorized blockers whitelist (unblock) accounts — individually via `unblock_user(caller, user, source)` or in batch via `batch_unblock_users(caller, users, source)` (up to 40 per call). Each blocking party operates under its own registered source name
+1. Authorized blockers whitelist (unblock) accounts — individually via `unblock_user(caller, user, source)` or in batch via `batch_unblock_users(caller, users, source)` (up to 23 per call). Each blocking party operates under its own registered source name
 2. Treasury transfers tokens to the user via the SAC's standard SEP-41 `transfer()`
 3. Whitelisted (unblocked) accounts can freely transfer among themselves
 4. Blocked accounts cannot send or receive tokens
@@ -124,8 +124,8 @@ All four functions require the caller to be the registered **authorized blocker*
 |----------|-----------|-------------|
 | `block_user` | `(caller: Address, user: Address, source: Symbol)` | Add a block for `user` under `source`; revokes SAC authorization on first block |
 | `unblock_user` | `(caller: Address, user: Address, source: Symbol)` | Remove the block for `user` under `source`; restores SAC authorization only when all sources are cleared |
-| `batch_block_users` | `(caller: Address, users: Vec<Address>, source: Symbol)` | Block up to 40 users under `source` in a single transaction |
-| `batch_unblock_users` | `(caller: Address, users: Vec<Address>, source: Symbol)` | Unblock up to 40 users under `source` in a single transaction |
+| `batch_block_users` | `(caller: Address, users: Vec<Address>, source: Symbol)` | Block up to 23 users under `source` in a single transaction |
+| `batch_unblock_users` | `(caller: Address, users: Vec<Address>, source: Symbol)` | Unblock up to 23 users under `source` in a single transaction |
 
 ### Pauser Functions (2)
 
@@ -348,8 +348,8 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start unauthorized (
 - `unblock_user(caller, user, source)` → removes the block for `user` under `source`; SAC `set_authorized(true)` is called only when the last block source is cleared (union semantic)
 - `block_user(caller, user, source)` → adds a block for `user` under `source`; SAC `set_authorized(false)` is called on the first block
 - Only the registered blocker for a given `source` can call `block_user` / `unblock_user` for that source; Admin registers blockers via `set_authorized_blocker`. Returns `UnknownSourceError` if the source has no registered blocker.
-- **Batch operations:** `batch_block_users` and `batch_unblock_users` each accept up to 40 users per call and operate under a single source
-- The 40-user cap is derived from Soroban's per-transaction resource limits; each user consumes write entries for the block registry and SAC authorization state
+- **Batch operations:** `batch_block_users` and `batch_unblock_users` each accept up to 23 users per call and operate under a single source
+- The 23-user cap is derived from Soroban's per-transaction resource limits; each user consumes write entries for the block registry and SAC authorization state
 - Batch operations are atomic — if any user fails, the entire transaction reverts
 - Each user in a batch emits its own `UserBlocked` / `UserUnblocked` event (OZ `stellar_tokens::fungible::blocklist` shape) for indexer compatibility
 

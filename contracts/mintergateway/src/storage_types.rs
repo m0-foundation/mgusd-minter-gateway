@@ -5,6 +5,10 @@ pub const DAY_IN_LEDGERS: u32 = 17280;
 pub const INSTANCE_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
 
+// Per-user persistent entries (BlockSources) — 1 year TTL, refresh when within 30 days of expiry
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 365 * DAY_IN_LEDGERS;
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - 30 * DAY_IN_LEDGERS;
+
 #[derive(Clone)]
 #[contracttype]
 pub struct YieldStateValue {
@@ -44,6 +48,6 @@ pub enum DataKey {
     Pauser(Address),
     /// Instance: Address — the address authorized to call block_user/unblock_user for this source
     AuthorizedBlocker(Symbol),
-    /// Instance: Vec<Symbol> — active block sources holding this user unauthorized
+    /// Persistent: Vec<Symbol> — active block sources holding this user unauthorized
     BlockSources(Address),
 }

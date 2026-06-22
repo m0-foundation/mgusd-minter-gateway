@@ -117,8 +117,8 @@ The block model is **multi-party and source-keyed**: each blocking party registe
 |----------|------|-------------|
 | `block_user(caller, user, source)` | Authorized Blocker for `source` | Blocks a user under `source`; revokes SAC auth on first block |
 | `unblock_user(caller, user, source)` | Authorized Blocker for `source` | Removes block for `user` under `source`; restores SAC auth when all sources are cleared |
-| `batch_block_users(caller, users, source)` | Authorized Blocker for `source` | Block up to 40 users per call |
-| `batch_unblock_users(caller, users, source)` | Authorized Blocker for `source` | Unblock up to 40 users per call |
+| `batch_block_users(caller, users, source)` | Authorized Blocker for `source` | Block up to 23 users per call |
+| `batch_unblock_users(caller, users, source)` | Authorized Blocker for `source` | Unblock up to 23 users per call |
 | `blocked(account)` | (view) | Returns `true` if any source has a block on the account or the account is SAC-unauthorized |
 | `blocked_by(account, source)` | (view) | Returns whether a specific source has blocked the account |
 | `get_blocks(account)` | (view) | Returns all source names currently blocking the account |
@@ -176,8 +176,8 @@ Yield Recipient
 Authorized Blocker (per-source; Admin registers via set_authorized_blocker)
 ├── `block_user` — block an individual user under a named source
 ├── `unblock_user` — unblock an individual user under a named source
-├── `batch_block_users` — block up to 40 users per call
-└── `batch_unblock_users` — unblock up to 40 users per call
+├── `batch_block_users` — block up to 23 users per call
+└── `batch_unblock_users` — unblock up to 23 users per call
    (Union semantic: SAC auth restored only when all sources have cleared their blocks.)
 
 Forced Transfer Manager

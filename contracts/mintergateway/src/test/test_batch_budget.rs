@@ -5,7 +5,7 @@ use crate::constants::MAX_BATCH_SIZE;
 
 use super::setup::*;
 
-/// Verifies that batch operations at MAX_BATCH_SIZE (40) stay within
+/// Verifies that batch operations at MAX_BATCH_SIZE (23) stay within
 /// Soroban per-transaction resource limits (SLP-0001):
 ///   - Write entries ≤ 50
 ///   - Read entries ≤ 100

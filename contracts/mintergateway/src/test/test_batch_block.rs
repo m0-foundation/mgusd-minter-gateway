@@ -1,6 +1,8 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Vec};
 
+use crate::constants::MAX_BATCH_SIZE;
+
 use super::setup::*;
 
 // =============================================================================
@@ -219,7 +221,7 @@ fn test_random_cannot_batch_block() {
 fn test_batch_block_exceeds_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..41 {
+    for _ in 0..(MAX_BATCH_SIZE + 1) {
         accounts.push_back(Address::generate(&s.env));
     }
 
@@ -240,7 +242,7 @@ fn test_batch_unblock_at_max_size() {
     s.env.cost_estimate().budget().reset_unlimited();
 
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..40 {
+    for _ in 0..MAX_BATCH_SIZE {
         accounts.push_back(Address::generate(&s.env));
     }
 
@@ -267,7 +269,7 @@ fn test_batch_block_at_max_size() {
     s.env.cost_estimate().budget().reset_unlimited();
 
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..40 {
+    for _ in 0..MAX_BATCH_SIZE {
         accounts.push_back(Address::generate(&s.env));
     }
 
