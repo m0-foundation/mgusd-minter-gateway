@@ -346,12 +346,12 @@ impl YieldToken {
 
     /// Activates multiple users for the first time by granting SAC authorization.
     /// Already-onboarded users are silently skipped. Returns `UserBlockedError` if any user
-    /// in the batch is on the compliance block list. Onboarder only. Max 40 users per call.
+    /// in the batch is on the compliance block list. Onboarder only. Max 18 users per call.
     pub fn batch_onboard_users(
         e: Env,
         users: Vec<Address>,
         operator: Address,
-    ) -> Result<(), MinterGatewayError> {
+    ) -> Result<Vec<Address>, MinterGatewayError> {
         require_onboarder(&e, &operator)?;
         extend_instance_ttl(&e);
 
@@ -361,24 +361,26 @@ impl YieldToken {
 
         let sac_addr = read_sac_token(&e);
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+        let mut blocked = Vec::new(&e);
 
         for user in users.iter() {
             if is_onboarded(&e, &user) {
                 continue;
             }
             if is_on_block_list(&e, &user) {
-                return Err(MinterGatewayError::UserBlockedError);
+                blocked.push_back(user);
+                continue;
             }
             insert_onboarded(&e, &user);
             sac_client.set_authorized(&user, &true);
             emit_user_onboarded(&e, &user);
         }
 
-        Ok(())
+        Ok(blocked)
     }
 
     /// Places multiple users on the compliance block list and revokes SAC authorization.
-    /// Block operator only. Max 40 users per call.
+    /// Block operator only. Max 18 users per call.
     pub fn batch_block_users(
         e: Env,
         users: Vec<Address>,
@@ -404,7 +406,7 @@ impl YieldToken {
     }
 
     /// Removes multiple users from the compliance block list and restores SAC authorization.
-    /// Unblock operator only. Max 40 users per call.
+    /// Unblock operator only. Max 18 users per call.
     pub fn batch_unblock_users(
         e: Env,
         users: Vec<Address>,

@@ -584,7 +584,7 @@ export class SctokenFireblocksClient extends SorobanFireblocksClient {
       );
     }
 
-    // Step 4: [DEPLOYER] Deploy wrapper — SAC + eight role addresses (constructor).
+    // Step 4: [DEPLOYER] Deploy wrapper — SAC + nine role addresses (constructor).
     // The deployer holds the contract for one ledger before step 5 hands SAC
     // admin over; it never holds any role on the wrapper itself (constructor
     // wires admin/minter/etc. to the operator-supplied role pubkeys).

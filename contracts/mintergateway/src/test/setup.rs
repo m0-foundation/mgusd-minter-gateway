@@ -110,14 +110,6 @@ pub fn setup_no_mock_auth() -> TestSetup<'static> {
 }
 
 impl TestSetup<'_> {
-    /// Onboard each address in `users` individually. Convenience for tests that
-    /// need multiple active accounts before exercising batch block / unblock.
-    pub fn onboard_users(&self, users: &soroban_sdk::Vec<Address>) {
-        for user in users.iter() {
-            self.contract.onboard_user(&user, &self.onboarder);
-        }
-    }
-
     /// Assert the most recent event emitted by the gateway contract equals
     /// `expected`. Must be called immediately after the emitting invocation —
     /// any subsequent top-level contract call (including view fns) resets the

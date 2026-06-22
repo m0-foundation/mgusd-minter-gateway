@@ -1,26 +1,38 @@
 use soroban_sdk::{Address, Env};
 
-use crate::storage_types::DataKey;
+use crate::storage_types::{DataKey, PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD};
 
 // =============================================================================
 // Block list — contract-level compliance hold set, separate from SAC auth.
 // =============================================================================
 
 pub fn is_on_block_list(env: &Env, addr: &Address) -> bool {
-    env.storage()
-        .instance()
-        .has(&DataKey::BlockListed(addr.clone()))
+    let key = DataKey::BlockListed(addr.clone());
+    if env.storage().persistent().has(&key) {
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+        true
+    } else {
+        false
+    }
 }
 
 pub fn add_to_block_list(env: &Env, addr: &Address) {
-    env.storage()
-        .instance()
-        .set(&DataKey::BlockListed(addr.clone()), &());
+    let key = DataKey::BlockListed(addr.clone());
+    env.storage().persistent().set(&key, &());
+    env.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
 }
 
 pub fn remove_from_block_list(env: &Env, addr: &Address) {
     env.storage()
-        .instance()
+        .persistent()
         .remove(&DataKey::BlockListed(addr.clone()));
 }
 
@@ -32,13 +44,25 @@ pub fn remove_from_block_list(env: &Env, addr: &Address) {
 // =============================================================================
 
 pub fn is_onboarded(env: &Env, addr: &Address) -> bool {
-    env.storage()
-        .instance()
-        .has(&DataKey::Onboarded(addr.clone()))
+    let key = DataKey::Onboarded(addr.clone());
+    if env.storage().persistent().has(&key) {
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+        true
+    } else {
+        false
+    }
 }
 
 pub fn insert_onboarded(env: &Env, addr: &Address) {
-    env.storage()
-        .instance()
-        .set(&DataKey::Onboarded(addr.clone()), &());
+    let key = DataKey::Onboarded(addr.clone());
+    env.storage().persistent().set(&key, &());
+    env.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
 }

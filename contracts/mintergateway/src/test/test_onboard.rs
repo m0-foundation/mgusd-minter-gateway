@@ -1,5 +1,7 @@
 use soroban_sdk::testutils::Address as _;
 
+use crate::constants::MAX_BATCH_SIZE;
+
 use super::setup::*;
 
 #[test]
@@ -348,7 +350,7 @@ fn test_batch_onboard_empty_vec() {
 }
 
 #[test]
-fn test_batch_onboard_fails_for_blocked_user() {
+fn test_batch_onboard_skips_blocked_user() {
     let s = setup();
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
@@ -357,11 +359,14 @@ fn test_batch_onboard_fails_for_blocked_user() {
     s.contract.block_user(&bob, &s.block_operator);
 
     let users = soroban_sdk::vec![&s.env, alice.clone(), bob.clone()];
-    let result = s.contract.try_batch_onboard_users(&users, &s.onboarder);
-    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UserBlockedError)));
+    let blocked = s.contract.batch_onboard_users(&users, &s.onboarder);
 
-    // alice was not activated because the call aborted on bob
-    assert!(s.contract.blocked(&alice));
+    // alice is onboarded; bob is returned in the blocked list
+    assert!(!s.contract.blocked(&alice));
+    assert!(s.contract.is_onboarded(&alice));
+    assert!(s.contract.blocked(&bob));
+    assert!(!s.contract.is_onboarded(&bob));
+    assert_eq!(blocked, soroban_sdk::vec![&s.env, bob]);
 }
 
 #[test]
@@ -422,7 +427,7 @@ fn test_batch_onboard_at_max_size() {
     s.env.cost_estimate().budget().reset_unlimited();
 
     let mut users: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&s.env);
-    for _ in 0..40 {
+    for _ in 0..MAX_BATCH_SIZE {
         users.push_back(Address::generate(&s.env));
     }
 

@@ -5,7 +5,7 @@ use crate::constants::MAX_BATCH_SIZE;
 
 use super::setup::*;
 
-/// Verifies that batch operations at MAX_BATCH_SIZE (40) stay within
+/// Verifies that batch operations at MAX_BATCH_SIZE (18) stay within
 /// Soroban per-transaction resource limits (SLP-0001):
 ///   - Write entries ≤ 50
 ///   - Read entries ≤ 100
@@ -25,8 +25,7 @@ fn test_batch_at_max_size_within_resource_limits() {
         accounts.push_back(Address::generate(&s.env));
     }
 
-    s.contract
-        .batch_unblock_users(&accounts, &s.unblock_operator);
+    s.contract.batch_onboard_users(&accounts, &s.onboarder);
     let est = s.env.cost_estimate().resources();
 
     // SLP-0001 per-transaction limits (with safety margin)

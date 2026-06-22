@@ -1,6 +1,8 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Vec};
 
+use crate::constants::MAX_BATCH_SIZE;
+
 use super::setup::*;
 
 // =============================================================================
@@ -20,7 +22,7 @@ fn test_batch_unblock_by_unblock_operator() {
     );
 
     // Onboard, then block, then verify batch_unblock_users restores authorization
-    s.onboard_users(&accounts);
+    s.contract.batch_onboard_users(&accounts, &s.onboarder);
     s.contract.batch_block_users(&accounts, &s.block_operator);
     s.contract
         .batch_unblock_users(&accounts, &s.unblock_operator);
@@ -43,7 +45,7 @@ fn test_batch_block_by_block_operator() {
     );
 
     // Onboard, then block
-    s.onboard_users(&accounts);
+    s.contract.batch_onboard_users(&accounts, &s.onboarder);
     s.contract.batch_block_users(&accounts, &s.block_operator);
 
     for account in accounts.iter() {
@@ -172,7 +174,7 @@ fn test_random_cannot_batch_block() {
 fn test_batch_block_exceeds_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..41 {
+    for _ in 0..(MAX_BATCH_SIZE + 1) {
         accounts.push_back(Address::generate(&s.env));
     }
 
@@ -191,12 +193,12 @@ fn test_batch_unblock_at_max_size() {
     s.env.cost_estimate().budget().reset_unlimited();
 
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..40 {
+    for _ in 0..MAX_BATCH_SIZE {
         accounts.push_back(Address::generate(&s.env));
     }
 
-    // Onboard and block all 40, then verify batch_unblock succeeds at max size
-    s.onboard_users(&accounts);
+    // Onboard and block all 18, then verify batch_unblock succeeds at max size
+    s.contract.batch_onboard_users(&accounts, &s.onboarder);
     s.contract.batch_block_users(&accounts, &s.block_operator);
     s.contract
         .batch_unblock_users(&accounts, &s.unblock_operator);
@@ -218,9 +220,11 @@ fn test_batch_block_at_max_size() {
     s.env.cost_estimate().budget().reset_unlimited();
 
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..40 {
+    for _ in 0..MAX_BATCH_SIZE {
         accounts.push_back(Address::generate(&s.env));
     }
+
+    s.contract.batch_onboard_users(&accounts, &s.onboarder);
 
     // Accounts start unauthorized (AUTH_REQUIRED), so freezing is a no-op
     // on auth state but should succeed without hitting resource limits
@@ -245,7 +249,7 @@ fn test_batch_block_blocks_transfers() {
     // Onboard and mint to both users
     let users: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
-    s.onboard_users(&users);
+    s.contract.batch_onboard_users(&users, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 
@@ -275,7 +279,7 @@ fn test_batch_unblock_restores_transfers() {
     // Onboard, mint, then block
     let all: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
-    s.onboard_users(&all);
+    s.contract.batch_onboard_users(&all, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 

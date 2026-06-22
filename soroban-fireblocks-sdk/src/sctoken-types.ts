@@ -1,4 +1,4 @@
-export const MAX_BATCH_SIZE = 40;
+export const MAX_BATCH_SIZE = 18;
 
 export interface MintParams {
   /** Contract ID (C...) */
@@ -123,7 +123,7 @@ export interface OnboardUserParams {
 
 export interface BatchOnboardUsersParams {
   contractId: string;
-  /** Users (accounts) to activate (max 40). Already-onboarded users are skipped; returns UserBlockedError if any user is on the block list. */
+  /** Users (accounts) to activate (max 18). Already-onboarded users are skipped; returns UserBlockedError if any user is on the block list. */
   users: string[];
   /** Operator address — must hold the onboarder role */
   operator: string;
@@ -131,7 +131,7 @@ export interface BatchOnboardUsersParams {
 
 export interface BatchBlockUsersParams {
   contractId: string;
-  /** Users (accounts) to block or unblock (max 40) */
+  /** Users (accounts) to block or unblock (max 18) */
   users: string[];
   /** Operator address — for `batch_block_users` must hold the block operator role; for `batch_unblock_users` must hold the unblock operator role (admin alone cannot block/unblock) */
   operator: string;

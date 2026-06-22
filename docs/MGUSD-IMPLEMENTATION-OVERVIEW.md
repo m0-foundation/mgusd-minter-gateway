@@ -133,9 +133,9 @@ The contract maintains an on-contract block list (separate from the SAC's per-tr
 | `block_user` | `(user: Address, operator: Address)` | Add `user` to the on-contract block list and call SAC `set_authorized(false)`. Idempotent. |
 | `unblock_user` | `(user: Address, operator: Address)` | Remove `user` from the block list. Calls SAC `set_authorized(true)` only if the user has been previously onboarded. |
 | `onboard_user` | `(user: Address, operator: Address)` | Records the user in the `Onboarded` set and calls SAC `set_authorized(true)`. Returns `UserBlockedError` if the user is on the block list. Idempotent. |
-| `batch_onboard_users` | `(users: Vec<Address>, operator: Address)` | Onboard up to 40 users in a single transaction |
-| `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 40 users in a single transaction |
-| `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 40 users in a single transaction (SAC auth restored only for previously-onboarded accounts) |
+| `batch_onboard_users` | `(users: Vec<Address>, operator: Address)` | Onboard up to 18 users in a single transaction |
+| `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 18 users in a single transaction |
+| `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 18 users in a single transaction (SAC auth restored only for previously-onboarded accounts) |
 
 ### Pauser Functions (2)
 
@@ -360,8 +360,8 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start unauthorized (
 - `block_user(user, operator)` → adds user to the on-contract `BlockListed` set + SAC `set_authorized(false)` → user is blocked
 - `unblock_user(user, operator)` → removes user from `BlockListed` + SAC `set_authorized(true)` only if the user is in the `Onboarded` set
 - Only an **onboarder** can call `onboard_user` / `batch_onboard_users`; only a **block operator** can call `block_user`; only an **unblock operator** can call `unblock_user` — Admin must first call `add_onboarder(admin)`, `add_block_operator(admin)`, or `add_unblock_operator(admin)` if it needs the power directly
-- **Batch operations:** `batch_onboard_users` requires an onboarder, `batch_block_users` requires a block operator and `batch_unblock_users` requires an unblock operator; each accepts up to 40 users per call
-- The 40-user cap is derived from Soroban's per-transaction resource limits; each user consumes write entries for the SAC authorization state
+- **Batch operations:** `batch_onboard_users` requires an onboarder, `batch_block_users` requires a block operator and `batch_unblock_users` requires an unblock operator; each accepts up to 18 users per call
+- The 18-user cap is derived from Soroban's per-transaction resource limits; each user consumes write entries for the SAC authorization state
 - Batch operations are atomic — if any user fails, the entire transaction reverts
 - Each user in a batch emits its own event (`UserOnboarded` / `UserBlocked` / `UserUnblocked`) for indexer compatibility
 
