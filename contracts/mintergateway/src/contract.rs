@@ -168,6 +168,11 @@ impl YieldToken {
 
     /// Removes a source and its associated blocker address. Admin only.
     /// Idempotent: silent no-op (no event) if the source is not registered.
+    ///
+    /// **Warning:** if users are currently blocked under `source`, those blocks
+    /// become unrecoverable via the normal `unblock_user` path. Recovery:
+    /// re-register the same source via `set_authorized_blocker`, then unblock.
+    /// To rotate a blocker key safely, use `set_authorized_blocker` directly.
     pub fn remove_authorized_blocker(e: Env, source: Symbol) {
         require_admin(&e);
         extend_instance_ttl(&e);
@@ -248,8 +253,8 @@ impl YieldToken {
         if !has_any_block(&e, &user) {
             let sac_addr = read_sac_token(&e);
             token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &true);
+            emit_user_unblocked(&e, &user);
         }
-        emit_user_unblocked(&e, &user);
         Ok(())
     }
 
@@ -302,8 +307,8 @@ impl YieldToken {
             remove_block_source(&e, &user, &source);
             if !has_any_block(&e, &user) {
                 sac_client.set_authorized(&user, &true);
+                emit_user_unblocked(&e, &user);
             }
-            emit_user_unblocked(&e, &user);
         }
         Ok(())
     }
