@@ -279,10 +279,15 @@ impl YieldToken {
     // =========================================================================
 
     /// Places `user` on the compliance block list and revokes their SAC authorization.
-    /// Block operator only. Idempotent.
+    /// Block operator only. Idempotent: silent no-op (no event) if the user is
+    /// already on the block list.
     pub fn block_user(e: Env, user: Address, operator: Address) -> Result<(), MinterGatewayError> {
         require_block_operator(&e, &operator)?;
         extend_instance_ttl(&e);
+
+        if is_on_block_list(&e, &user) {
+            return Ok(());
+        }
 
         add_to_block_list(&e, &user);
 
@@ -295,7 +300,8 @@ impl YieldToken {
 
     /// Removes `user` from the compliance block list. Restores SAC authorization only if the
     /// user has previously been onboarded.
-    /// Unblock operator only.
+    /// Unblock operator only. Idempotent: silent no-op (no event) if the user is
+    /// not on the block list.
     pub fn unblock_user(
         e: Env,
         user: Address,
@@ -303,6 +309,10 @@ impl YieldToken {
     ) -> Result<(), MinterGatewayError> {
         require_unblock_operator(&e, &operator)?;
         extend_instance_ttl(&e);
+
+        if !is_on_block_list(&e, &user) {
+            return Ok(());
+        }
 
         remove_from_block_list(&e, &user);
 
@@ -316,9 +326,9 @@ impl YieldToken {
     }
 
     /// Activates `user` for the first time by granting SAC authorization.
-    /// Returns `UserBlockedError` if the user is on the compliance
-    /// block list. Idempotent: silent no-op (no event) if the address is already onboarded.
-    /// Onboarder only.
+    /// Returns `UserBlockedError` if the user is on the compliance block list,
+    /// even if already onboarded. Idempotent: silent no-op (no event) if the
+    /// address is already onboarded and not blocked. Onboarder only.
     pub fn onboard_user(
         e: Env,
         user: Address,
@@ -327,12 +337,12 @@ impl YieldToken {
         require_onboarder(&e, &operator)?;
         extend_instance_ttl(&e);
 
-        if is_onboarded(&e, &user) {
-            return Ok(());
-        }
-
         if is_on_block_list(&e, &user) {
             return Err(MinterGatewayError::UserBlockedError);
+        }
+
+        if is_onboarded(&e, &user) {
+            return Ok(());
         }
 
         insert_onboarded(&e, &user);
@@ -345,8 +355,9 @@ impl YieldToken {
     }
 
     /// Activates multiple users for the first time by granting SAC authorization.
-    /// Already-onboarded users are silently skipped. Returns `UserBlockedError` if any user
-    /// in the batch is on the compliance block list. Onboarder only. Max 18 users per call.
+    /// Users on the compliance block list are skipped and returned, even if already
+    /// onboarded; other already-onboarded users are silently skipped.
+    /// Onboarder only. Max 18 users per call.
     pub fn batch_onboard_users(
         e: Env,
         users: Vec<Address>,
@@ -364,11 +375,11 @@ impl YieldToken {
         let mut blocked = Vec::new(&e);
 
         for user in users.iter() {
-            if is_onboarded(&e, &user) {
-                continue;
-            }
             if is_on_block_list(&e, &user) {
                 blocked.push_back(user);
+                continue;
+            }
+            if is_onboarded(&e, &user) {
                 continue;
             }
             insert_onboarded(&e, &user);
@@ -380,6 +391,7 @@ impl YieldToken {
     }
 
     /// Places multiple users on the compliance block list and revokes SAC authorization.
+    /// Already-blocked users are silently skipped (no event).
     /// Block operator only. Max 18 users per call.
     pub fn batch_block_users(
         e: Env,
@@ -397,6 +409,9 @@ impl YieldToken {
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
 
         for user in users.iter() {
+            if is_on_block_list(&e, &user) {
+                continue;
+            }
             add_to_block_list(&e, &user);
             sac_client.set_authorized(&user, &false);
             emit_user_blocked(&e, &user);
@@ -406,6 +421,7 @@ impl YieldToken {
     }
 
     /// Removes multiple users from the compliance block list and restores SAC authorization.
+    /// Users not on the block list are silently skipped (no event).
     /// Unblock operator only. Max 18 users per call.
     pub fn batch_unblock_users(
         e: Env,
@@ -423,6 +439,9 @@ impl YieldToken {
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
 
         for user in users.iter() {
+            if !is_on_block_list(&e, &user) {
+                continue;
+            }
             remove_from_block_list(&e, &user);
             if is_onboarded(&e, &user) {
                 sac_client.set_authorized(&user, &true);

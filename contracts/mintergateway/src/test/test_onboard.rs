@@ -54,6 +54,21 @@ fn test_onboard_user_fails_when_on_block_list() {
 }
 
 #[test]
+fn test_onboard_user_blocked_after_onboarding_errors() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    s.contract.onboard_user(&user, &s.onboarder);
+    s.contract.block_user(&user, &s.block_operator);
+
+    // Compliance hold takes precedence over the already-onboarded no-op:
+    // re-onboarding a blocked user errors loudly instead of silently succeeding
+    let result = s.contract.try_onboard_user(&user, &s.onboarder);
+    assert_eq!(result, Err(Ok(crate::MinterGatewayError::UserBlockedError)));
+    assert!(s.contract.blocked(&user));
+}
+
+#[test]
 fn test_onboard_succeeds_after_unblock() {
     let s = setup();
     let user = Address::generate(&s.env);
@@ -367,6 +382,22 @@ fn test_batch_onboard_skips_blocked_user() {
     assert!(s.contract.blocked(&bob));
     assert!(!s.contract.is_onboarded(&bob));
     assert_eq!(blocked, soroban_sdk::vec![&s.env, bob]);
+}
+
+#[test]
+fn test_batch_onboard_reports_blocked_even_if_onboarded() {
+    let s = setup();
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+
+    let users = soroban_sdk::vec![&s.env, alice.clone(), bob.clone()];
+    s.contract.batch_onboard_users(&users, &s.onboarder);
+    s.contract.block_user(&bob, &s.block_operator);
+
+    // bob is onboarded but under a compliance hold: reported, not silently skipped
+    let blocked = s.contract.batch_onboard_users(&users, &s.onboarder);
+    assert_eq!(blocked, soroban_sdk::vec![&s.env, bob.clone()]);
+    assert!(s.contract.blocked(&bob));
 }
 
 #[test]

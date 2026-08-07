@@ -106,6 +106,75 @@ fn test_batch_block_empty_vec() {
 }
 
 // =============================================================================
+// IDEMPOTENCY — already-in-state addresses are skipped, no duplicate events
+// =============================================================================
+
+#[test]
+fn test_block_user_already_blocked_is_noop() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    s.contract.onboard_user(&user, &s.onboarder);
+    s.contract.block_user(&user, &s.block_operator);
+
+    // Second block is a silent no-op: no duplicate user_blocked event
+    s.contract.block_user(&user, &s.block_operator);
+    s.assert_no_events();
+    assert!(s.contract.is_on_block_list(&user));
+    assert!(s.contract.blocked(&user));
+}
+
+#[test]
+fn test_unblock_user_not_blocked_is_noop() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    s.contract.onboard_user(&user, &s.onboarder);
+
+    // Never blocked: unblock is a silent no-op, no user_unblocked event
+    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.assert_no_events();
+    assert!(!s.contract.is_on_block_list(&user));
+    assert!(!s.contract.blocked(&user));
+}
+
+#[test]
+fn test_batch_block_skips_already_blocked() {
+    let s = setup();
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let users: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
+
+    s.contract.batch_onboard_users(&users, &s.onboarder);
+    s.contract.block_user(&alice, &s.block_operator);
+
+    // alice is already blocked: only bob transitions, one event
+    s.contract.batch_block_users(&users, &s.block_operator);
+    assert_eq!(s.gateway_event_count(), 1);
+    assert!(s.contract.is_on_block_list(&alice));
+    assert!(s.contract.is_on_block_list(&bob));
+}
+
+#[test]
+fn test_batch_unblock_skips_not_blocked() {
+    let s = setup();
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let users: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
+
+    s.contract.batch_onboard_users(&users, &s.onboarder);
+    s.contract.block_user(&bob, &s.block_operator);
+
+    // alice was never blocked: only bob transitions, one event
+    s.contract.batch_unblock_users(&users, &s.unblock_operator);
+    assert_eq!(s.gateway_event_count(), 1);
+    assert!(!s.contract.is_on_block_list(&alice));
+    assert!(!s.contract.is_on_block_list(&bob));
+    assert!(!s.contract.blocked(&alice));
+    assert!(!s.contract.blocked(&bob));
+}
+
+// =============================================================================
 // AUTH ENFORCEMENT
 // =============================================================================
 

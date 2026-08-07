@@ -131,11 +131,11 @@ The contract maintains an on-contract block list (separate from the SAC's per-tr
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `block_user` | `(user: Address, operator: Address)` | Add `user` to the on-contract block list and call SAC `set_authorized(false)`. Idempotent. |
-| `unblock_user` | `(user: Address, operator: Address)` | Remove `user` from the block list. Calls SAC `set_authorized(true)` only if the user has been previously onboarded. |
+| `unblock_user` | `(user: Address, operator: Address)` | Remove `user` from the block list. Calls SAC `set_authorized(true)` only if the user has been previously onboarded. Idempotent. |
 | `onboard_user` | `(user: Address, operator: Address)` | Records the user in the `Onboarded` set and calls SAC `set_authorized(true)`. Returns `UserBlockedError` if the user is on the block list. Idempotent. |
-| `batch_onboard_users` | `(users: Vec<Address>, operator: Address)` | Onboard up to 18 users in a single transaction |
-| `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 18 users in a single transaction |
-| `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 18 users in a single transaction (SAC auth restored only for previously-onboarded accounts) |
+| `batch_onboard_users` | `(users: Vec<Address>, operator: Address)` | Onboard up to 18 users in a single transaction. Blocked users are skipped and returned |
+| `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 18 users in a single transaction. Already-blocked users are skipped |
+| `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 18 users in a single transaction (SAC auth restored only for previously-onboarded accounts). Not-blocked users are skipped |
 
 ### Pauser Functions (2)
 

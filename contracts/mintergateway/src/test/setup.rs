@@ -159,6 +159,16 @@ impl TestSetup<'_> {
             events.events().len(),
         );
     }
+
+    /// Number of gateway events emitted by the last top-level invocation.
+    pub fn gateway_event_count(&self) -> usize {
+        self.env
+            .events()
+            .all()
+            .filter_by_contract(&self.contract.address)
+            .events()
+            .len()
+    }
 }
 
 /// Build a fixed-size array of `xdr::ContractEvent` from a list of
