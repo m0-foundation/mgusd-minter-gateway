@@ -8,7 +8,7 @@ pub const RATE_SCALE: i128 = 1_000_000_000_000;
 pub const SECONDS_PER_YEAR: i128 = 31_536_000;
 
 /// Maximum number of accounts in a batch onboard/block/unblock operation
-pub const MAX_BATCH_SIZE: u32 = 18;
+pub const MAX_BATCH_SIZE: u32 = 100;
 
 /// Maximum yield rate in basis points (5,000 bps = 50% APR).
 /// Sized as a sanity bound on admin input, set well above any realistic
