@@ -259,6 +259,7 @@ fn test_batch_block_exceeds_max_size() {
 #[test]
 fn test_batch_unblock_at_max_size() {
     let s = setup();
+    enforce_current_mainnet_limits(&s.env);
     s.env.cost_estimate().budget().reset_unlimited();
 
     let mut accounts: Vec<Address> = Vec::new(&s.env);
@@ -280,6 +281,7 @@ fn test_batch_unblock_at_max_size() {
 #[test]
 fn test_batch_block_at_max_size() {
     let s = setup();
+    enforce_current_mainnet_limits(&s.env);
     // Bypass the Rust SDK test harness's shadow budget, which is consumed by
     // `get_authenticated_authorizations` serializing auth trees for test
     // instrumentation — not a constraint enforced on-chain or in preflight.

@@ -197,6 +197,23 @@ macro_rules! gateway_events {
     };
 }
 
+/// Raises the enforced test resource limits to the current mainnet values.
+/// soroban-sdk 25.x ships a stale `InvocationResourceLimits::mainnet()`
+/// snapshot that predates the network upgrade which raised the per-tx limits
+/// (writes 50 → 200, footprint 100 → 400, disk reads 100 → 200 — verified via
+/// `stellar network settings` against mainnet, 2026-08-14). Needed by tests
+/// that exercise MAX_BATCH_SIZE-sized batches.
+pub fn enforce_current_mainnet_limits(env: &Env) {
+    use soroban_env_host::InvocationResourceLimits;
+    use soroban_sdk::testutils::cost_estimate::NetworkInvocationResourceLimits;
+
+    let mut limits = InvocationResourceLimits::mainnet();
+    limits.write_entries = 200;
+    limits.ledger_entries = 400;
+    limits.disk_read_entries = 200;
+    env.cost_estimate().enforce_resource_limits(limits);
+}
+
 /// The Soroban host error returned when `require_auth()` fails.
 pub fn auth_error() -> soroban_sdk::Error {
     soroban_sdk::Error::from_type_and_code(

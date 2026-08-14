@@ -16,3 +16,6 @@ stellar-tokens = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# For InvocationResourceLimits, which soroban-sdk uses in its public
+# CostEstimate::enforce_resource_limits API but does not re-export.
+soroban-env-host = "25"

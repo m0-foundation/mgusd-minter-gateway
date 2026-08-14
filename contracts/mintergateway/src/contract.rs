@@ -366,7 +366,7 @@ impl YieldToken {
     /// `onboard_user`, this does NOT re-assert SAC authorization for them (one
     /// member without a trustline would abort the whole batch). Re-authorization
     /// after trustline recreation must go through `onboard_user`.
-    /// Onboarder only. Max 18 users per call.
+    /// Onboarder only. Max 40 users per call.
     pub fn batch_onboard_users(
         e: Env,
         users: Vec<Address>,
@@ -401,7 +401,7 @@ impl YieldToken {
 
     /// Places multiple users on the compliance block list and revokes SAC authorization.
     /// Already-blocked users are silently skipped (no event).
-    /// Block operator only. Max 18 users per call.
+    /// Block operator only. Max 40 users per call.
     pub fn batch_block_users(
         e: Env,
         users: Vec<Address>,
@@ -431,7 +431,7 @@ impl YieldToken {
 
     /// Removes multiple users from the compliance block list and restores SAC authorization.
     /// Users not on the block list are silently skipped (no event).
-    /// Unblock operator only. Max 18 users per call.
+    /// Unblock operator only. Max 40 users per call.
     pub fn batch_unblock_users(
         e: Env,
         users: Vec<Address>,

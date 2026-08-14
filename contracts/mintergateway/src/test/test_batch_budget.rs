@@ -5,15 +5,17 @@ use crate::constants::MAX_BATCH_SIZE;
 
 use super::setup::*;
 
-/// Verifies that batch operations at MAX_BATCH_SIZE (18) stay within
-/// Soroban per-transaction resource limits (SLP-0001):
-///   - Write entries ≤ 50
-///   - Read entries ≤ 100
-///   - CPU instructions ≤ 100M
-///   - Events size ≤ 16,384 bytes
+/// Verifies that batch operations at MAX_BATCH_SIZE (40) stay within
+/// Soroban per-transaction resource limits (live mainnet `tx_max_*` config,
+/// verified via `stellar network settings` on 2026-08-14):
+///   - Write entries ≤ 200 (`tx_max_write_ledger_entries`)
+///   - Footprint (reads + writes) ≤ 400 (`tx_max_footprint_entries`)
+///   - CPU instructions ≤ 400M (`tx_max_instructions`)
+///   - Events size ≤ 16,384 bytes (`tx_max_contract_events_size_bytes`)
 #[test]
 fn test_batch_at_max_size_within_resource_limits() {
     let s = setup();
+    enforce_current_mainnet_limits(&s.env);
     // Bypass the Rust SDK test harness's shadow budget, which is consumed by
     // `get_authenticated_authorizations` serializing auth trees for test
     // instrumentation — not a constraint enforced on-chain or in preflight.
@@ -28,20 +30,20 @@ fn test_batch_at_max_size_within_resource_limits() {
     s.contract.batch_onboard_users(&accounts, &s.onboarder);
     let est = s.env.cost_estimate().resources();
 
-    // SLP-0001 per-transaction limits (with safety margin)
+    // Mainnet per-transaction limits (with safety margin)
     assert!(
-        est.write_entries <= 50,
-        "write_entries {} exceeds limit 50",
+        est.write_entries <= 200,
+        "write_entries {} exceeds limit 200",
         est.write_entries
     );
     assert!(
-        est.memory_read_entries + est.disk_read_entries <= 100,
-        "total read entries {} exceeds limit 100",
-        est.memory_read_entries + est.disk_read_entries
+        est.memory_read_entries + est.disk_read_entries + est.write_entries <= 400,
+        "footprint entries {} exceeds limit 400",
+        est.memory_read_entries + est.disk_read_entries + est.write_entries
     );
     assert!(
-        est.instructions <= 100_000_000,
-        "instructions {} exceeds limit 100M",
+        est.instructions <= 400_000_000,
+        "instructions {} exceeds limit 400M",
         est.instructions
     );
     assert!(

@@ -115,8 +115,8 @@ the admin role does *not* implicitly carry these powers. See
 |----------|------|-------------|
 | `block_user(user, operator)` | Block operator | Blocks a user — removes from allowlist, preventing sending and receiving |
 | `unblock_user(user, operator)` | Unblock operator | Unblocks a user — adds to allowlist, permitting sending and receiving |
-| `batch_block_users(users, operator)` | Block operator | Block up to 18 users per call |
-| `batch_unblock_users(users, operator)` | Unblock operator | Unblock up to 18 users per call |
+| `batch_block_users(users, operator)` | Block operator | Block up to 40 users per call |
+| `batch_unblock_users(users, operator)` | Unblock operator | Unblock up to 40 users per call |
 | `blocked(account)` | (view) | Returns whether a user is blocked (inverse of SAC authorization) |
 | `balance(id)` | (view) | Returns the SAC-reported balance for an address |
 
@@ -185,11 +185,11 @@ Yield Recipient
 
 Block operator (membership set; Admin grants / revokes)
 ├── `block_user` — block an individual user
-└── `batch_block_users` — block up to 18 users per call
+└── `batch_block_users` — block up to 40 users per call
 
 Unblock operator (membership set; Admin grants / revokes)
 ├── `unblock_user` — unblock an individual user
-└── `batch_unblock_users` — unblock up to 18 users per call
+└── `batch_unblock_users` — unblock up to 40 users per call
    (Matches the `stellar_tokens::fungible::blocklist` function shape.)
 
 Forced Transfer Manager

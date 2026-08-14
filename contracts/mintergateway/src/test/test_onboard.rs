@@ -497,6 +497,7 @@ fn test_batch_onboard_exceeds_max_size() {
 #[test]
 fn test_batch_onboard_at_max_size() {
     let s = setup();
+    enforce_current_mainnet_limits(&s.env);
     s.env.cost_estimate().budget().reset_unlimited();
 
     let mut users: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&s.env);
