@@ -366,6 +366,14 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start unauthorized (
 - Batch operations are atomic — if any user fails, the entire transaction reverts
 - Each user in a batch emits its own event (`UserOnboarded` / `UserBlocked` / `UserUnblocked`) for indexer compatibility
 
+### What blocking does not undo: standing orders and pool deposits
+
+- Stellar has a built-in exchange: an account can place a standing order (an "offer", e.g. *sell 100 MGUSD for 100 USDC*) that executes automatically when another account takes the other side — no new signature needed from the account that placed it. Accounts can also deposit tokens into on-ledger liquidity pools
+- `block_user` clears the trustline authorization flag (SAC `set_authorized(false)`): the account can no longer send, receive, or place **new** orders. But orders placed **before** the block are not cancelled and pool deposits are not withdrawn — an old order can still execute later and move the blocked user's tokens
+- The classic issuer operation `SetTrustLineFlags` would cancel those orders as a side effect, but it is permanently unavailable because the issuer key is renounced at deployment ([issuer renunciation](issuer-renunciation.md)) — SAC deauthorization is the only freeze mechanism
+- `force_transfer` (clawback) reclaims only the account's **available** balance; tokens committed to a standing order are locked until that order is cancelled or executes
+- Runbook: after blocking, check Horizon for the account's standing orders and pool deposits; if an old order executes post-block, block the receiving account if warranted and reclaim the tokens via `force_transfer`
+
 ### Token Transfers
 
 - Transfers use the SAC's standard SEP-41 `transfer()` — the wrapper contract has no transfer function
