@@ -132,8 +132,8 @@ The contract maintains an on-contract block list (separate from the SAC's per-tr
 |----------|-----------|-------------|
 | `block_user` | `(user: Address, operator: Address)` | Add `user` to the on-contract block list and call SAC `set_authorized(false)`. Idempotent. |
 | `unblock_user` | `(user: Address, operator: Address)` | Remove `user` from the block list. Calls SAC `set_authorized(true)` only if the user has been previously onboarded. Idempotent. |
-| `onboard_user` | `(user: Address, operator: Address)` | Records the user in the `Onboarded` set and calls SAC `set_authorized(true)`. Returns `UserBlockedError` if the user is on the block list. Idempotent. |
-| `batch_onboard_users` | `(users: Vec<Address>, operator: Address)` | Onboard up to 18 users in a single transaction. Blocked users are skipped and returned |
+| `onboard_user` | `(user: Address, operator: Address)` | Records the user in the `Onboarded` set and calls SAC `set_authorized(true)`. Returns `UserBlockedError` if the user is on the block list. For already-onboarded users, re-asserts SAC authorization (restores access after trustline deletion + recreation) without re-emitting `user_onboarded`. |
+| `batch_onboard_users` | `(users: Vec<Address>, operator: Address)` | Onboard up to 18 users in a single transaction. Blocked users are skipped and returned. Already-onboarded users are skipped entirely (no SAC re-authorization — use `onboard_user` for that) |
 | `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 18 users in a single transaction. Already-blocked users are skipped |
 | `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 18 users in a single transaction (SAC auth restored only for previously-onboarded accounts). Not-blocked users are skipped |
 
@@ -357,6 +357,7 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start unauthorized (
 
 - SAC operates in `AUTH_REQUIRED` mode — accounts are unauthorized by default
 - `onboard_user(user, operator)` → records user in the `Onboarded` set + SAC `set_authorized(true)` → user can send/receive. Returns `UserBlockedError` if the user is on the compliance block list
+- Calling `onboard_user` again for an already-onboarded (non-blocked) user re-asserts SAC authorization — this is the recovery path when a user deletes and recreates their trustline (the fresh trustline starts unauthorized under `AUTH_REQUIRED`). `batch_onboard_users` does **not** re-assert authorization for already-onboarded users
 - `block_user(user, operator)` → adds user to the on-contract `BlockListed` set + SAC `set_authorized(false)` → user is blocked
 - `unblock_user(user, operator)` → removes user from `BlockListed` + SAC `set_authorized(true)` only if the user is in the `Onboarded` set
 - Only an **onboarder** can call `onboard_user` / `batch_onboard_users`; only a **block operator** can call `block_user`; only an **unblock operator** can call `unblock_user` — Admin must first call `add_onboarder(admin)`, `add_block_operator(admin)`, or `add_unblock_operator(admin)` if it needs the power directly
@@ -494,7 +495,7 @@ Each state-changing call adjusts the accumulators as follows:
 - **INV-13 — Single-address roles are total.** `admin`, `minter`, `yield_recipient_manager`, `yield_recipient`, and `forced_transfer_manager` each resolve to exactly one address after construction.
 - **INV-14 — Role gating.** Every role-gated function calls `require_auth` on its `caller` argument and verifies the caller equals the designated role holder. Admin is not a super-role: it cannot exercise another role's powers without first granting itself that role.
 - **INV-15 — Onboarded is monotonic.** Once an account is recorded in the `Onboarded` set via `onboard_user`, that entry is never removed. An account's `is_onboarded` status can only change from `false` to `true`.
-- **INV-16 — SAC authorization requires prior onboarding.** SAC `set_authorized(true)` is called only by `onboard_user` / `batch_onboard_users` (first activation) and by `unblock_user` / `batch_unblock_users` when the account is present in the `Onboarded` set.
+- **INV-16 — SAC authorization requires prior onboarding.** SAC `set_authorized(true)` is called only by `onboard_user` (first activation or re-authorization of an account not on the block list) / `batch_onboard_users` (first activation) and by `unblock_user` / `batch_unblock_users` when the account is present in the `Onboarded` set.
 
 ---
 

@@ -266,7 +266,7 @@ impl YieldToken {
     // Three discrete roles with three discrete functions:
     //   - block_user  (block operator)   — adds to contract block list + SAC set_authorized(false)
     //   - unblock_user (unblock operator) — removes from block list + SAC set_authorized(true)
-    //   - onboard_user (onboarder)        — first-time activation; fails if on block list
+    //   - onboard_user (onboarder)        — activation / re-authorization; fails if on block list
     //
     // The contract block list (BlockListed storage) is policy state: it records
     // which accounts are currently held by compliance. The SAC auth flag is the
@@ -325,10 +325,15 @@ impl YieldToken {
         Ok(())
     }
 
-    /// Activates `user` for the first time by granting SAC authorization.
-    /// Returns `UserBlockedError` if the user is on the compliance block list,
-    /// even if already onboarded. Idempotent: silent no-op (no event) if the
-    /// address is already onboarded and not blocked. Onboarder only.
+    /// Activates `user` by granting SAC authorization and recording them in the
+    /// `Onboarded` set. Returns `UserBlockedError` if the user is on the
+    /// compliance block list, even if already onboarded.
+    ///
+    /// For already-onboarded users this re-asserts SAC authorization without
+    /// re-emitting `user_onboarded`: deleting and recreating a trustline resets
+    /// SAC auth to unauthorized, and this is the sanctioned path to restore it
+    /// (the SAC's own `set_authorized` event records the re-authorization).
+    /// Onboarder only.
     pub fn onboard_user(
         e: Env,
         user: Address,
@@ -341,22 +346,26 @@ impl YieldToken {
             return Err(MinterGatewayError::UserBlockedError);
         }
 
-        if is_onboarded(&e, &user) {
-            return Ok(());
+        let first_onboard = !is_onboarded(&e, &user);
+        if first_onboard {
+            insert_onboarded(&e, &user);
         }
-
-        insert_onboarded(&e, &user);
 
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &true);
 
-        emit_user_onboarded(&e, &user);
+        if first_onboard {
+            emit_user_onboarded(&e, &user);
+        }
         Ok(())
     }
 
     /// Activates multiple users for the first time by granting SAC authorization.
     /// Users on the compliance block list are skipped and returned, even if already
-    /// onboarded; other already-onboarded users are silently skipped.
+    /// onboarded; other already-onboarded users are silently skipped — unlike
+    /// `onboard_user`, this does NOT re-assert SAC authorization for them (one
+    /// member without a trustline would abort the whole batch). Re-authorization
+    /// after trustline recreation must go through `onboard_user`.
     /// Onboarder only. Max 18 users per call.
     pub fn batch_onboard_users(
         e: Env,

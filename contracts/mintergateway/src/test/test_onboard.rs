@@ -31,6 +31,48 @@ fn test_onboard_user_idempotent() {
 }
 
 #[test]
+fn test_onboard_reauthorizes_after_trustline_recreation() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    s.contract.onboard_user(&user, &s.onboarder);
+    assert!(!s.contract.blocked(&user));
+
+    // Simulate trustline deletion + recreation: the recreated trustline starts
+    // SAC-unauthorized while the Onboarded flag persists
+    StellarAssetClient::new(&s.env, &s.sac_token.address).set_authorized(&user, &false);
+    assert!(s.contract.blocked(&user));
+    assert!(s.contract.is_onboarded(&user));
+    assert!(!s.contract.is_on_block_list(&user));
+
+    // Re-onboarding restores SAC authorization without a block/unblock detour
+    s.contract.onboard_user(&user, &s.onboarder);
+    assert!(!s.contract.blocked(&user));
+    assert!(s.contract.is_onboarded(&user));
+
+    // user_onboarded is only emitted on first onboard, not on re-authorization
+    s.assert_no_events();
+}
+
+#[test]
+fn test_batch_onboard_does_not_reauthorize_onboarded_users() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+    let users = soroban_sdk::vec![&s.env, user.clone()];
+
+    s.contract.batch_onboard_users(&users, &s.onboarder);
+    StellarAssetClient::new(&s.env, &s.sac_token.address).set_authorized(&user, &false);
+
+    // Batch skips already-onboarded users entirely; re-authorization after
+    // trustline recreation must go through onboard_user
+    s.contract.batch_onboard_users(&users, &s.onboarder);
+    assert!(s.contract.blocked(&user));
+
+    s.contract.onboard_user(&user, &s.onboarder);
+    assert!(!s.contract.blocked(&user));
+}
+
+#[test]
 fn test_onboarded_user_can_receive_tokens() {
     let s = setup();
     let user = Address::generate(&s.env);
