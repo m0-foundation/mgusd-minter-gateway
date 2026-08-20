@@ -392,26 +392,20 @@ impl YieldToken {
                 continue;
             }
 
+            // No trustline: skipped without aborting the batch.
+            let Ok(Ok(authorized)) = sac_client.try_authorized(&user) else {
+                continue;
+            };
+
             let first_onboard = !is_onboarded(&e, &user);
 
-            match sac_client.try_authorized(&user) {
-                Ok(Ok(true)) => {
-                    if first_onboard {
-                        insert_onboarded(&e, &user);
-                        emit_user_onboarded(&e, &user);
-                    }
-                }
-                Ok(Ok(false)) => {
-                    if first_onboard {
-                        insert_onboarded(&e, &user);
-                    }
-                    sac_client.set_authorized(&user, &true);
-                    if first_onboard {
-                        emit_user_onboarded(&e, &user);
-                    }
-                }
-                // No trustline: skipped without aborting the batch.
-                _ => continue,
+            if !authorized {
+                sac_client.set_authorized(&user, &true);
+            }
+
+            if first_onboard {
+                insert_onboarded(&e, &user);
+                emit_user_onboarded(&e, &user);
             }
         }
 
