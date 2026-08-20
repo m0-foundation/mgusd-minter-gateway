@@ -360,12 +360,15 @@ impl YieldToken {
         Ok(())
     }
 
-    /// Activates multiple users for the first time by granting SAC authorization.
-    /// Users on the compliance block list are skipped and returned, even if already
-    /// onboarded; other already-onboarded users are silently skipped — unlike
-    /// `onboard_user`, this does NOT re-assert SAC authorization for them (one
-    /// member without a trustline would abort the whole batch). Re-authorization
-    /// after trustline recreation must go through `onboard_user`.
+    /// Activates multiple users by granting SAC authorization.
+    /// Users on the compliance block list are skipped and returned, even if
+    /// already onboarded. Users without a trustline are silently skipped (the
+    /// SAC's `authorized` trap is caught via `try_authorized`, so one such
+    /// member no longer aborts the whole batch) — they are NOT marked onboarded
+    /// and must be resubmitted once the trustline exists. Like `onboard_user`,
+    /// this re-asserts SAC authorization for already-onboarded users whose
+    /// trustline auth was reset (e.g. trustline deleted and recreated), without
+    /// re-emitting `user_onboarded`.
     /// Onboarder only. Max 40 users per call.
     pub fn batch_onboard_users(
         e: Env,
@@ -388,12 +391,28 @@ impl YieldToken {
                 blocked.push_back(user);
                 continue;
             }
-            if is_onboarded(&e, &user) {
-                continue;
+
+            let first_onboard = !is_onboarded(&e, &user);
+
+            match sac_client.try_authorized(&user) {
+                Ok(Ok(true)) => {
+                    if first_onboard {
+                        insert_onboarded(&e, &user);
+                        emit_user_onboarded(&e, &user);
+                    }
+                }
+                Ok(Ok(false)) => {
+                    if first_onboard {
+                        insert_onboarded(&e, &user);
+                    }
+                    sac_client.set_authorized(&user, &true);
+                    if first_onboard {
+                        emit_user_onboarded(&e, &user);
+                    }
+                }
+                // No trustline: skipped without aborting the batch.
+                _ => continue,
             }
-            insert_onboarded(&e, &user);
-            sac_client.set_authorized(&user, &true);
-            emit_user_onboarded(&e, &user);
         }
 
         Ok(blocked)
