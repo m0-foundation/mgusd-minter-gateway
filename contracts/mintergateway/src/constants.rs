@@ -7,7 +7,10 @@ pub const RATE_SCALE: i128 = 1_000_000_000_000;
 /// Seconds in a year (365 days)
 pub const SECONDS_PER_YEAR: i128 = 31_536_000;
 
-/// Maximum number of accounts in a batch freeze/unfreeze operation
+/// Maximum number of accounts in a batch onboard/block/unblock operation.
+/// Each user costs two ledger-entry writes (status entry + SAC trustline);
+/// 40 users ≈ 80+ writes, well within mainnet's per-transaction limit of
+/// 200 writes (`tx_max_write_ledger_entries`).
 pub const MAX_BATCH_SIZE: u32 = 40;
 
 /// Maximum yield rate in basis points (5,000 bps = 50% APR).

@@ -13,8 +13,8 @@ fn test_force_transfer_moves_tokens() {
     let bob = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     s.contract
@@ -31,8 +31,8 @@ fn test_force_transfer_full_balance() {
     let bob = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     s.contract
@@ -49,8 +49,8 @@ fn test_force_transfer_partial_balance() {
     let bob = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     s.contract
@@ -67,8 +67,8 @@ fn test_force_transfer_does_not_change_accumulators() {
     let bob = Address::generate(&s.env);
     let mint_amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &mint_amount);
 
     let principal_before = s.contract.total_principal();
@@ -88,8 +88,8 @@ fn test_force_transfer_with_yield_accrued() {
     let bob = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Set rate and advance time to accrue yield
@@ -122,8 +122,8 @@ fn test_force_transfer_from_frozen_account() {
     let bob = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Freeze alice
@@ -145,8 +145,8 @@ fn test_force_transfer_admin_cannot_call() {
     let bob = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Admin no longer bypasses the role gate.
@@ -166,8 +166,8 @@ fn test_force_transfer_manager_can_call() {
     let bob = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     s.contract
@@ -202,7 +202,7 @@ fn test_force_transfer_to_self() {
     let alice = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Self-transfer — balance unchanged
@@ -258,7 +258,7 @@ fn test_force_transfer_works_when_amount_exceeds_principal() {
     );
 
     // Force transfer the full balance — exceeds total_principal but should succeed
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.force_transfer(
         &s.forced_transfer_manager,
         &s.yield_recipient,
@@ -276,8 +276,8 @@ fn test_force_transfer_exceeds_balance_reverts() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env);
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &(500 * DECIMALS));
 
     // Mint more to bob so total principal > alice's balance
@@ -297,7 +297,7 @@ fn test_force_transfer_to_unauthorized_account_reverts() {
     let alice = Address::generate(&s.env);
     let bob = Address::generate(&s.env); // NOT authorized
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
 
     // Preflight short-circuits with NoTrustline before clawback (FIND-005); alice's balance stays intact.

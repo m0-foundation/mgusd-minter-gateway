@@ -53,6 +53,8 @@ Renouncing forfeits the classic-Stellar issuer levers. The wrapper has equivalen
 
 The "no future flag changes" gap means the step 1 flag set is what you live with forever — get it right before step 6.
 
+The `block_user` equivalent is not exact: the classic revoke also cancels the holder's standing orders on Stellar's built-in exchange and withdraws their liquidity-pool deposits, while SAC `set_authorized(false)` only clears the authorization flag — orders placed before the block survive it and can still execute. See [What blocking does not undo](MGUSD-IMPLEMENTATION-OVERVIEW.md#what-blocking-does-not-undo-standing-orders-and-pool-deposits) for the operational runbook.
+
 ## Safety properties
 
 - **Opt-in.** Step 6 only runs if `--renounce-issuer` is set explicitly. Default behavior is steps 1–5 only — equivalent to `deploy-testnet.sh`.

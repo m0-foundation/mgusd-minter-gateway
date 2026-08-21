@@ -1,20 +1,25 @@
 use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, BytesN, Env, Vec};
 
 use crate::admin::{has_admin, read_admin, require_admin, write_admin};
+use crate::block_list::{
+    add_to_block_list, insert_onboarded, is_on_block_list, is_onboarded, remove_from_block_list,
+};
 use crate::constants::MAX_BATCH_SIZE;
 use crate::errors::MinterGatewayError;
 use crate::events::{
     emit_admin_set, emit_block_operator_added, emit_block_operator_removed, emit_burn,
     emit_force_transfer, emit_forced_transfer_manager_set, emit_interest_rate_set, emit_mint,
-    emit_minter_set, emit_pauser_added, emit_pauser_removed, emit_reconcile,
-    emit_sac_admin_transferred, emit_unblock_operator_added, emit_unblock_operator_removed,
-    emit_upgraded, emit_yield_claimed, emit_yield_recipient_manager_set, emit_yield_recipient_set,
+    emit_minter_set, emit_onboarder_added, emit_onboarder_removed, emit_pauser_added,
+    emit_pauser_removed, emit_reconcile, emit_sac_admin_transferred, emit_unblock_operator_added,
+    emit_unblock_operator_removed, emit_upgraded, emit_user_onboarded, emit_yield_claimed,
+    emit_yield_recipient_manager_set, emit_yield_recipient_set,
 };
 use crate::roles::{
-    delete_block_operator, delete_pauser, delete_unblock_operator, insert_block_operator,
-    insert_pauser, insert_unblock_operator, is_block_operator, is_pauser, is_unblock_operator,
-    read_forced_transfer_manager, read_minter, read_yield_recipient, read_yield_recipient_manager,
-    require_block_operator, require_pauser, require_role_holder, require_unblock_operator,
+    delete_block_operator, delete_onboarder, delete_pauser, delete_unblock_operator,
+    insert_block_operator, insert_onboarder, insert_pauser, insert_unblock_operator,
+    is_block_operator, is_onboarder, is_pauser, is_unblock_operator, read_forced_transfer_manager,
+    read_minter, read_yield_recipient, read_yield_recipient_manager, require_block_operator,
+    require_onboarder, require_pauser, require_role_holder, require_unblock_operator,
     write_forced_transfer_manager, write_minter, write_yield_recipient,
     write_yield_recipient_manager,
 };
@@ -72,6 +77,8 @@ impl YieldToken {
     ///   More addresses can be granted via `add_unblock_operator`. May equal `block_operator`.
     /// * `pauser` - Initial address with pause permission; added to the pauser set.
     ///   More addresses can be granted via `add_pauser`.
+    /// * `onboarder` - Initial address with onboard permission; added to the onboarder set.
+    ///   More addresses can be granted via `add_onboarder`.
     pub fn __constructor(
         e: Env,
         sac_token: Address,
@@ -83,6 +90,7 @@ impl YieldToken {
         block_operator: Address,
         unblock_operator: Address,
         pauser: Address,
+        onboarder: Address,
     ) -> Result<(), MinterGatewayError> {
         if has_admin(&e) {
             return Err(MinterGatewayError::AlreadyInitializedError);
@@ -100,6 +108,7 @@ impl YieldToken {
         insert_block_operator(&e, &block_operator);
         insert_unblock_operator(&e, &unblock_operator);
         insert_pauser(&e, &pauser);
+        insert_onboarder(&e, &onboarder);
 
         extend_instance_ttl(&e);
 
@@ -229,26 +238,58 @@ impl YieldToken {
         }
     }
 
+    /// Grants onboard permission to `addr`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address is already an onboarder.
+    pub fn add_onboarder(e: Env, addr: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        if insert_onboarder(&e, &addr) {
+            emit_onboarder_added(&e, addr);
+        }
+    }
+
+    /// Revokes onboard permission from `addr`. Admin only.
+    /// Idempotent: silent no-op (no event) if the address does not have onboard permission.
+    pub fn remove_onboarder(e: Env, addr: Address) {
+        require_admin(&e);
+        extend_instance_ttl(&e);
+
+        if delete_onboarder(&e, &addr) {
+            emit_onboarder_removed(&e, addr);
+        }
+    }
+
     // =========================================================================
-    // BlockList Functions (Block / Unblock operators)
+    // BlockList Functions (Block / Unblock / Onboard operators)
     //
-    // Mirrors the `stellar_tokens::fungible::blocklist::FungibleBlockList`
-    // interface: `block_user` / `unblock_user` / `blocked`. Backed by the SAC
-    // allowlist (`set_authorized`) — the SAC is the authoritative source of
-    // authorization state, so we do not mirror into contract storage.
+    // Three discrete roles with three discrete functions:
+    //   - block_user  (block operator)   — adds to contract block list + SAC set_authorized(false)
+    //   - unblock_user (unblock operator) — removes from block list + SAC set_authorized(true)
+    //   - onboard_user (onboarder)        — activation / re-authorization; fails if on block list
     //
-    // `blocked` is the inverse of SAC authorization:
-    //   `blocked(a) == true`  ⇔  SAC `authorized(a) == false`
+    // The contract block list (BlockListed storage) is policy state: it records
+    // which accounts are currently held by compliance. The SAC auth flag is the
+    // enforcement mechanism. They are kept consistent by the three functions.
     //
-    // Note on polarity under AUTH_REQUIRED: untouched accounts are SAC-
-    // unauthorized by default, so `blocked` returns `true` for them.
+    // `blocked(account)` returns the inverse of SAC authorization and is
+    // preserved unchanged for FungibleBlockList compatibility. Use
+    // `is_on_block_list(account)` to distinguish "compliance hold" from "never
+    // onboarded".
     // =========================================================================
 
-    /// Blocks a user, preventing them from sending or receiving SAC tokens.
-    /// Block operator only.
+    /// Places `user` on the compliance block list and revokes their SAC authorization.
+    /// Block operator only. Idempotent: silent no-op (no event) if the user is
+    /// already on the block list.
     pub fn block_user(e: Env, user: Address, operator: Address) -> Result<(), MinterGatewayError> {
         require_block_operator(&e, &operator)?;
         extend_instance_ttl(&e);
+
+        if is_on_block_list(&e, &user) {
+            return Ok(());
+        }
+
+        add_to_block_list(&e, &user);
 
         let sac_addr = read_sac_token(&e);
         token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &false);
@@ -257,8 +298,10 @@ impl YieldToken {
         Ok(())
     }
 
-    /// Unblocks a user, restoring their ability to send and receive SAC tokens.
-    /// Unblock operator only.
+    /// Removes `user` from the compliance block list. Restores SAC authorization only if the
+    /// user has previously been onboarded.
+    /// Unblock operator only. Idempotent: silent no-op (no event) if the user is
+    /// not on the block list.
     pub fn unblock_user(
         e: Env,
         user: Address,
@@ -267,14 +310,110 @@ impl YieldToken {
         require_unblock_operator(&e, &operator)?;
         extend_instance_ttl(&e);
 
-        let sac_addr = read_sac_token(&e);
-        token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &true);
+        if !is_on_block_list(&e, &user) {
+            return Ok(());
+        }
+
+        remove_from_block_list(&e, &user);
+
+        if is_onboarded(&e, &user) {
+            let sac_addr = read_sac_token(&e);
+            token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &true);
+        }
 
         emit_user_unblocked(&e, &user);
         Ok(())
     }
 
-    /// Blocks multiple users in a single transaction.
+    /// Activates `user` by granting SAC authorization and recording them in the
+    /// `Onboarded` set. Returns `UserBlockedError` if the user is on the
+    /// compliance block list, even if already onboarded.
+    ///
+    /// For already-onboarded users this re-asserts SAC authorization without
+    /// re-emitting `user_onboarded`: deleting and recreating a trustline resets
+    /// SAC auth to unauthorized, and this is the sanctioned path to restore it
+    /// (the SAC's own `set_authorized` event records the re-authorization).
+    /// Onboarder only.
+    pub fn onboard_user(
+        e: Env,
+        user: Address,
+        operator: Address,
+    ) -> Result<(), MinterGatewayError> {
+        require_onboarder(&e, &operator)?;
+        extend_instance_ttl(&e);
+
+        if is_on_block_list(&e, &user) {
+            return Err(MinterGatewayError::UserBlockedError);
+        }
+
+        let first_onboard = !is_onboarded(&e, &user);
+        if first_onboard {
+            insert_onboarded(&e, &user);
+        }
+
+        let sac_addr = read_sac_token(&e);
+        token::StellarAssetClient::new(&e, &sac_addr).set_authorized(&user, &true);
+
+        if first_onboard {
+            emit_user_onboarded(&e, &user);
+        }
+        Ok(())
+    }
+
+    /// Activates multiple users by granting SAC authorization.
+    /// Users on the compliance block list are skipped and returned, even if
+    /// already onboarded. Users without a trustline are silently skipped (the
+    /// SAC's `authorized` trap is caught via `try_authorized`, so one such
+    /// member no longer aborts the whole batch) — they are NOT marked onboarded
+    /// and must be resubmitted once the trustline exists. Like `onboard_user`,
+    /// this re-asserts SAC authorization for already-onboarded users whose
+    /// trustline auth was reset (e.g. trustline deleted and recreated), without
+    /// re-emitting `user_onboarded`.
+    /// Onboarder only. Max 40 users per call.
+    pub fn batch_onboard_users(
+        e: Env,
+        users: Vec<Address>,
+        operator: Address,
+    ) -> Result<Vec<Address>, MinterGatewayError> {
+        require_onboarder(&e, &operator)?;
+        extend_instance_ttl(&e);
+
+        if users.len() > MAX_BATCH_SIZE {
+            return Err(MinterGatewayError::BatchTooLargeError);
+        }
+
+        let sac_addr = read_sac_token(&e);
+        let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
+        let mut blocked = Vec::new(&e);
+
+        for user in users.iter() {
+            if is_on_block_list(&e, &user) {
+                blocked.push_back(user);
+                continue;
+            }
+
+            // No trustline: skipped without aborting the batch.
+            let Ok(Ok(authorized)) = sac_client.try_authorized(&user) else {
+                continue;
+            };
+
+            let first_onboard = !is_onboarded(&e, &user);
+
+            if !authorized {
+                sac_client.set_authorized(&user, &true);
+            }
+
+            if first_onboard {
+                insert_onboarded(&e, &user);
+                emit_user_onboarded(&e, &user);
+            }
+        }
+
+        Ok(blocked)
+    }
+
+    /// Places multiple users on the compliance block list and revokes SAC authorization.
+    /// Already-blocked users are silently skipped (no event).
     /// Block operator only. Max 40 users per call.
     pub fn batch_block_users(
         e: Env,
@@ -292,6 +431,10 @@ impl YieldToken {
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
 
         for user in users.iter() {
+            if is_on_block_list(&e, &user) {
+                continue;
+            }
+            add_to_block_list(&e, &user);
             sac_client.set_authorized(&user, &false);
             emit_user_blocked(&e, &user);
         }
@@ -299,7 +442,8 @@ impl YieldToken {
         Ok(())
     }
 
-    /// Unblocks multiple users in a single transaction.
+    /// Removes multiple users from the compliance block list and restores SAC authorization.
+    /// Users not on the block list are silently skipped (no event).
     /// Unblock operator only. Max 40 users per call.
     pub fn batch_unblock_users(
         e: Env,
@@ -317,7 +461,13 @@ impl YieldToken {
         let sac_client = token::StellarAssetClient::new(&e, &sac_addr);
 
         for user in users.iter() {
-            sac_client.set_authorized(&user, &true);
+            if !is_on_block_list(&e, &user) {
+                continue;
+            }
+            remove_from_block_list(&e, &user);
+            if is_onboarded(&e, &user) {
+                sac_client.set_authorized(&user, &true);
+            }
             emit_user_unblocked(&e, &user);
         }
 
@@ -692,6 +842,24 @@ impl YieldToken {
     pub fn is_pauser(e: Env, addr: Address) -> bool {
         extend_instance_ttl(&e);
         is_pauser(&e, &addr)
+    }
+
+    /// Returns whether `addr` has onboard permission.
+    pub fn is_onboarder(e: Env, addr: Address) -> bool {
+        extend_instance_ttl(&e);
+        is_onboarder(&e, &addr)
+    }
+
+    /// Returns whether `account` is on the contract-level compliance block list.
+    pub fn is_on_block_list(e: Env, account: Address) -> bool {
+        extend_instance_ttl(&e);
+        is_on_block_list(&e, &account)
+    }
+
+    /// Returns whether `account` has ever been explicitly activated by an onboarder.
+    pub fn is_onboarded(e: Env, account: Address) -> bool {
+        extend_instance_ttl(&e);
+        is_onboarded(&e, &account)
     }
 }
 

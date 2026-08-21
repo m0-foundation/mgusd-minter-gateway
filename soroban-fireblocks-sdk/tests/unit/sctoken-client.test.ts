@@ -634,6 +634,7 @@ describe("SctokenFireblocksClient", () => {
         blockOperator: config.sourcePublicKey,
         unblockOperator: config.sourcePublicKey,
         pauser: config.sourcePublicKey,
+        onboarder: config.sourcePublicKey,
         deployerKeypair: Keypair.random(),
       });
 
@@ -695,6 +696,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          onboarder: config.sourcePublicKey,
           deployerKeypair: Keypair.random(),
         }),
       ).rejects.toBeInstanceOf(IssuerContaminatedError);
@@ -761,6 +763,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          onboarder: config.sourcePublicKey,
           deployerKeypair: Keypair.random(),
         }),
       ).rejects.toThrow("configureIssuer failed");
@@ -819,6 +822,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          onboarder: config.sourcePublicKey,
           deployerKeypair: Keypair.random(),
         }),
       ).rejects.toThrow("deploySac failed");
@@ -892,6 +896,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          onboarder: config.sourcePublicKey,
           deployerKeypair: Keypair.random(),
         }),
       ).rejects.toBeInstanceOf(WasmHashMismatchError);
@@ -968,6 +973,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          onboarder: config.sourcePublicKey,
           deployerKeypair: Keypair.random(),
         }),
       ).rejects.toThrow("uploadWasm failed");
@@ -1043,6 +1049,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          onboarder: config.sourcePublicKey,
           deployerKeypair: Keypair.random(),
         }),
       ).rejects.toThrow("deployContract failed");
@@ -1126,6 +1133,7 @@ describe("SctokenFireblocksClient", () => {
           blockOperator: config.sourcePublicKey,
           unblockOperator: config.sourcePublicKey,
           pauser: config.sourcePublicKey,
+          onboarder: config.sourcePublicKey,
           deployerKeypair: Keypair.random(),
         }),
       ).rejects.toThrow("set_admin failed");

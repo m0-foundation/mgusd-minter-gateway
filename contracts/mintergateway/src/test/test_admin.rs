@@ -159,11 +159,13 @@ fn test_added_operators_can_block_and_unblock() {
     s.contract.add_block_operator(&new_block);
     s.contract.add_unblock_operator(&new_unblock);
 
-    s.contract.unblock_user(&user, &new_unblock);
-    assert!(!s.contract.blocked(&user));
-
+    // Onboard the user first, then block via new_block, then unblock via new_unblock
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.block_user(&user, &new_block);
     assert!(s.contract.blocked(&user));
+
+    s.contract.unblock_user(&user, &new_unblock);
+    assert!(!s.contract.blocked(&user));
 }
 
 // Repeated `add_unblock_operator` calls for the same address must not
@@ -235,7 +237,7 @@ fn test_admin_cannot_burn() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     let result = s.contract.try_burn(&s.admin, &user, &(400 * DECIMALS));

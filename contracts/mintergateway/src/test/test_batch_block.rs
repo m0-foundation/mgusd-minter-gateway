@@ -1,6 +1,8 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Vec};
 
+use crate::constants::MAX_BATCH_SIZE;
+
 use super::setup::*;
 
 // =============================================================================
@@ -19,6 +21,9 @@ fn test_batch_unblock_by_unblock_operator() {
         ],
     );
 
+    // Onboard, then block, then verify batch_unblock_users restores authorization
+    s.contract.batch_onboard_users(&accounts, &s.onboarder);
+    s.contract.batch_block_users(&accounts, &s.block_operator);
     s.contract
         .batch_unblock_users(&accounts, &s.unblock_operator);
 
@@ -39,11 +44,8 @@ fn test_batch_block_by_block_operator() {
         ],
     );
 
-    // First authorize all accounts
-    s.contract
-        .batch_unblock_users(&accounts, &s.unblock_operator);
-
-    // Then block them
+    // Onboard, then block
+    s.contract.batch_onboard_users(&accounts, &s.onboarder);
     s.contract.batch_block_users(&accounts, &s.block_operator);
 
     for account in accounts.iter() {
@@ -85,8 +87,7 @@ fn test_batch_block_single_user() {
     let account = Address::generate(&s.env);
     let accounts: Vec<Address> = Vec::from_array(&s.env, [account.clone()]);
 
-    s.contract
-        .batch_unblock_users(&accounts, &s.unblock_operator);
+    s.contract.onboard_user(&account, &s.onboarder);
     assert!(!s.contract.blocked(&account));
 
     s.contract.batch_block_users(&accounts, &s.block_operator);
@@ -102,6 +103,75 @@ fn test_batch_block_empty_vec() {
     s.contract.batch_block_users(&accounts, &s.block_operator);
     s.contract
         .batch_unblock_users(&accounts, &s.unblock_operator);
+}
+
+// =============================================================================
+// IDEMPOTENCY — already-in-state addresses are skipped, no duplicate events
+// =============================================================================
+
+#[test]
+fn test_block_user_already_blocked_is_noop() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    s.contract.onboard_user(&user, &s.onboarder);
+    s.contract.block_user(&user, &s.block_operator);
+
+    // Second block is a silent no-op: no duplicate user_blocked event
+    s.contract.block_user(&user, &s.block_operator);
+    s.assert_no_events();
+    assert!(s.contract.is_on_block_list(&user));
+    assert!(s.contract.blocked(&user));
+}
+
+#[test]
+fn test_unblock_user_not_blocked_is_noop() {
+    let s = setup();
+    let user = Address::generate(&s.env);
+
+    s.contract.onboard_user(&user, &s.onboarder);
+
+    // Never blocked: unblock is a silent no-op, no user_unblocked event
+    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.assert_no_events();
+    assert!(!s.contract.is_on_block_list(&user));
+    assert!(!s.contract.blocked(&user));
+}
+
+#[test]
+fn test_batch_block_skips_already_blocked() {
+    let s = setup();
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let users: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
+
+    s.contract.batch_onboard_users(&users, &s.onboarder);
+    s.contract.block_user(&alice, &s.block_operator);
+
+    // alice is already blocked: only bob transitions, one event
+    s.contract.batch_block_users(&users, &s.block_operator);
+    assert_eq!(s.gateway_event_count(), 1);
+    assert!(s.contract.is_on_block_list(&alice));
+    assert!(s.contract.is_on_block_list(&bob));
+}
+
+#[test]
+fn test_batch_unblock_skips_not_blocked() {
+    let s = setup();
+    let alice = Address::generate(&s.env);
+    let bob = Address::generate(&s.env);
+    let users: Vec<Address> = Vec::from_array(&s.env, [alice.clone(), bob.clone()]);
+
+    s.contract.batch_onboard_users(&users, &s.onboarder);
+    s.contract.block_user(&bob, &s.block_operator);
+
+    // alice was never blocked: only bob transitions, one event
+    s.contract.batch_unblock_users(&users, &s.unblock_operator);
+    assert_eq!(s.gateway_event_count(), 1);
+    assert!(!s.contract.is_on_block_list(&alice));
+    assert!(!s.contract.is_on_block_list(&bob));
+    assert!(!s.contract.blocked(&alice));
+    assert!(!s.contract.blocked(&bob));
 }
 
 // =============================================================================
@@ -173,7 +243,7 @@ fn test_random_cannot_batch_block() {
 fn test_batch_block_exceeds_max_size() {
     let s = setup();
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..41 {
+    for _ in 0..(MAX_BATCH_SIZE + 1) {
         accounts.push_back(Address::generate(&s.env));
     }
 
@@ -189,16 +259,17 @@ fn test_batch_block_exceeds_max_size() {
 #[test]
 fn test_batch_unblock_at_max_size() {
     let s = setup();
-    // Bypass the Rust SDK test harness's shadow budget (see
-    // `test_batch_block_at_max_size` for the full explanation).
+    enforce_current_mainnet_limits(&s.env);
     s.env.cost_estimate().budget().reset_unlimited();
 
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..40 {
+    for _ in 0..MAX_BATCH_SIZE {
         accounts.push_back(Address::generate(&s.env));
     }
 
-    // Should succeed at exactly 40
+    // Onboard and block all 18, then verify batch_unblock succeeds at max size
+    s.contract.batch_onboard_users(&accounts, &s.onboarder);
+    s.contract.batch_block_users(&accounts, &s.block_operator);
     s.contract
         .batch_unblock_users(&accounts, &s.unblock_operator);
 
@@ -210,6 +281,7 @@ fn test_batch_unblock_at_max_size() {
 #[test]
 fn test_batch_block_at_max_size() {
     let s = setup();
+    enforce_current_mainnet_limits(&s.env);
     // Bypass the Rust SDK test harness's shadow budget, which is consumed by
     // `get_authenticated_authorizations` serializing auth trees for test
     // instrumentation — not a constraint enforced on-chain or in preflight.
@@ -219,9 +291,11 @@ fn test_batch_block_at_max_size() {
     s.env.cost_estimate().budget().reset_unlimited();
 
     let mut accounts: Vec<Address> = Vec::new(&s.env);
-    for _ in 0..40 {
+    for _ in 0..MAX_BATCH_SIZE {
         accounts.push_back(Address::generate(&s.env));
     }
+
+    s.contract.batch_onboard_users(&accounts, &s.onboarder);
 
     // Accounts start unauthorized (AUTH_REQUIRED), so freezing is a no-op
     // on auth state but should succeed without hitting resource limits
@@ -243,10 +317,10 @@ fn test_batch_block_blocks_transfers() {
     let bob = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    // Authorize and mint to both users
+    // Onboard and mint to both users
     let users: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
-    s.contract.batch_unblock_users(&users, &s.unblock_operator);
+    s.contract.batch_onboard_users(&users, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 
@@ -273,10 +347,10 @@ fn test_batch_unblock_restores_transfers() {
     let bob = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    // Authorize, mint, then block
+    // Onboard, mint, then block
     let all: Vec<Address> =
         Vec::from_array(&s.env, [alice.clone(), bob.clone(), recipient.clone()]);
-    s.contract.batch_unblock_users(&all, &s.unblock_operator);
+    s.contract.batch_onboard_users(&all, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &(1_000 * DECIMALS));
     s.contract.mint(&s.minter, &bob, &(1_000 * DECIMALS));
 

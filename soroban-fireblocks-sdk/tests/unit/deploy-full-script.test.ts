@@ -25,6 +25,7 @@ const ROLE_ENV_VARS = [
   "BLOCK_OPERATOR_PUBLIC_KEY",
   "UNBLOCK_OPERATOR_PUBLIC_KEY",
   "PAUSER_PUBLIC_KEY",
+  "ONBOARDER_PUBLIC_KEY",
 ] as const;
 
 type RoleEnvVar = (typeof ROLE_ENV_VARS)[number];
@@ -121,6 +122,7 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
       BLOCK_OPERATOR_PUBLIC_KEY: Keypair.random().publicKey(),
       UNBLOCK_OPERATOR_PUBLIC_KEY: Keypair.random().publicKey(),
       PAUSER_PUBLIC_KEY: Keypair.random().publicKey(),
+      ONBOARDER_PUBLIC_KEY: Keypair.random().publicKey(),
     };
 
     process.env = { ...originalEnv, ...envSetup };
@@ -174,9 +176,9 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
     expect(params.blockOperator).toBe(process.env.BLOCK_OPERATOR_PUBLIC_KEY);
     expect(params.unblockOperator).toBe(process.env.UNBLOCK_OPERATOR_PUBLIC_KEY);
     expect(params.pauser).toBe(process.env.PAUSER_PUBLIC_KEY);
+    expect(params.onboarder).toBe(process.env.ONBOARDER_PUBLIC_KEY);
 
-    // Strong "no collapse" assertion: the eight role values are all
-    // distinct. The audit's PoC bug-state would have all equal.
+    // Strong "no collapse" assertion: all nine role values are distinct.
     const roles = [
       params.admin,
       params.minter,
@@ -186,8 +188,9 @@ describe("scripts/deploy-full.ts (STEL1-5)", () => {
       params.blockOperator,
       params.unblockOperator,
       params.pauser,
+      params.onboarder,
     ];
-    expect(new Set(roles).size).toBe(8);
+    expect(new Set(roles).size).toBe(9);
   });
 
   it.each(ROLE_ENV_VARS)(

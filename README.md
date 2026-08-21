@@ -123,6 +123,18 @@ the admin role does *not* implicitly carry these powers. See
 - `block_user` and `unblock_user` call the SAC's `set_authorized` under the hood
 - Emits the upstream `stellar_tokens::fungible::blocklist` events: `UserBlocked` / `UserUnblocked` (snake_case topic names `user_blocked` / `user_unblocked`, with the user `Address` as a topic)
 
+### What Blocking Does Not Undo: Standing Orders and Pool Deposits
+
+Stellar has a built-in exchange. Any account can place a standing order (an "offer" in Stellar terms, e.g. *sell 100 MGUSD for 100 USDC*) that sits on the ledger until another account takes the other side — the trade then executes automatically, with no new signature from the account that placed it. Accounts can also deposit tokens into Stellar's on-ledger liquidity pools, where the deposited tokens keep trading on their own.
+
+`block_user` freezes an account by clearing its trustline authorization flag (SAC `set_authorized(false)`). This stops the account from sending, receiving, and placing **new** orders — but it does **not** cancel orders the account placed before the block, and it does **not** pull its tokens out of liquidity pools. A blocked user's earlier order can therefore still execute later and move their tokens. (The classic Stellar issuer operation `SetTrustLineFlags` *would* cancel those orders as a side effect, but our issuer key is renounced at deployment — see [issuer renunciation](docs/issuer-renunciation.md) — so SAC deauthorization is the only freeze mechanism available.)
+
+Operational guidance for a compliance hold:
+
+1. After blocking, check whether the account has standing orders or pool deposits: Horizon `/accounts/{id}/offers` lists its orders, and its pool deposits are visible on the account record.
+2. `force_transfer` (clawback) can reclaim only the account's **available** balance — tokens committed to a standing order are locked and cannot be clawed back until that order is cancelled or executes.
+3. If an old order does execute after the block, use the standard tools on the outcome: `block_user` the account that received the tokens if warranted, and `force_transfer` to reclaim them.
+
 ## Roles
 
 | Role | Permissions | Intended Actor |

@@ -41,7 +41,7 @@ fn test_send_to_issuer_destroys_tokens() {
 
     let issuer = &s.issuer;
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &amount);
     assert_eq!(s.sac_token.balance(&user), amount);
 
@@ -73,7 +73,7 @@ fn test_frozen_user_cannot_send_to_issuer() {
 
     let issuer = &s.issuer;
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Freeze the user
@@ -82,7 +82,7 @@ fn test_frozen_user_cannot_send_to_issuer() {
 
     // Frozen user CANNOT transfer to a normal account
     let other = Address::generate(&s.env);
-    s.contract.unblock_user(&other, &s.unblock_operator);
+    s.contract.onboard_user(&other, &s.onboarder);
     let result = s.sac_token.try_transfer(&user, &other, &(100 * DECIMALS));
     assert!(result.is_err());
 
@@ -136,7 +136,7 @@ fn test_unblock_issuer_panics_no_trustline() {
     let issuer = &s.issuer;
 
     // Attempt to unfreeze the issuer — should also fail (no trustline)
-    let result = s.contract.try_unblock_user(issuer, &s.unblock_operator);
+    let result = s.contract.try_unblock_user(issuer, &s.onboarder);
     assert!(
         result.is_err(),
         "unfreeze_account(issuer) should fail — issuer has no trustline"
@@ -170,7 +170,7 @@ fn test_issuer_cannot_be_frozen_to_block_send_to_issuer() {
     let issuer = &s.issuer;
 
     // Setup: authorize user, mint tokens
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &amount);
 
     // We CANNOT freeze the issuer to block the bypass
@@ -199,7 +199,7 @@ fn test_operations_work_after_failed_issuer_block() {
     let _ = s.contract.try_block_user(issuer, &s.block_operator);
 
     // Minting still works
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &amount);
     assert_eq!(s.sac_token.balance(&user), amount);
 
@@ -381,7 +381,7 @@ fn test_authorized_user_can_send_to_issuer_to_burn() {
     let send_amount = 400 * DECIMALS;
 
     // Authorize user and mint tokens
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &amount);
     assert_eq!(s.sac_token.balance(&user), amount);
     assert!(!s.contract.blocked(&user));
@@ -410,7 +410,7 @@ fn test_authorized_user_can_send_full_balance_to_issuer() {
     let user = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Send entire balance to issuer
@@ -441,7 +441,7 @@ fn test_direct_sac_transfer_blocked_for_deauthorized_recipient() {
     let amount = 1_000 * DECIMALS;
 
     // Authorize alice and mint tokens to her
-    s.contract.unblock_user(&alice, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
     assert_eq!(s.sac_token.balance(&alice), amount);
 
@@ -466,8 +466,8 @@ fn test_direct_sac_transfer_succeeds_between_authorized_accounts() {
     let transfer_amount = 400 * DECIMALS;
 
     // Authorize both accounts and mint to alice
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Alice calls SAC transfer directly — bypassing our contract entirely
@@ -496,8 +496,8 @@ fn test_direct_sac_approve_and_transfer_from_bypass() {
     let allowance_amount = 500 * DECIMALS;
 
     // Authorize alice and bob, mint to alice
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Alice approves a spender directly on the SAC
@@ -525,7 +525,7 @@ fn test_direct_sac_transfer_from_blocked_for_deauthorized_recipient() {
     let spender = Address::generate(&s.env);
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&alice, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Alice approves spender on the SAC
@@ -617,7 +617,7 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     let contract_addr = s.contract.address.clone();
     let amount = 1_000 * DECIMALS;
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &amount);
 
     // Contract address was never authorized — blocked by RequiredFlag
@@ -629,7 +629,7 @@ fn test_contract_address_blocked_by_default_due_to_required_flag() {
     assert!(result.is_err());
 
     // Only after explicit authorization does it work
-    s.contract.unblock_user(&contract_addr, &s.unblock_operator);
+    s.contract.onboard_user(&contract_addr, &s.onboarder);
     assert!(!s.contract.blocked(&contract_addr));
 
     s.sac_token

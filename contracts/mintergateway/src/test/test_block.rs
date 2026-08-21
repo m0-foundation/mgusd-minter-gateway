@@ -12,7 +12,7 @@ fn test_block_user_prevents_transfer() {
     let user = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     s.contract.block_user(&user, &s.block_operator);
@@ -31,7 +31,7 @@ fn test_unblock_user_restores_transfer() {
     let user = Address::generate(&s.env);
     let recipient = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     s.contract.block_user(&user, &s.block_operator);
@@ -41,7 +41,7 @@ fn test_unblock_user_restores_transfer() {
     assert!(!s.contract.blocked(&user));
 
     // Authorize recipient so they can receive (AUTH_REQUIRED mode)
-    s.contract.unblock_user(&recipient, &s.unblock_operator);
+    s.contract.onboard_user(&recipient, &s.onboarder);
 
     // Unblocked user can transfer again
     s.sac_token.transfer(&user, &recipient, &(100 * DECIMALS));
@@ -62,7 +62,7 @@ fn test_block_idempotent() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &(1_000 * DECIMALS));
 
     // Freezing twice doesn't panic
@@ -77,7 +77,7 @@ fn test_unblock_idempotent() {
     let user = Address::generate(&s.env);
 
     // Authorize the account first
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     assert!(!s.contract.blocked(&user));
 
     // Unfreezing an already-authorized account doesn't panic
@@ -176,7 +176,7 @@ fn test_block_operator_can_block_user() {
     let s = setup();
     let user = Address::generate(&s.env);
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     assert!(!s.contract.blocked(&user));
 
     s.contract.block_user(&user, &s.block_operator);
@@ -187,6 +187,10 @@ fn test_block_operator_can_block_user() {
 fn test_unblock_operator_can_unblock_user() {
     let s = setup();
     let user = Address::generate(&s.env);
+
+    s.contract.onboard_user(&user, &s.onboarder);
+    s.contract.block_user(&user, &s.block_operator);
+    assert!(s.contract.blocked(&user));
 
     s.contract.unblock_user(&user, &s.unblock_operator);
     assert!(!s.contract.blocked(&user));
@@ -200,11 +204,12 @@ fn test_single_address_can_hold_both_block_and_unblock_roles() {
     s.contract.add_unblock_operator(&dual);
 
     let user = Address::generate(&s.env);
-    s.contract.unblock_user(&user, &dual);
-    assert!(!s.contract.blocked(&user));
-
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.block_user(&user, &dual);
     assert!(s.contract.blocked(&user));
+
+    s.contract.unblock_user(&user, &dual);
+    assert!(!s.contract.blocked(&user));
 }
 
 // =============================================================================
@@ -218,7 +223,7 @@ fn test_compliance_flow_block_burn_unblock() {
     let principal = 1_000 * DECIMALS;
 
     // Step 1: Mint tokens
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &principal);
     assert_eq!(s.sac_token.balance(&user), principal);
     assert!(!s.contract.blocked(&user));
@@ -233,13 +238,13 @@ fn test_compliance_flow_block_burn_unblock() {
     assert_eq!(s.contract.total_principal(), principal / 2);
     assert_eq!(s.contract.total_supply(), principal / 2);
 
-    // Step 4: Unblock the account
+    // Step 4: Unblock the account (compliance clearance — user is already onboarded)
     s.contract.unblock_user(&user, &s.unblock_operator);
     assert!(!s.contract.blocked(&user));
 
     // Step 5: User can transfer remaining balance
     let recipient = Address::generate(&s.env);
-    s.contract.unblock_user(&recipient, &s.unblock_operator); // Authorize recipient (AUTH_REQUIRED mode)
+    s.contract.onboard_user(&recipient, &s.onboarder); // Authorize recipient (AUTH_REQUIRED mode)
     s.sac_token.transfer(&user, &recipient, &(100 * DECIMALS));
     assert_eq!(s.sac_token.balance(&recipient), 100 * DECIMALS);
 }
@@ -252,8 +257,8 @@ fn test_block_user_blocks_subsequent_direct_sac_transfer() {
     let amount = 1_000 * DECIMALS;
 
     // Authorize both and mint
-    s.contract.unblock_user(&alice, &s.unblock_operator);
-    s.contract.unblock_user(&bob, &s.unblock_operator);
+    s.contract.onboard_user(&alice, &s.onboarder);
+    s.contract.onboard_user(&bob, &s.onboarder);
     s.contract.mint(&s.minter, &alice, &amount);
 
     // Direct SAC transfer works while both are authorized
@@ -285,7 +290,7 @@ fn test_balance_matches_sac_balance() {
     assert_eq!(s.contract.balance(&user), 0);
     assert_eq!(s.contract.balance(&user), s.sac_token.balance(&user));
 
-    s.contract.unblock_user(&user, &s.unblock_operator);
+    s.contract.onboard_user(&user, &s.onboarder);
     s.contract.mint(&s.minter, &user, &amount);
 
     // After mint: balance matches SAC-reported balance
@@ -316,9 +321,9 @@ fn test_block_user_does_not_revoke_existing_allowances() {
     let principal = 1_000 * DECIMALS;
     let allowance = 500 * DECIMALS;
 
-    s.contract.unblock_user(&owner, &s.unblock_operator);
-    s.contract.unblock_user(&spender, &s.unblock_operator);
-    s.contract.unblock_user(&recipient, &s.unblock_operator);
+    s.contract.onboard_user(&owner, &s.onboarder);
+    s.contract.onboard_user(&spender, &s.onboarder);
+    s.contract.onboard_user(&recipient, &s.onboarder);
     s.contract.mint(&s.minter, &owner, &principal);
 
     let expiration_ledger = s.env.ledger().sequence() + 1_000_000;
@@ -354,9 +359,9 @@ fn test_block_owner_prevents_spender_transfer_from() {
     let principal = 1_000 * DECIMALS;
     let allowance = 500 * DECIMALS;
 
-    s.contract.unblock_user(&owner, &s.unblock_operator);
-    s.contract.unblock_user(&spender, &s.unblock_operator);
-    s.contract.unblock_user(&recipient, &s.unblock_operator);
+    s.contract.onboard_user(&owner, &s.onboarder);
+    s.contract.onboard_user(&spender, &s.onboarder);
+    s.contract.onboard_user(&recipient, &s.onboarder);
     s.contract.mint(&s.minter, &owner, &principal);
 
     let expiration_ledger = s.env.ledger().sequence() + 1_000_000;

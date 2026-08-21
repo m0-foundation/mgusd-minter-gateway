@@ -17,10 +17,10 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 ### 2. User Distribution (Treasury → End User)
 
-1. Unblock operator whitelists (unblocks) accounts — individually via `unblock_user(user, operator)` or in batch via `batch_unblock_users(users, operator)` (up to 40 per call)
+1. Onboarder activates new recipient accounts — individually via `onboard_user(user, operator)`
 2. Treasury transfers tokens to the user via the SAC's standard SEP-41 `transfer()`
-3. Whitelisted (unblocked) accounts can freely transfer among themselves
-4. Non-whitelisted (blocked) accounts cannot send or receive tokens
+3. Activated accounts can freely transfer among themselves
+4. Non-activated or blocked accounts cannot send or receive tokens
 
 ### 3. Redemption (End User → MoneyGram → Bridge)
 
@@ -63,13 +63,14 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | **Forced Transfer Manager** | `force_transfer` | Crossmint |
 | **Block operator** (membership) | `block_user`, `batch_block_users` | Crossmint (typical) |
 | **Unblock operator** (membership) | `unblock_user`, `batch_unblock_users` | Crossmint (typical) |
+| **Onboarder** (membership) | `onboard_user`, `batch_onboard_users` | MoneyGram / Crossmint |
 | **Pauser** (membership) | `pause`, `unpause` | M0 |
 
 **Design properties:**
 
-- **Admin is *not* a super-role.** Admin's powers are limited to: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `add_pauser`, `remove_pauser`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** call `mint`, `burn`, `set_interest_rate`, `block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`, `claim_yield`, `set_yield_recipient`, `pause`, or `unpause` without first granting itself the relevant role.
+- **Admin is *not* a super-role.** Admin's powers are limited to: `set_admin`, `set_minter`, `set_yield_recipient_manager`, `set_forced_transfer_manager`, `add_block_operator`, `remove_block_operator`, `add_unblock_operator`, `remove_unblock_operator`, `add_onboarder`, `remove_onboarder`, `add_pauser`, `remove_pauser`, `reconcile_burn`, `transfer_sac_admin`, `upgrade`. Admin **cannot** call `mint`, `burn`, `set_interest_rate`, `block_user`, `unblock_user`, `onboard_user`, `batch_onboard_users`, `batch_block_users`, `batch_unblock_users`, `force_transfer`, `claim_yield`, `set_yield_recipient`, `pause`, or `unpause` without first granting itself the relevant role.
 - **No implicit emergency fallback.** A cold admin signer cannot block a user or force-move balances in an incident. If an admin-driven fallback is needed, the admin must first grant itself the relevant role — e.g. `add_block_operator(admin)` / `add_unblock_operator(admin)` to gain block / unblock, `add_pauser(admin)` to gain pause, or `set_forced_transfer_manager(admin)` to take over forced-transfer. Runbooks should plan for the dedicated role signers being reachable.
-- All roles are **single-address** except **Block operator**, **Unblock operator**, and **Pauser**, each a membership set (any number of addresses can hold each role, granted / revoked by Admin via `add_block_operator` / `remove_block_operator`, `add_unblock_operator` / `remove_unblock_operator`, and `add_pauser` / `remove_pauser`).
+- All roles are **single-address** except **Block operator**, **Unblock operator**, **Onboarder**, and **Pauser**, each a membership set (any number of addresses can hold each role, granted / revoked by Admin via `add_block_operator` / `remove_block_operator`, `add_unblock_operator` / `remove_unblock_operator`, `add_onboarder` / `remove_onboarder`, and `add_pauser` / `remove_pauser`).
 - Only Admin can reassign roles (except Yield Recipient, which is set by the Yield Recipient Manager).
 - Every role-gated function calls `require_auth()` on the `caller` argument and verifies the caller equals the designated role holder — no implicit trust, no admin override.
 - Roles are stored in **Instance** storage.
@@ -80,7 +81,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 
 > **Note:** Each role can only call its own functions. Admin is **not** a super-role and cannot call non-admin functions without first granting itself the relevant role (see [Roles](#roles)).
 
-### Admin-Exclusive Functions (13)
+### Admin-Exclusive Functions (15)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -92,6 +93,8 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `remove_block_operator` | `(addr: Address)` | Revoke **block** permission from an address (idempotent) |
 | `add_unblock_operator` | `(addr: Address)` | Grant **unblock** permission to an address (membership set; idempotent) |
 | `remove_unblock_operator` | `(addr: Address)` | Revoke **unblock** permission from an address (idempotent) |
+| `add_onboarder` | `(addr: Address)` | Grant **onboard** permission to an address (membership set; idempotent) |
+| `remove_onboarder` | `(addr: Address)` | Revoke **onboard** permission from an address (idempotent) |
 | `add_pauser` | `(addr: Address)` | Grant **pause** permission to an address (membership set; idempotent) |
 | `remove_pauser` | `(addr: Address)` | Revoke **pause** permission from an address (idempotent) |
 | `reconcile_burn` | `(amount: i128)` | Decrease both accumulators to reconcile tokens destroyed outside the contract (e.g., sent to issuer) |
@@ -119,16 +122,20 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `set_yield_recipient` | `(caller: Address, new_yr: Address)` | Set the address that receives claimed yield |
 | `claim_yield` | `(caller: Address) -> i128` | Claim accrued yield; mints new SAC tokens to the yield recipient |
 
-### Block / Unblock (allowlist) Functions (4)
+### Block / Unblock / Onboard Functions (6)
 
-`block_user` and `batch_block_users` require the caller to be a **block operator**. `unblock_user` and `batch_unblock_users` require the caller to be an **unblock operator**. Matches the `stellar_tokens::fungible::blocklist` function shape; backed by the SAC allowlist.
+The contract maintains an on-contract block list (separate from the SAC's per-trustline authorization flag) that serves as the auditable compliance policy record.
+
+`block_user` and `batch_block_users` require the caller to be a **block operator**. `unblock_user` and `batch_unblock_users` require the caller to be an **unblock operator**. `onboard_user` and `batch_onboard_users` require the caller to be an **onboarder**.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `block_user` | `(user: Address, operator: Address)` | Block a user on the SAC (`set_authorized(false)`) |
-| `unblock_user` | `(user: Address, operator: Address)` | Unblock a user on the SAC (`set_authorized(true)`) |
-| `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 40 users in a single transaction |
-| `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 40 users in a single transaction |
+| `block_user` | `(user: Address, operator: Address)` | Add `user` to the on-contract block list and call SAC `set_authorized(false)`. Idempotent. |
+| `unblock_user` | `(user: Address, operator: Address)` | Remove `user` from the block list. Calls SAC `set_authorized(true)` only if the user has been previously onboarded. Idempotent. |
+| `onboard_user` | `(user: Address, operator: Address)` | Records the user in the `Onboarded` set and calls SAC `set_authorized(true)`. Returns `UserBlockedError` if the user is on the block list. For already-onboarded users, re-asserts SAC authorization (restores access after trustline deletion + recreation) without re-emitting `user_onboarded`. |
+| `batch_onboard_users` | `(users: Vec<Address>, operator: Address)` | Onboard up to 40 users in a single transaction. Blocked users are skipped and returned. Already-onboarded users are skipped entirely (no SAC re-authorization — use `onboard_user` for that) |
+| `batch_block_users` | `(users: Vec<Address>, operator: Address)` | Block up to 40 users in a single transaction. Already-blocked users are skipped |
+| `batch_unblock_users` | `(users: Vec<Address>, operator: Address)` | Unblock up to 40 users in a single transaction (SAC auth restored only for previously-onboarded accounts). Not-blocked users are skipped |
 
 ### Pauser Functions (2)
 
@@ -139,7 +146,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `pause` | `(caller: Address)` | Pause the contract — blocks mint, burn, claim_yield, set_interest_rate (compliance ops including `force_transfer` and `reconcile_burn` remain accessible) |
 | `unpause` | `(caller: Address)` | Unpause the contract — resumes all blocked operations                                                                                                     |
 
-### View / Query Functions (18)
+### View / Query Functions (21)
 
 | Function | Returns | Description |
 |----------|---------|-------------|
@@ -150,6 +157,7 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `forced_transfer_manager` | `Address` | Current forced transfer manager |
 | `is_block_operator` | `bool` | Whether an address has **block** permission (membership) |
 | `is_unblock_operator` | `bool` | Whether an address has **unblock** permission (membership) |
+| `is_onboarder` | `bool` | Whether an address has **onboard** permission (membership) |
 | `is_pauser` | `bool` | Whether an address has **pause** permission (membership) |
 | `sac_token` | `Address` | SAC token contract address |
 | `interest_rate` | `u32` | Current rate in basis points |
@@ -159,6 +167,8 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 | `total_principal` | `i128` | Yield-earning base (mints − burns) |
 | `total_supply` | `i128` | Total outstanding tokens (principal + claimed yield) |
 | `blocked(account)` | `bool` | Whether a user is blocked on the SAC (inverse of SAC authorization) |
+| `is_on_block_list(account)` | `bool` | Whether the account is on the on-contract compliance block list. |
+| `is_onboarded(account)` | `bool` | Whether the account has ever been explicitly activated by an onboarder. |
 | `balance(id)` | `i128` | SAC-reported balance for an address |
 | `paused` | `bool` | Whether the contract is currently paused |
 
@@ -167,10 +177,10 @@ M0's technical proposal for MGUSD on Stellar — a yield-bearing stablecoin buil
 The contract is initialized via `__constructor` during deployment:
 
 ```
-__constructor(sac_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager, block_operator, unblock_operator, pauser)
+__constructor(sac_token, admin, minter, yield_recipient_manager, yield_recipient, forced_transfer_manager, block_operator, unblock_operator, pauser, onboarder)
 ```
 
-The constructor takes nine arguments: the SAC address plus eight role addresses. The `block_operator`, `unblock_operator`, and `pauser` arguments seed each role's membership set with one initial address; additional addresses can be added afterwards via `add_block_operator`, `add_unblock_operator`, and `add_pauser`. The same address may be reused across these arguments when a single key should hold multiple permissions. Returns `Err(AlreadyInitializedError)` if the contract has already been initialized (checked via `has_admin()`). The constructor does **not** initialize the yield state — index starts at `1.0` (`INDEX_SCALE`) on first use.
+The constructor takes ten arguments: the SAC address plus nine role addresses. The `block_operator`, `unblock_operator`, `pauser`, and `onboarder` arguments seed each role's membership set with one initial address; additional addresses can be added afterwards via `add_block_operator`, `add_unblock_operator`, `add_pauser`, and `add_onboarder`. The same address may be reused across these arguments when a single key should hold multiple permissions. Returns `Err(AlreadyInitializedError)` if the contract has already been initialized (checked via `has_admin()`). The constructor does **not** initialize the yield state — index starts at `1.0` (`INDEX_SCALE`) on first use.
 
 ---
 
@@ -190,7 +200,7 @@ mint(caller: Address, to: Address, amount: i128)
 3. Cross-contract call: `StellarAssetClient::mint(to, amount)` on the SAC
 4. Emits `mint` event with `(to, amount, new_total_principal, new_total_supply)`
 
-Recipient must already be authorized (unblocked) on the SAC.
+Recipient must already be onboarded (SAC-authorized via `onboard_user`) before `mint` is called.
 
 ### Burn
 
@@ -333,9 +343,9 @@ On classic Stellar, sending tokens to the **issuer address** burns them automati
 
 The SAC is configured with `AUTH_REQUIRED` — all accounts start unauthorized (blocked) by default.
 
-1. Accounts can only transact after an **unblock operator** calls `unblock_user()`
-2. The issuer account has no trustline for its own asset and cannot be blocked or unblocked
-3. Blocked accounts hold tokens but cannot move them (including to the issuer)
+1. Accounts can only transact after an **onboarder** calls `onboard_user()`
+2. The issuer account has no trustline for its own asset and cannot be onboarded, blocked or unblocked
+3. Blocked or never-onboarded accounts hold tokens but cannot move them (including to the issuer)
 
 **Important caveat:** The issuer is **exempt from AUTH_REQUIRED** at the Stellar protocol level. This means authorized (unblocked) users **can** send tokens directly to the issuer via SAC `transfer()` or classic Stellar operations. The whitelist model reduces accidental issuer burns by limiting who can transact, but does not eliminate the possibility entirely. If tokens are sent to the issuer, Admin can call `reconcile_burn(amount)` to decrease both accumulators and bring the contract's bookkeeping back in line with actual circulating supply. See the [Issuer Burn Prevention section in the README](../README.md#issuer-burn-prevention) and Note 2 for details.
 
@@ -343,22 +353,32 @@ The SAC is configured with `AUTH_REQUIRED` — all accounts start unauthorized (
 
 ## Compliance & Safety
 
-### Block / Unblock
+### Block / Unblock / Onboard
 
-- SAC operates in `AUTH_REQUIRED` mode — accounts are unauthorized (blocked) by default
-- `unblock_user(user, operator)` → SAC `set_authorized(true)` → user can send/receive
-- `block_user(user, operator)` → SAC `set_authorized(false)` → user is blocked
-- Only a **block operator** can call `block_user`; only an **unblock operator** can call `unblock_user` — Admin must first call `add_block_operator(admin)` or `add_unblock_operator(admin)` if it needs the power directly
-- **Batch operations:** `batch_block_users` requires a block operator and `batch_unblock_users` requires an unblock operator; each accepts up to 40 users per call
-- The 40-user cap is derived from Soroban's per-transaction resource limits; each user consumes write entries for the SAC authorization state
+- SAC operates in `AUTH_REQUIRED` mode — accounts are unauthorized by default
+- `onboard_user(user, operator)` → records user in the `Onboarded` set + SAC `set_authorized(true)` → user can send/receive. Returns `UserBlockedError` if the user is on the compliance block list
+- Calling `onboard_user` again for an already-onboarded (non-blocked) user re-asserts SAC authorization — this is the recovery path when a user deletes and recreates their trustline (the fresh trustline starts unauthorized under `AUTH_REQUIRED`). `batch_onboard_users` does **not** re-assert authorization for already-onboarded users
+- `block_user(user, operator)` → adds user to the on-contract `BlockListed` set + SAC `set_authorized(false)` → user is blocked
+- `unblock_user(user, operator)` → removes user from `BlockListed` + SAC `set_authorized(true)` only if the user is in the `Onboarded` set
+- Only an **onboarder** can call `onboard_user` / `batch_onboard_users`; only a **block operator** can call `block_user`; only an **unblock operator** can call `unblock_user` — Admin must first call `add_onboarder(admin)`, `add_block_operator(admin)`, or `add_unblock_operator(admin)` if it needs the power directly
+- **Batch operations:** `batch_onboard_users` requires an onboarder, `batch_block_users` requires a block operator and `batch_unblock_users` requires an unblock operator; each accepts up to 40 users per call
+- The 40-user cap is derived from Soroban's per-transaction resource limits: each user costs two ledger-entry writes (persistent status entry + SAC trustline), so 40 users ≈ 80+ writes against mainnet's limit of 200 (`tx_max_write_ledger_entries`)
 - Batch operations are atomic — if any user fails, the entire transaction reverts
-- Each user in a batch emits its own `UserBlocked` / `UserUnblocked` event (OZ `stellar_tokens::fungible::blocklist` shape) for indexer compatibility
+- Each user in a batch emits its own event (`UserOnboarded` / `UserBlocked` / `UserUnblocked`) for indexer compatibility
+
+### What blocking does not undo: standing orders and pool deposits
+
+- Stellar has a built-in exchange: an account can place a standing order (an "offer", e.g. *sell 100 MGUSD for 100 USDC*) that executes automatically when another account takes the other side — no new signature needed from the account that placed it. Accounts can also deposit tokens into on-ledger liquidity pools
+- `block_user` clears the trustline authorization flag (SAC `set_authorized(false)`): the account can no longer send, receive, or place **new** orders. But orders placed **before** the block are not cancelled and pool deposits are not withdrawn — an old order can still execute later and move the blocked user's tokens
+- The classic issuer operation `SetTrustLineFlags` would cancel those orders as a side effect, but it is permanently unavailable because the issuer key is renounced at deployment ([issuer renunciation](issuer-renunciation.md)) — SAC deauthorization is the only freeze mechanism
+- `force_transfer` (clawback) reclaims only the account's **available** balance; tokens committed to a standing order are locked until that order is cancelled or executes
+- Runbook: after blocking, check Horizon for the account's standing orders and pool deposits; if an old order executes post-block, block the receiving account if warranted and reclaim the tokens via `force_transfer`
 
 ### Token Transfers
 
 - Transfers use the SAC's standard SEP-41 `transfer()` — the wrapper contract has no transfer function
-- Both sender and receiver must be whitelisted (unblocked) for a transfer to succeed
-- An **unblock operator** whitelists accounts via `unblock_user()`; a **block operator** can revoke via `block_user()`
+- Both sender and receiver must be SAC-authorized (onboarded and not blocked) for a transfer to succeed
+- An **onboarder** activates accounts via `onboard_user()`; a **block operator** suspends via `block_user()`; an **unblock operator** lifts compliance holds via `unblock_user()`
 - Transfers do **not** update accumulators — they are balance redistributions, not mints/burns
 - The issuer is exempt from `AUTH_REQUIRED` — authorized users can send tokens to the issuer, which destroys them without updating accumulators (see [Issuer Burn Problem](#the-issuer-burn-problem))
 
@@ -388,7 +408,7 @@ When paused, the following operations revert immediately:
 | `set_interest_rate` | Minter |
 | `claim_yield` | Yield Recipient Manager |
 
-Compliance operations (`block_user`, `unblock_user`, `batch_block_users`, `batch_unblock_users`, `force_transfer`) and all view functions remain fully accessible while paused so that regulatory actions — sanctions enforcement, court-ordered seizures, allowlist updates — can still be executed.
+Compliance operations (`block_user`, `unblock_user`, `onboard_user`, `batch_onboard_users`, `batch_block_users`, `batch_unblock_users`, `force_transfer`) and all view functions remain fully accessible while paused so that regulatory actions — sanctions enforcement, court-ordered seizures, allowlist updates — can still be executed.
 
 `reconcile_burn` is also intentionally callable while paused. Send-to-issuer destruction happens at the SAC layer outside wrapper control and continues during a pause; blocking reconciliation while paused would let accumulator divergence grow unboundedly. The function is admin-only and only mutates wrapper bookkeeping (no SAC interaction), so the pause carries no security benefit.
 
@@ -413,6 +433,8 @@ All events emitted by the contract. Event names are the snake_case form of the u
 | `unblock_operator_removed` | `remove_unblock_operator` | `addr` **(topic)** |
 | `pauser_added` | `add_pauser` | `addr` **(topic)** |
 | `pauser_removed` | `remove_pauser` | `addr` **(topic)** |
+| `onboarder_added` | `add_onboarder` | `addr` **(topic)** |
+| `onboarder_removed` | `remove_onboarder` | `addr` **(topic)** |
 | `interest_rate_set` | `set_interest_rate` | `rate_bps` |
 | `mint` | `mint` | `to` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
 | `burn` | `burn` | `from` **(topic)**, `amount`, `new_total_principal`, `new_total_supply` |
@@ -427,6 +449,7 @@ All events emitted by the contract. Event names are the snake_case form of the u
 
 | Event | Emitted By | Fields | Source |
 |-------|-----------|--------|--------|
+| `user_onboarded` | `onboard_user`, `batch_onboard_users` | `user` **(topic)** | `events.rs` |
 | `user_blocked` | `block_user`, `batch_block_users` | `user` **(topic)** | `stellar_tokens::fungible::blocklist` |
 | `user_unblocked` | `unblock_user`, `batch_unblock_users` | `user` **(topic)** | `stellar_tokens::fungible::blocklist` |
 | `paused` | `pause` | *(no fields)* | `stellar_contract_utils::pausable` |
@@ -477,8 +500,10 @@ Each state-changing call adjusts the accumulators as follows:
 
 ### Roles and access
 
-- **INV-13 — Single-address roles are total.** `admin`, `minter`, `yield_recipient_manager`, `yield_recipient`, `forced_transfer_manager`, and `pauser` each resolve to exactly one address after construction.
+- **INV-13 — Single-address roles are total.** `admin`, `minter`, `yield_recipient_manager`, `yield_recipient`, and `forced_transfer_manager` each resolve to exactly one address after construction.
 - **INV-14 — Role gating.** Every role-gated function calls `require_auth` on its `caller` argument and verifies the caller equals the designated role holder. Admin is not a super-role: it cannot exercise another role's powers without first granting itself that role.
+- **INV-15 — Onboarded is monotonic.** Once an account is recorded in the `Onboarded` set via `onboard_user`, that entry is never removed. An account's `is_onboarded` status can only change from `false` to `true`.
+- **INV-16 — SAC authorization requires prior onboarding.** SAC `set_authorized(true)` is called only by `onboard_user` (first activation or re-authorization of an account not on the block list) / `batch_onboard_users` (first activation) and by `unblock_user` / `batch_unblock_users` when the account is present in the `Onboarded` set.
 
 ---
 

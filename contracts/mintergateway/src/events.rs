@@ -244,3 +244,33 @@ pub struct SacAdminTransferred {
 pub fn emit_sac_admin_transferred(env: &Env, new_sac_admin: Address) {
     SacAdminTransferred { new_sac_admin }.publish(env);
 }
+
+#[contractevent]
+pub struct OnboarderAdded {
+    #[topic]
+    pub addr: Address,
+}
+
+pub fn emit_onboarder_added(env: &Env, addr: Address) {
+    OnboarderAdded { addr }.publish(env);
+}
+
+#[contractevent]
+pub struct OnboarderRemoved {
+    #[topic]
+    pub addr: Address,
+}
+
+pub fn emit_onboarder_removed(env: &Env, addr: Address) {
+    OnboarderRemoved { addr }.publish(env);
+}
+
+#[contractevent]
+pub struct UserOnboarded {
+    #[topic]
+    pub user: Address,
+}
+
+pub fn emit_user_onboarded(env: &Env, user: &Address) {
+    UserOnboarded { user: user.clone() }.publish(env);
+}

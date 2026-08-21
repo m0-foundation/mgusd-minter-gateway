@@ -16,4 +16,5 @@ pub enum MinterGatewayError {
     BatchTooLargeError = 102,
     BurnExceedsSupply = 103,
     NoTrustline = 104, // SAC destination has no trustline or trustline is not authorized
+    UserBlockedError = 105,
 }

@@ -29,6 +29,7 @@ pub struct TestSetup<'a> {
     pub block_operator: Address,
     pub unblock_operator: Address,
     pub pauser: Address,
+    pub onboarder: Address,
 }
 
 pub fn setup() -> TestSetup<'static> {
@@ -41,12 +42,12 @@ pub fn setup() -> TestSetup<'static> {
     let yield_recipient_manager = Address::generate(&env);
     let yield_recipient = Address::generate(&env);
     let forced_transfer_manager = Address::generate(&env);
-    // Default to separate block and unblock operators so the role split is
-    // exercised across the suite. Tests that need a single address holding
-    // both roles construct that case explicitly.
+    // Default to separate block, unblock, and onboard operators so role
+    // separation is exercised across the suite.
     let block_operator = Address::generate(&env);
     let unblock_operator = Address::generate(&env);
     let pauser = Address::generate(&env);
+    let onboarder = Address::generate(&env);
 
     // Register SAC token with admin as initial issuer
     let sac = env.register_stellar_asset_contract_v2(admin.clone());
@@ -72,6 +73,7 @@ pub fn setup() -> TestSetup<'static> {
             &block_operator,
             &unblock_operator,
             &pauser,
+            &onboarder,
         ),
     );
     let contract = YieldTokenClient::new(&env, &contract_addr);
@@ -79,8 +81,8 @@ pub fn setup() -> TestSetup<'static> {
     // Set yield contract as SAC admin (so it can mint/clawback)
     sac_admin_client.set_admin(&contract_addr);
 
-    // Authorize yield_recipient so claim_yield can mint to it (AUTH_REQUIRED mode)
-    contract.unblock_user(&yield_recipient, &unblock_operator);
+    // Activate yield_recipient so claim_yield can mint to it (first-time onboarding)
+    contract.onboard_user(&yield_recipient, &onboarder);
 
     TestSetup {
         env,
@@ -95,6 +97,7 @@ pub fn setup() -> TestSetup<'static> {
         block_operator,
         unblock_operator,
         pauser,
+        onboarder,
     }
 }
 
@@ -156,6 +159,16 @@ impl TestSetup<'_> {
             events.events().len(),
         );
     }
+
+    /// Number of gateway events emitted by the last top-level invocation.
+    pub fn gateway_event_count(&self) -> usize {
+        self.env
+            .events()
+            .all()
+            .filter_by_contract(&self.contract.address)
+            .events()
+            .len()
+    }
 }
 
 /// Build a fixed-size array of `xdr::ContractEvent` from a list of
@@ -182,6 +195,23 @@ macro_rules! gateway_events {
             ),+
         ]
     };
+}
+
+/// Raises the enforced test resource limits to the current mainnet values.
+/// soroban-sdk 25.x ships a stale `InvocationResourceLimits::mainnet()`
+/// snapshot that predates the network upgrade which raised the per-tx limits
+/// (writes 50 → 200, footprint 100 → 400, disk reads 100 → 200 — verified via
+/// `stellar network settings` against mainnet, 2026-08-14). Needed by tests
+/// that exercise MAX_BATCH_SIZE-sized batches.
+pub fn enforce_current_mainnet_limits(env: &Env) {
+    use soroban_env_host::InvocationResourceLimits;
+    use soroban_sdk::testutils::cost_estimate::NetworkInvocationResourceLimits;
+
+    let mut limits = InvocationResourceLimits::mainnet();
+    limits.write_entries = 200;
+    limits.ledger_entries = 400;
+    limits.disk_read_entries = 200;
+    env.cost_estimate().enforce_resource_limits(limits);
 }
 
 /// The Soroban host error returned when `require_auth()` fails.

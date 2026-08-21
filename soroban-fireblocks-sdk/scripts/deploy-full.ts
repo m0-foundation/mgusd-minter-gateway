@@ -208,6 +208,7 @@ async function main(): Promise<void> {
     blockOperator: requireRolePubkey("BLOCK_OPERATOR_PUBLIC_KEY"),
     unblockOperator: requireRolePubkey("UNBLOCK_OPERATOR_PUBLIC_KEY"),
     pauser: requireRolePubkey("PAUSER_PUBLIC_KEY"),
+    onboarder: requireRolePubkey("ONBOARDER_PUBLIC_KEY"),
   };
 
   const uniqueRoles = new Set(Object.values(roles));
@@ -297,6 +298,7 @@ async function main(): Promise<void> {
   console.log(`    blockOperator:         ${roles.blockOperator}`);
   console.log(`    unblockOperator:       ${roles.unblockOperator}`);
   console.log(`    pauser:                ${roles.pauser}`);
+  console.log(`    onboarder:             ${roles.onboarder}`);
   console.log();
 
   if (!(await confirm("Proceed with deploy? Issuer will sign 2 Fireblocks txs (steps 1, 5); deployer will sign 3 local txs (steps 2-4)."))) {

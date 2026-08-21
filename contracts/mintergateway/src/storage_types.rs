@@ -5,6 +5,10 @@ pub const DAY_IN_LEDGERS: u32 = 17280;
 pub const INSTANCE_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
 
+// Persistent per-user entries (BlockListed, Onboarded) — bump to 1 year, refresh when within 30 days
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 365 * DAY_IN_LEDGERS;
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - 30 * DAY_IN_LEDGERS;
+
 #[derive(Clone)]
 #[contracttype]
 pub struct YieldStateValue {
@@ -46,4 +50,11 @@ pub enum DataKey {
     UnblockOperator(Address),
     /// Instance: () — membership set; presence allows `pause` / `unpause`
     Pauser(Address),
+    /// Instance: () — membership set; presence allows `onboard_user`
+    Onboarder(Address),
+    /// Persistent: () — compliance block list; presence means this account is currently held back by compliance
+    BlockListed(Address),
+    /// Persistent: () — monotonic onboarding record; set on first `onboard_user`, never cleared.
+    /// `unblock_user` only restores SAC authorization when this key is present.
+    Onboarded(Address),
 }

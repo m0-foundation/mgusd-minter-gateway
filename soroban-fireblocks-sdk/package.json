@@ -18,6 +18,7 @@
     "roles": "ts-node scripts/roles.ts",
     "block-user": "ts-node scripts/block-user.ts",
     "unblock-user": "ts-node scripts/unblock-user.ts",
+    "onboard-user": "ts-node scripts/onboard-user.ts",
     "pause": "ts-node scripts/pause.ts",
     "unpause": "ts-node scripts/unpause.ts",
     "set-admin": "ts-node scripts/set-admin.ts",
