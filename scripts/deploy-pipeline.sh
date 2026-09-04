@@ -263,6 +263,7 @@ init_deploy_pipeline_env() {
   BLOCK_OP=$(require_pubkey BLOCK_OPERATOR_PUBLIC_KEY)
   UNBLOCK_OP=$(require_pubkey UNBLOCK_OPERATOR_PUBLIC_KEY)
   PAUSER=$(require_pubkey PAUSER_PUBLIC_KEY)
+  ONBOARDER=$(require_pubkey ONBOARDER_PUBLIC_KEY)
 
   # Resolve the WASM the deploy will upload. Four cases:
   #   RELEASE_TAG  set         → download from GH release, verify attestation
@@ -337,14 +338,15 @@ print_deploy_banner() {
   echo "    blockOperator:         $BLOCK_OP"
   echo "    unblockOperator:       $UNBLOCK_OP"
   echo "    pauser:                $PAUSER"
+  echo "    onboarder:             $ONBOARDER"
   echo ""
 
   local unique_roles
-  unique_roles=$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
-    "$ADMIN" "$MINTER" "$YRM" "$YR" "$FTM" "$BLOCK_OP" "$UNBLOCK_OP" "$PAUSER" \
+  unique_roles=$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    "$ADMIN" "$MINTER" "$YRM" "$YR" "$FTM" "$BLOCK_OP" "$UNBLOCK_OP" "$PAUSER" "$ONBOARDER" \
     | sort -u | wc -l | tr -d ' ')
-  if [[ "$unique_roles" -lt 8 ]]; then
-    echo "WARNING: only $unique_roles distinct role pubkeys (expected 8)"
+  if [[ "$unique_roles" -lt 9 ]]; then
+    echo "WARNING: only $unique_roles distinct role pubkeys (expected 9)"
     echo ""
   fi
 }
@@ -412,6 +414,7 @@ step_4_deploy_wrapper() {
     --block_operator "$BLOCK_OP" \
     --unblock_operator "$UNBLOCK_OP" \
     --pauser "$PAUSER" \
+    --onboarder "$ONBOARDER" \
     | tr -d '\r\n')
   echo "      Wrapper contract ID: $WRAPPER_CONTRACT_ID"
   echo ""
